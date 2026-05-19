@@ -1592,10 +1592,13 @@ if [ "$HAS_PC" = "1" ]; then
             #     新机器 / 切分支时常缺
             #   - mermaid / katex / rehype-raw：编辑器后期新增的块级扩展依赖（Mermaid 图、
             #     数学公式、Markdown 渲染），CI 旧 node_modules 不会有，必须体检触发 install
+            #   - @tiptap/extension-text-style：v3 把 FontSize / Color / FontFamily 都
+            #     合到这一个包里，字号/颜色功能强依赖；旧 node_modules 漏装会直接 TS2307
             for _dep in \
                 react vite typescript \
                 marked html2canvas jspdf \
                 mermaid katex rehype-raw \
+                "@tiptap/extension-text-style" \
                 "@aparajita/capacitor-secure-storage" \
                 "@aparajita/capacitor-biometric-auth" \
                 "@mhaberler/capacitor-zeroconf-nsd"; do
