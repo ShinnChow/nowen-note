@@ -1554,6 +1554,20 @@ if [ "$HAS_PC" = "1" ]; then
         if [ ! -d "${REPO_ROOT}/backend/node_modules" ]; then
             _BACKEND_DEPS_OK=0
         else
+            # 兜底 1：lockfile 漂移检测——package-lock.json 比 node_modules
+            #   内部快照 .package-lock.json 新，说明刚 git pull 引入了新依赖
+            #   但还没 npm install。npm 7+ 会在 install 后写入这份快照，
+            #   用它作 mtime 对账，无需维护白名单也能识别新增依赖。
+            _BE_LOCK="${REPO_ROOT}/backend/package-lock.json"
+            _BE_SNAP="${REPO_ROOT}/backend/node_modules/.package-lock.json"
+            if [ -f "$_BE_LOCK" ] && [ -f "$_BE_SNAP" ] && [ "$_BE_LOCK" -nt "$_BE_SNAP" ]; then
+                warn "backend lockfile 比 node_modules 快照新，疑似新增依赖未安装"
+                _BACKEND_DEPS_OK=0
+            elif [ -f "$_BE_LOCK" ] && [ ! -f "$_BE_SNAP" ]; then
+                warn "backend node_modules/.package-lock.json 缺失，无法确认依赖一致性"
+                _BACKEND_DEPS_OK=0
+            fi
+            # 兜底 2：白名单逐项 check（覆盖一些历史掉过坑的代表性依赖）
             for _dep in sqlite-vec better-sqlite3 hono jsonwebtoken; do
                 if [ ! -d "${REPO_ROOT}/backend/node_modules/${_dep}" ]; then
                     warn "backend 依赖缺失: ${_dep}"
@@ -1584,6 +1598,19 @@ if [ "$HAS_PC" = "1" ]; then
         if [ ! -d "${REPO_ROOT}/frontend/node_modules" ]; then
             _FRONTEND_DEPS_OK=0
         else
+            # 兜底 1：lockfile 漂移检测（同 backend）
+            #   package-lock.json 比 node_modules/.package-lock.json 新 →
+            #   git pull 后引入了新依赖但还没安装，强制触发 npm install。
+            #   有了这道兜底，下面那串白名单仅作为额外保险，不再是关键依赖唯一识别手段。
+            _FE_LOCK="${REPO_ROOT}/frontend/package-lock.json"
+            _FE_SNAP="${REPO_ROOT}/frontend/node_modules/.package-lock.json"
+            if [ -f "$_FE_LOCK" ] && [ -f "$_FE_SNAP" ] && [ "$_FE_LOCK" -nt "$_FE_SNAP" ]; then
+                warn "frontend lockfile 比 node_modules 快照新，疑似新增依赖未安装"
+                _FRONTEND_DEPS_OK=0
+            elif [ -f "$_FE_LOCK" ] && [ ! -f "$_FE_SNAP" ]; then
+                warn "frontend node_modules/.package-lock.json 缺失，无法确认依赖一致性"
+                _FRONTEND_DEPS_OK=0
+            fi
             # 选型说明：
             #   - react / vite / typescript：基石，缺任一个都是环境未初始化
             #   - marked / html2canvas / jspdf：历史上掉过坑的导出/导入依赖
