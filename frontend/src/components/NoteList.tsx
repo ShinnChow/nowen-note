@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Pin, PinOff, Star, StarOff, Clock, FileText, Trash2, ArchiveRestore, Menu, FolderInput, ChevronRight, ChevronDown, ChevronLeft, Folder, X, Check, Lock, Unlock, CalendarDays, RefreshCw, Share2, GripVertical, Download, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Printer, User as UserIcon, Sparkles, Tag as TagIcon, Loader2 } from "lucide-react";
+import { Plus, Pin, PinOff, Star, StarOff, Clock, FileText, FileType2, Trash2, ArchiveRestore, Menu, FolderInput, ChevronRight, ChevronDown, ChevronLeft, Folder, X, Check, Lock, Unlock, CalendarDays, RefreshCw, Share2, GripVertical, Download, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Printer, User as UserIcon, Sparkles, Tag as TagIcon, Loader2, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ContextMenu, { ContextMenuItem } from "@/components/ContextMenu";
@@ -15,6 +15,7 @@ import { haptic } from "@/hooks/useCapacitor";
 import { toast } from "@/lib/toast";
 import { exportSingleNote, exportSingleNoteAsPDF, exportSingleNoteAsImage } from "@/lib/exportService";
 import { realtime } from "@/lib/realtime";
+// "导入 Word 文档" 走 dynamic import（见 createNoteInNotebook），减少首屏 bundle 体积。
 
 /* ===== 排序模式 ===== */
 type SortBy = "manual" | "updatedAt" | "createdAt" | "title";
@@ -193,6 +194,111 @@ function SortMenu({
       </div>
     </>,
     document.body
+  );
+}
+
+/* ===== 新建按钮的下拉菜单 =====
+ * 用法：split-button 旁的小箭头 ▾ 点开后弹出，让用户在
+ *   - 新建普通笔记
+ *   - 新建 Word 文档
+ * 之间选择。+ 主按钮的单击行为不变（继续走 normal），保留肌肉记忆。
+ *
+ * 复用 SortMenu 的 portal + backdrop 模式（同一份"踩坑笔记"已写在 SortMenu 注释里）。
+ */
+function CreateMenu({
+  onPick,
+  onClose,
+  anchorRef,
+}: {
+  onPick: (type: "normal" | "word") => void;
+  onClose: () => void;
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  const { t } = useTranslation();
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    const compute = () => {
+      const el = anchorRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const left = Math.max(4, Math.min(window.innerWidth - 220, rect.right - 200));
+      const top = Math.min(window.innerHeight - 8, rect.bottom + 4);
+      setPos({ top, left });
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, true);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+    };
+  }, [anchorRef]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (!pos) return null;
+
+  // 文案直接硬编码：项目当前 i18n 资源是空的（src/i18n 目录里没条目），
+  // 走 t() 会拿到 key 本身（如 "noteList.createNormalNote"），
+  // 由于 key 本身是 truthy 字符串，`||` 兜底永远不生效，UI 就会显示原始 key。
+  const items = [
+    {
+      id: "normal" as const,
+      label: "新建笔记",
+      desc: "富文本 / Markdown",
+      icon: <FileText size={14} />,
+    },
+    {
+      id: "word" as const,
+      label: "导入 Word 文档",
+      desc: "选择 .docx 转为可编辑笔记",
+      icon: <FileType2 size={14} />,
+    },
+  ];
+
+  return createPortal(
+    <div
+      onMouseDown={(e) => { if (e.target === e.currentTarget) { e.preventDefault(); onClose(); } }}
+      onContextMenu={(e) => { e.preventDefault(); onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 9998, background: "transparent" }}
+    >
+      <div
+        role="menu"
+        className="rounded-lg border border-app-border bg-app-elevated shadow-xl py-1"
+        style={{
+          position: "fixed", top: pos.top, left: pos.left, width: 200, zIndex: 9999,
+          animation: "contextMenuIn 0.12s ease-out",
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {items.map((it) => (
+          <button
+            key={it.id}
+            type="button"
+            role="menuitem"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onPick(it.id);
+              onClose();
+            }}
+            className="w-full flex items-start gap-2 px-3 py-2 text-left text-tx-secondary hover:bg-app-hover hover:text-tx-primary transition-colors"
+          >
+            <span className="mt-0.5 shrink-0 text-tx-tertiary">{it.icon}</span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-xs font-medium truncate">{it.label}</span>
+              <span className="block text-[10px] text-tx-tertiary truncate">{it.desc}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -887,7 +993,17 @@ function PullToRefresh({
   );
 }
 
-const NoteCard = React.memo(React.forwardRef<HTMLDivElement, {
+// 这里刻意不用 React.forwardRef：framer-motion v12 的 <AnimatePresence> 内部
+// PopChild 会通过 `child.ref` 读取子元素 ref 转交给自己的 wrapper，而 React 18.3
+// 起把 `ref` 视为非普通 prop，访问会触发
+//   `Warning: ref is not a prop. Trying to access it will result in undefined`。
+// 解决方案：把 ref 改成普通 prop（cardRef），由组件内部直接挂到 motion.div 上，
+// PopChild 检测到 child 没有 ref 属性时就跳过转发路径，警告也就消失了。
+const NoteCard = React.memo(function NoteCard({
+  note, isActive, onClick, onContextMenu, isContextTarget, isShared, isSelected,
+  draggable, onDragStart, onDragOver, onDragEnd, onDrop, isDragOver,
+  onTouchStart, onTouchMove, onTouchEnd, cardRef,
+}: {
   note: NoteListItem; isActive: boolean; onClick: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   isContextTarget: boolean;
@@ -902,7 +1018,8 @@ const NoteCard = React.memo(React.forwardRef<HTMLDivElement, {
   onTouchStart?: (e: React.TouchEvent) => void;
   onTouchMove?: (e: React.TouchEvent) => void;
   onTouchEnd?: () => void;
-}>(function NoteCard({ note, isActive, onClick, onContextMenu, isContextTarget, isShared, isSelected, draggable, onDragStart, onDragOver, onDragEnd, onDrop, isDragOver, onTouchStart, onTouchMove, onTouchEnd }, ref) {
+  cardRef?: (el: HTMLDivElement | null) => void;
+}) {
   // 预览文本：取正文前 100 字，并把所有空白序列（含 \n、\r、\t、连续空格）
   // 压成单个空格。否则 markdown 多段落正文里的换行会被 <p> 当作空白渲染，
   // 配合 line-clamp-2 + break-words 出现"每句被切到独立一行"的错觉
@@ -918,7 +1035,7 @@ const NoteCard = React.memo(React.forwardRef<HTMLDivElement, {
 
   return (
     <motion.div
-      ref={ref}
+      ref={cardRef}
       // 仅做轻量淡入。早期版本用了 y:4 → y:0 的位移，会造成切换笔记本时
       // 整列卡片"先在面板底部出现再上移"的错觉（尤其当 list 项很少、
       // 列表内容贴近底部时尤为明显）。这里去掉 y 位移，让卡片就地淡入。
@@ -1029,7 +1146,7 @@ const NoteCard = React.memo(React.forwardRef<HTMLDivElement, {
       </div>
     </motion.div>
   );
-}));
+});
 NoteCard.displayName = "NoteCard";
 
 /* ===== 虚拟滚动笔记列表 ===== */
@@ -1124,7 +1241,7 @@ function VirtualNoteList({
           {visibleNotes.map((note) => (
             <NoteCard
               key={note.id}
-              ref={(el) => {
+              cardRef={(el) => {
                 if (el) noteCardRefs?.current.set(note.id, el);
                 else noteCardRefs?.current.delete(note.id);
               }}
@@ -1166,6 +1283,17 @@ export default function NoteList() {
     sourceWorkspaceId: string | null;
   } | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // 新建按钮的下拉菜单（普通笔记 / Word 文档）。
+  // 默认行为是单击 + 按钮直接走 normal；下拉箭头点开后才能选 word。
+  // 三个 + 按钮各自一个 ref（桌面顶部 / 移动顶部 / 移动 FAB）；
+  // openSource 记录是哪一个触发了下拉，避免共用一个 ref 导致的菜单错位。
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createMenuSource, setCreateMenuSource] = useState<"desktop" | "mobile" | "fab" | null>(null);
+  const createMenuAnchorDesktopRef = useRef<HTMLButtonElement>(null);
+  const createMenuAnchorMobileRef = useRef<HTMLButtonElement>(null);
+  const createMenuAnchorFabRef = useRef<HTMLButtonElement>(null);
+  // picker 模式下记住即将创建的笔记类型；用户选 notebook 后据此分支。
+  const [pendingNoteType, setPendingNoteType] = useState<"normal" | "word">("normal");
   const [dateFilter, setDateFilter] = useState<string | null>(null); // YYYY-MM-DD
   const [showCalendar, setShowCalendar] = useState(false);
   // 排序偏好（持久化到 localStorage，不入 store；用户在不同设备/浏览器下可独立设置）
@@ -1175,6 +1303,12 @@ export default function NoteList() {
   const [sharedNoteIds, setSharedNoteIds] = useState<Set<string>>(new Set());
   const [dragNoteId, setDragNoteId] = useState<string | null>(null);
   const [dragOverNoteId, setDragOverNoteId] = useState<string | null>(null);
+  // 外部文件拖拽状态：用于渲染列表上的拖拽接收 overlay。
+  // 与内部排序拖拽（dragNoteId / dragOverNoteId）互斥，允许同时存在但不同时激活。
+  const [isFileDragging, setIsFileDragging] = useState(false);
+  // dragenter / dragleave 在子元素边界会重复触发。计数器（1 入 / -1 出）才能准确
+  // 给出“是否还在区域内”。不走 React state 是为了避免拖拽期间频繁重渲染。
+  const fileDragDepthRef = useRef(0);
   // 多选：Ctrl/Cmd+Click 切换、Shift+Click 范围；为空即未进入多选
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [lastClickedId, setLastClickedId] = useState<string | null>(null);
@@ -1498,7 +1632,7 @@ export default function NoteList() {
     }
   };
 
-  const handleCreateNote = async () => {
+  const handleCreateNote = async (noteType: "normal" | "word" = "normal") => {
     haptic.light();
     // 回收站视图禁止新建笔记
     if (state.viewMode === "trash") {
@@ -1522,18 +1656,34 @@ export default function NoteList() {
         notebookId = state.notebooks[0].id;
       } else {
         // 多个笔记本，弹选择器让用户决定
+        setPendingNoteType(noteType);
         setPickerOpen(true);
         return;
       }
     }
 
-    await createNoteInNotebook(notebookId);
+    await createNoteInNotebook(notebookId, noteType);
   };
 
   // 实际执行创建笔记的逻辑，抽出供选择器回调复用
-  const createNoteInNotebook = async (notebookId: string) => {
+  // noteType="word" 时：弹文件选择器，走 importDocxAsNote（解析 .docx 为富文本笔记）。
+  const createNoteInNotebook = async (
+    notebookId: string,
+    noteType: "normal" | "word" = "normal",
+  ) => {
     try {
-      const note = await api.createNote({ notebookId, title: t('common.untitledNote') });
+      let note: any;
+      if (noteType === "word") {
+        const { pickDocxFile, importDocxAsNote } = await import("@/lib/wordNoteService");
+        const file = await pickDocxFile();
+        if (!file) return; // 用户取消
+        toast.info("正在导入 Word 文档…");
+        const result = await importDocxAsNote({ notebookId, file });
+        note = result.note;
+        toast.success("导入成功");
+      } else {
+        note = await api.createNote({ notebookId, title: t('common.untitledNote') });
+      }
       actions.setActiveNote(note);
       actions.addNoteToList({
         id: note.id,
@@ -1865,6 +2015,11 @@ export default function NoteList() {
               label: t('noteList.exportAsImage'),
               icon: <ImageIcon size={14} />,
             } as ContextMenuItem,
+            {
+              id: "export_word",
+              label: t('noteList.exportAsWord'),
+              icon: <FileType2 size={14} />,
+            } as ContextMenuItem,
           ]),
       { id: "sep2", label: "", separator: true },
       {
@@ -1965,6 +2120,27 @@ export default function NoteList() {
           } else {
             toast.error(t('export.exportFailed', { error: '' }));
           }
+        } catch (err: any) {
+          toast.dismiss(toastId);
+          toast.error(err?.message || t('export.exportFailed', { error: String(err) }));
+        }
+        break;
+      }
+      case "export_word": {
+        // 单笔记导出 .docx：
+        //   - 复用 wordNoteService 已有的 exportNoteAsDocx + downloadDocxBlob（TiptapEditor 工具栏同款）
+        //   - 走 dynamic import 避免把 office IR / docx 生成模块计入首屏 bundle
+        //   - 老笔记 content 可能是 HTML / Markdown / 纯文本，exportNoteAsDocx 内部已做兜底
+        haptic.light();
+        const toastId = toast.info(t('export.exportingNote', { name: targetNote.title }), 0);
+        try {
+          // 右键菜单只持有 noteId，需要先拉一次完整笔记拿到 content
+          const fresh = await api.getNote(targetId);
+          const { exportNoteAsDocx, downloadDocxBlob } = await import("@/lib/wordNoteService");
+          const blob = await exportNoteAsDocx(fresh.content || "", fresh.title || "未命名笔记");
+          downloadDocxBlob(blob, fresh.title || "未命名笔记");
+          toast.dismiss(toastId);
+          toast.success(t('export.exportComplete'));
         } catch (err: any) {
           toast.dismiss(toastId);
           toast.error(err?.message || t('export.exportFailed', { error: String(err) }));
@@ -2150,6 +2326,122 @@ export default function NoteList() {
     state.viewMode === "notebook" || state.viewMode === "all" || state.viewMode === "favorites" || state.viewMode === "tag"
   );
 
+  // 判别 DataTransfer 是否带"操作系统外部文件"——
+  // 这是区分"内部笔记排序拖拽 vs 用户从桌面/资源管理器拖入文件"的唯一可靠依据。
+  // 注意：dragover 阶段大多数浏览器只暴露 types，files 列表为空，必须用 types 判别。
+  const hasExternalFiles = (e: React.DragEvent) => {
+    const types = e.dataTransfer?.types;
+    if (!types) return false;
+    // types 是 DOMStringList 或 string[]，统一遍历
+    for (let i = 0; i < types.length; i++) {
+      if (types[i] === "Files") return true;
+    }
+    return false;
+  };
+
+  // 把用户拖入的一组文件按扩展名分流到对应导入器；不支持的类型统一温和拒绝。
+  // 仅识别 .md / .markdown / .txt / .docx——和方案 C 商定的范围保持一致。
+  const handleExternalFilesDrop = useCallback(async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+
+    // 先确定目标笔记本（复用 handleCreateNote 的归属规则，但拖拽场景不弹选择器：
+    // 若没有明确归属就拒绝，避免拖错位置）。
+    let notebookId = state.selectedNotebookId;
+    if (!notebookId) {
+      if (state.notebooks.length === 1) {
+        notebookId = state.notebooks[0].id;
+      } else {
+        toast.warning("请先选择一个笔记本，再拖入文件");
+        return;
+      }
+    }
+
+    const supported: File[] = [];
+    const unsupported: string[] = [];
+    for (const f of list) {
+      const lower = f.name.toLowerCase();
+      if (
+        lower.endsWith(".md") ||
+        lower.endsWith(".markdown") ||
+        lower.endsWith(".txt") ||
+        lower.endsWith(".docx")
+      ) {
+        supported.push(f);
+      } else {
+        unsupported.push(f.name);
+      }
+    }
+
+    if (unsupported.length > 0) {
+      toast.warning(
+        `已忽略 ${unsupported.length} 个不支持的文件（仅支持 .md / .markdown / .txt / .docx）`,
+      );
+    }
+    if (supported.length === 0) return;
+
+    // 多文件按顺序导入；任一条失败不阻断其它。
+    const { importDocxAsNote } = await import("@/lib/wordNoteService");
+    const { importMarkdownAsNote } = await import("@/lib/importService");
+
+    let firstNote: any = null;
+    let okCount = 0;
+    let failCount = 0;
+
+    if (supported.length > 1) {
+      toast.info(`正在导入 ${supported.length} 个文件…`);
+    } else {
+      toast.info("正在导入文件…");
+    }
+
+    for (const f of supported) {
+      try {
+        const isDocx = /\.docx$/i.test(f.name);
+        const result = isDocx
+          ? await importDocxAsNote({ notebookId: notebookId!, file: f })
+          : await importMarkdownAsNote({ notebookId: notebookId!, file: f });
+        const note = result.note;
+        if (!firstNote) firstNote = note;
+        actions.addNoteToList({
+          id: note.id,
+          userId: note.userId,
+          title: note.title,
+          contentText: note.contentText || "",
+          notebookId: note.notebookId,
+          workspaceId: note.workspaceId ?? null,
+          isPinned: note.isPinned || 0,
+          isFavorite: note.isFavorite || 0,
+          isLocked: note.isLocked || 0,
+          isArchived: note.isArchived || 0,
+          isTrashed: note.isTrashed || 0,
+          version: note.version || 1,
+          sortOrder: note.sortOrder || 0,
+          updatedAt: note.updatedAt,
+          createdAt: note.createdAt,
+        } as NoteListItem);
+        okCount++;
+      } catch (err: any) {
+        console.error("导入文件失败:", f.name, err);
+        failCount++;
+      }
+    }
+
+    // 单文件成功：直接打开；多文件成功：仅汇总 toast，不强行切换打开的笔记。
+    if (firstNote && supported.length === 1) {
+      actions.setActiveNote(firstNote);
+      actions.setMobileView("editor");
+    }
+    actions.refreshNotebooks();
+
+    if (okCount > 0 && failCount === 0) {
+      toast.success(`导入成功 ${okCount} 个文件`);
+    } else if (okCount > 0 && failCount > 0) {
+      toast.warning(`导入完成：成功 ${okCount} 个，失败 ${failCount} 个`);
+    } else {
+      toast.error("导入失败");
+    }
+  }, [state.selectedNotebookId, state.notebooks, actions]);
+
   // 拖拽排序处理（桌面端 HTML5 Drag API）
   const handleDragStart = useCallback((e: React.DragEvent, noteId: string) => {
     setDragNoteId(noteId);
@@ -2159,19 +2451,46 @@ export default function NoteList() {
 
   const handleDragOver = useCallback((e: React.DragEvent, noteId: string) => {
     e.preventDefault();
+    // 外部文件：显示 copy 光标 + 不高亮某条笔记（避免误导用户以为在替换该条）
+    if (hasExternalFiles(e)) {
+      e.dataTransfer.dropEffect = "copy";
+      if (dragOverNoteId) setDragOverNoteId(null);
+      return;
+    }
     e.dataTransfer.dropEffect = "move";
     if (noteId !== dragNoteId) {
       setDragOverNoteId(noteId);
     }
-  }, [dragNoteId]);
+  }, [dragNoteId, dragOverNoteId]);
 
   const handleDragEnd = useCallback(() => {
     setDragNoteId(null);
     setDragOverNoteId(null);
   }, []);
 
+  // 列表空白区域兜底：用户拖文件到没有笔记的位置也能识别（方案 B：全列表都收）
+  const handleListDragOver = useCallback((e: React.DragEvent) => {
+    if (!hasExternalFiles(e)) return; // 内部排序拖拽走 NoteCard 的处理，不抢
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleListDrop = useCallback((e: React.DragEvent) => {
+    if (!hasExternalFiles(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleExternalFilesDrop(e.dataTransfer.files);
+    }
+  }, [handleExternalFilesDrop]);
+
   const handleDrop = useCallback(async (e: React.DragEvent, targetNoteId: string) => {
     e.preventDefault();
+    // 外部文件优先：拖到任意笔记上也走"导入到当前笔记本"，不替换/合并那条笔记
+    if (hasExternalFiles(e) && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      setDragOverNoteId(null);
+      handleExternalFilesDrop(e.dataTransfer.files);
+      return;
+    }
     const sourceId = dragNoteId;
     setDragNoteId(null);
     setDragOverNoteId(null);
@@ -2290,7 +2609,7 @@ export default function NoteList() {
   return (
     <div className="w-full h-full bg-app-surface border-r border-app-border flex flex-col transition-colors relative">
       {/* Mobile Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-app-border md:hidden relative z-40" style={{ paddingTop: 'calc(var(--safe-area-top) + 12px)' }}>
+      <header className="flex items-center justify-between px-4 py-3 border-b border-app-border md:hidden relative z-40" style={{ paddingTop: 'calc(var(--safe-area-top) + 4px)' }}>
         <button
           onClick={() => actions.setMobileSidebar(true)}
           className="p-2 -ml-2 rounded-lg text-tx-secondary hover:bg-app-hover active:bg-app-active"
@@ -2350,9 +2669,24 @@ export default function NoteList() {
               <Trash2 size={18} />
             </Button>
           ) : (
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleCreateNote}>
-              <Plus size={18} />
-            </Button>
+            // split-button：左侧 + 依然是"新建普通笔记"保留肉记忆；右侧箭头弹类型选择。
+            <div className="flex items-center">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleCreateNote("normal")}>
+                <Plus size={18} />
+              </Button>
+              <button
+                ref={createMenuAnchorDesktopRef}
+                type="button"
+                aria-label="选择新建类型"
+                onClick={() => {
+                  setCreateMenuSource("desktop");
+                  setCreateMenuOpen((v) => !v);
+                }}
+                className="h-8 w-5 flex items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-secondary transition-colors"
+              >
+                <ChevronDown size={12} />
+              </button>
+            </div>
           )}
           {/* 排序下拉（移动端） */}
           {showSortMenu && (
@@ -2428,9 +2762,24 @@ export default function NoteList() {
               <Trash2 size={15} />
             </Button>
           ) : (
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCreateNote}>
-              <Plus size={15} />
-            </Button>
+            // split-button： + 依然走"新建普通笔记"；箭头点开后选择类型。
+            <div className="flex items-center">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleCreateNote("normal")}>
+                <Plus size={15} />
+              </Button>
+              <button
+                ref={createMenuAnchorMobileRef}
+                type="button"
+                aria-label="选择新建类型"
+                onClick={() => {
+                  setCreateMenuSource("mobile");
+                  setCreateMenuOpen((v) => !v);
+                }}
+                className="h-7 w-4 flex items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-secondary transition-colors"
+              >
+                <ChevronDown size={11} />
+              </button>
+            </div>
           )}
           {/* 排序下拉（桌面端） */}
           {showSortMenu && (
@@ -2596,7 +2945,70 @@ export default function NoteList() {
       )}
 
       {/* List - 包裹下拉刷新（仅移动端生效，桌面端不影响） */}
-      <PullToRefresh onRefresh={fetchNotes}>
+      {/* 拖拽外部文件兜底层：让用户拖到列表的任意位置（含空白处、虚拟列表、骨架屏）
+          都能触发文件导入（方案 B）。NoteCard 自身也在 handleDrop 里做了同源判断，
+          这里只是兜底处理“没落到任何笔记上”的情况。dragover 必须 preventDefault
+          才能让 drop 事件触发。
+
+          视觉反馈：isFileDragging 为真时在列表上覆一层高亮边框 + 中央提示卡片，
+          让用户明确“此区域可以接收文件”。overlay 用 pointer-events:none 以免吃事件。 */}
+      <div
+        className={cn(
+          "flex-1 min-h-0 flex flex-col relative transition-colors duration-150",
+          isFileDragging && "bg-accent-primary/5",
+        )}
+        onDragEnter={(e) => {
+          if (!hasExternalFiles(e)) return;
+          fileDragDepthRef.current += 1;
+          if (!isFileDragging) setIsFileDragging(true);
+        }}
+        onDragOver={(e) => {
+          handleListDragOver(e);
+          // dragenter 有时丢失（拖拽从外部进入同时靶子元素）；在这里兑底一次。
+          if (hasExternalFiles(e) && !isFileDragging) {
+            fileDragDepthRef.current = Math.max(fileDragDepthRef.current, 1);
+            setIsFileDragging(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!hasExternalFiles(e)) return;
+          fileDragDepthRef.current = Math.max(0, fileDragDepthRef.current - 1);
+          if (fileDragDepthRef.current === 0) setIsFileDragging(false);
+        }}
+        onDrop={(e) => {
+          fileDragDepthRef.current = 0;
+          setIsFileDragging(false);
+          handleListDrop(e);
+        }}
+      >
+        {/* 拖拽接收提示 Overlay：仅在 isFileDragging=true 时渲染。
+            pointer-events: none 让鼠标/拖拽事件穿透到下层，避免拖拽中途 hover
+            到 overlay 上触发 leave、导致提示闪烁。 */}
+        {isFileDragging && (
+          <div
+            className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-6"
+            aria-hidden="true"
+          >
+            {/* 虚线边框：贴边画，明确“接收区域”边界 */}
+            <div className="absolute inset-2 rounded-xl border-2 border-dashed border-accent-primary/60" />
+            {/* 中央提示卡片 */}
+            <div className="relative flex flex-col items-center gap-2 px-5 py-4 rounded-xl bg-app-elevated/95 backdrop-blur-sm shadow-lg border border-accent-primary/30 max-w-[260px] text-center">
+              <div className="w-10 h-10 rounded-full bg-accent-primary/15 flex items-center justify-center">
+                <FileUp size={20} className="text-accent-primary" />
+              </div>
+              <p className="text-sm font-medium text-tx-primary">
+                {t('noteList.dropToImportTitle', { defaultValue: '释放以导入' })}
+              </p>
+              <p className="text-xs text-tx-tertiary leading-relaxed">
+                {t('noteList.dropToImportHint', {
+                  defaultValue: '导入到《{{name}}》・支持 .md / .docx / .txt',
+                  name: state.notebooks.find((n) => n.id === state.selectedNotebookId)?.name
+                    || t('noteList.notebook', { defaultValue: '当前笔记本' }),
+                })}
+              </p>
+            </div>
+          </div>
+        )}      <PullToRefresh onRefresh={fetchNotes}>
         {/* 笔记数量较少时使用普通渲染，较多时使用虚拟滚动 */}
         {sortedNotes.length > 100 ? (
           <VirtualNoteList
@@ -2625,7 +3037,7 @@ export default function NoteList() {
             {sortedNotes.map((note) => (
               <NoteCard
                 key={note.id}
-                ref={(el) => {
+                cardRef={(el) => {
                   if (el) noteCardRefs.current.set(note.id, el);
                   else noteCardRefs.current.delete(note.id);
                 }}
@@ -2658,7 +3070,7 @@ export default function NoteList() {
                 {t('common.noNotesHint')}
               </p>
               <button
-                onClick={handleCreateNote}
+                onClick={() => handleCreateNote("normal")}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent-primary text-white text-xs font-medium hover:bg-accent-primary/90 active:scale-95 transition-all shadow-sm"
               >
                 <Plus size={14} />
@@ -2689,10 +3101,17 @@ export default function NoteList() {
       </ScrollArea>
         )}
       </PullToRefresh>
+      </div>
 
-      {/* Mobile FAB - 新建笔记 */}
+      {/* Mobile FAB - 新建笔记（点击默认普通笔记，长按弹类型选择） */}
       <button
-        onClick={handleCreateNote}
+        ref={createMenuAnchorFabRef}
+        onClick={() => handleCreateNote("normal")}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setCreateMenuSource("fab");
+          setCreateMenuOpen(true);
+        }}
         className="md:hidden absolute bottom-6 right-6 w-14 h-14 bg-accent-primary rounded-2xl shadow-lg shadow-accent-primary/30 flex items-center justify-center text-white active:scale-95 transition-transform z-10"
       >
         <Plus size={24} />
@@ -2727,10 +3146,34 @@ export default function NoteList() {
         notebooks={state.notebooks}
         onPick={async (nbId) => {
           setPickerOpen(false);
-          await createNoteInNotebook(nbId);
+          await createNoteInNotebook(nbId, pendingNoteType);
+          setPendingNoteType("normal"); // 用完归位，避免下次默认到 word
         }}
-        onClose={() => setPickerOpen(false)}
+        onClose={() => {
+          setPickerOpen(false);
+          setPendingNoteType("normal");
+        }}
       />
+
+      {/* 新建按钮的下拉（普通笔记 / Word 文档），在 split-button 的 ▾ 旁边 portal 弹出 */}
+      {createMenuOpen && createMenuSource && (
+        <CreateMenu
+          anchorRef={
+            createMenuSource === "desktop"
+              ? createMenuAnchorDesktopRef
+              : createMenuSource === "mobile"
+                ? createMenuAnchorMobileRef
+                : createMenuAnchorFabRef
+          }
+          onPick={(type) => {
+            void handleCreateNote(type);
+          }}
+          onClose={() => {
+            setCreateMenuOpen(false);
+            setCreateMenuSource(null);
+          }}
+        />
+      )}
 
       {/* AI 批量归类确认面板：扫描完成后弹出，用户逐条审核再执行移动 */}
       <AiClassifyConfirmModal

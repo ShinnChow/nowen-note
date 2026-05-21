@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Palette, Shield, Database, X, Settings, Camera, Save, Loader2, Trash2, Upload, Type, Check, ChevronDown, Globe, Bot, Users, Info, ExternalLink, Heart, Sparkles, RefreshCw, Wrench, ZoomIn, Key, Building2 } from "lucide-react";
+import { Palette, Shield, Database, X, Settings, Camera, Save, Loader2, Trash2, Upload, Type, Check, ChevronDown, Globe, Bot, Users, Info, ExternalLink, Heart, Sparkles, RefreshCw, Wrench, ZoomIn, Key, Building2, BookOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ThemeToggle from "@/components/ThemeToggle";
 import SkinSwitcher from "@/components/SkinSwitcher";
@@ -12,6 +12,7 @@ import AISettingsPanel from "@/components/AISettingsPanel";
 import UserManagement from "@/components/UserManagement";
 import WorkspaceManagement from "@/components/WorkspaceManagement";
 import WhatsNewModal from "@/components/WhatsNewModal";
+import AuthorStoryModal from "@/components/AuthorStoryModal";
 import { useSiteSettings, BUILTIN_FONTS, getBuiltinFontName } from "@/hooks/useSiteSettings";
 import { api } from "@/lib/api";
 import { isDesktop, checkForUpdates, onUpdaterStatus, getReleaseChannel, isPortableDesktop, type UpdaterPayload } from "@/lib/desktopBridge";
@@ -479,6 +480,7 @@ function AboutPanel() {
   const { t } = useTranslation();
   const [showSponsor, setShowSponsor] = useState(false);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [showAuthorStory, setShowAuthorStory] = useState(false);
   // 赞赏码大图预览：点击赞赏码缩略图时弹起 Lightbox
   const [sponsorPreviewOpen, setSponsorPreviewOpen] = useState(false);
   return (
@@ -561,6 +563,30 @@ function AboutPanel() {
         </span>
       </button>
 
+      {/* 作者感言 —— 项目背后的故事 */}
+      <button
+        type="button"
+        onClick={() => setShowAuthorStory(true)}
+        className="w-full flex items-center justify-between p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500">
+            <BookOpen size={16} />
+          </span>
+          <div>
+            <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              {t('about.authorStory')}
+            </div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              {t('about.authorStoryDesc')}
+            </div>
+          </div>
+        </div>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
+          {t('about.authorStoryAction')}
+        </span>
+      </button>
+
       {/* 支持作者 / 打赏 */}
       <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 overflow-hidden">
         <button
@@ -636,6 +662,12 @@ function AboutPanel() {
       <WhatsNewModal
         open={showWhatsNew}
         onClose={() => setShowWhatsNew(false)}
+      />
+
+      {/* 作者感言 Modal —— 项目背后的故事 */}
+      <AuthorStoryModal
+        open={showAuthorStory}
+        onClose={() => setShowAuthorStory(false)}
       />
 
       {/* 赞赏码大图预览 Lightbox */}

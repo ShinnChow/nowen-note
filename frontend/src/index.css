@@ -111,10 +111,26 @@ html, body, #root {
   --safe-area-right: env(safe-area-inset-right, 0px);
 }
 
-/* Android 原生壳：status bar 不 overlay WebView，env() 恒为 0；
- * 由 JS 注入 --android-status-bar-height 作为兜底，保证顶部 header 仍有呼吸空间 */
+/* Android 原生壳：status bar / nav bar 不 overlay WebView，env() 恒为 0；
+ * 由 JS 注入 --android-status-bar-height / --android-nav-bar-height 作为更精确的
+ * 兜底值，但即便 JS 没跑（极端时序问题），CSS 这里也给一份**硬兜底**：
+ *   - 顶部 28px：贴近普通屏真实状态栏高度，避免按钮压在时间/电池图标上；
+ *               刘海/挖孔屏由 JS 注入的真实值通过 max() 自动覆盖。
+ *   - 底部 24px：覆盖手势条，避免 home indicator 压住内容。
+ * JS 注入的值会通过 max() 与硬兜底取较大者，高状态栏机型依然精准。
+ *
+ * 注：Android 15+ (targetSdk>=35) 强制 Edge-to-Edge，状态栏/手势栏会 overlay
+ * 在 WebView 上，必须依靠这两个兜底变量做避让。 */
 html[data-native="android"] {
-  --safe-area-top: var(--android-status-bar-height, 0px);
+  --safe-area-top: max(var(--android-status-bar-height, 0px), 28px);
+  --safe-area-bottom: max(var(--android-nav-bar-height, 0px), 24px);
+}
+
+/* iOS 原生壳：env(safe-area-inset-*) 通常能正确返回，但某些机型/初始化时机
+ * 下也可能短暂为 0，给一份较温和的兜底（顶部 20px = 经典状态栏高度）。 */
+html[data-native="ios"] {
+  --safe-area-top: max(env(safe-area-inset-top, 0px), 20px);
+  --safe-area-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
 }
 
 body {
@@ -252,6 +268,28 @@ body {
   font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Source Code Pro', 'Menlo', 'Consolas', 'Courier New', monospace;
   font-size: 0.85em;
   font-feature-settings: "liga" 0, "calt" 0;
+}
+
+/* ===== 查找/替换 装饰高亮 =====
+ * 由 SearchReplacePanel 的 ProseMirror 装饰插件附加：
+ *   .search-match         —— 所有命中
+ *   .search-match-active  —— 当前选中的命中（更鲜明）
+ * 用浅黄底 + 圆角，避开 light/dark 都不刺眼。 */
+.ProseMirror .search-match {
+  background-color: rgba(250, 204, 21, 0.45); /* yellow-400 / 45% */
+  border-radius: 2px;
+}
+.ProseMirror .search-match-active {
+  background-color: rgba(249, 115, 22, 0.65); /* orange-500 / 65% */
+  outline: 1px solid rgba(234, 88, 12, 0.85);
+  border-radius: 2px;
+}
+.dark .ProseMirror .search-match {
+  background-color: rgba(202, 138, 4, 0.55);
+}
+.dark .ProseMirror .search-match-active {
+  background-color: rgba(234, 88, 12, 0.8);
+  outline-color: rgba(251, 146, 60, 0.95);
 }
 
 /* ===== Code Block（自定义 NodeView：工具栏 + 语法高亮） =====

@@ -1,5 +1,10 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import React, { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useEditor, EditorContent, Extension, ReactNodeViewRenderer } from "@tiptap/react";
+
+// 懒加载 docx 内联预览：office 解析器（fflate + 自研 OOXML parser）有几十 KB，
+// 而绝大多数会话不会点 docx 附件，所以拆出去按需拉。
+const DocxAttachmentPreview = lazy(() => import("@/office/word/DocxAttachmentPreview"));
 import { posToDOMRect } from "@tiptap/core";
 import { AnimatePresence, motion } from "framer-motion";import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -16,6 +21,7 @@ import { common, createLowlight } from "lowlight";
 import { DOMParser as ProseMirrorDOMParser, Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { markdownToSimpleHtml } from "@/lib/importService";
+import { repairTiptapJson } from "@/lib/tiptapSchemaRepair";
 import { markdownToHtml as mdToFullHtml, detectFormat as detectContentFormat, tiptapJsonToMarkdown } from "@/lib/contentFormat";
 import { api } from "@/lib/api";
 import { extractRtfImagesAsync } from "@/lib/rtfImageWorkerClient";
@@ -26,9 +32,9 @@ import {
   Quote, ImagePlus, Paperclip, CheckSquare, Highlighter, Minus, Undo, Redo,
   Code, FileCode, Sparkles, X, ZoomIn, ZoomOut, RotateCcw,
   Table2, Indent, Outdent, AlignLeft, AlignCenter, AlignRight, Trash2,
-  FileType, Check, AlertCircle, Info, ArrowUp, Link as LinkIcon,
+  FileType, FileDown, Check, AlertCircle, Info, ArrowUp, Link as LinkIcon,
   ExternalLink, Unlink2, Workflow, Sigma, BookOpen,
-  Type, Palette, Eraser, ChevronDown,
+  Type, Palette, Eraser, ChevronDown, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/toast";
@@ -50,6 +56,7 @@ import {
   HIGHLIGHT_PRESETS,
 } from "@/components/FontSizeExtension";
 import CodeBlockView from "@/components/CodeBlockView";
+import { SearchReplacePanel, createSearchReplaceExtension } from "@/components/SearchReplacePanel";
 
 
 import { useTranslation } from "react-i18next";
@@ -753,13 +760,39 @@ function FontSizePopover({ editor, iconSize = 15, compact = false }: FontSizePop
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const popRef = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const currentSize: string | null = editor.getAttributes("textStyle")?.fontSize || null;
 
-  // 点击外部关闭
+  // 打开时基于按钮位置计算弹层坐标（fixed 定位，避免被工具栏 overflow-x-auto 裁切）
+  useEffect(() => {
+    if (!open || !btnRef.current) return;
+    const update = () => {
+      const r = btnRef.current!.getBoundingClientRect();
+      const POP_W = 176; // w-44
+      let left = r.left;
+      if (left + POP_W > window.innerWidth - 8) left = window.innerWidth - POP_W - 8;
+      if (left < 8) left = 8;
+      setPos({ top: r.bottom + 4, left });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
+
+  // 点击外部关闭（同时考虑按钮和弹层两个区域）
   useEffect(() => {
     if (!open) return;
     const onDocDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (ref.current?.contains(t)) return;
+      if (popRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDocDown);
     return () => document.removeEventListener("mousedown", onDocDown);
@@ -787,6 +820,7 @@ function FontSizePopover({ editor, iconSize = 15, compact = false }: FontSizePop
   return (
     <div ref={ref} className="relative" onMouseDown={(e) => e.preventDefault()}>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={`${currentSize ? `字号: ${currentSize}` : "字号"}`}
@@ -800,8 +834,13 @@ function FontSizePopover({ editor, iconSize = 15, compact = false }: FontSizePop
         <Type size={btnSize} />
         <ChevronDown size={10} className="opacity-60" />
       </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 w-44 p-2 rounded-lg shadow-lg bg-app-elevated border border-app-border">
+      {open && createPortal(
+        <div
+          ref={popRef}
+          style={{ position: "fixed", top: pos.top, left: pos.left }}
+          className="z-[100] w-52 p-2 rounded-lg shadow-lg bg-app-elevated border border-app-border"
+          onMouseDown={(e) => e.preventDefault()}
+        >
           <div className="text-[11px] text-tx-tertiary px-1 pb-1">预设</div>
           <div className="grid grid-cols-2 gap-1">
             {FONT_SIZE_PRESETS.map((p) => (
@@ -810,11 +849,12 @@ function FontSizePopover({ editor, iconSize = 15, compact = false }: FontSizePop
                 type="button"
                 onClick={() => apply(p.value)}
                 className={cn(
-                  "px-2 py-1 text-xs rounded text-left hover:bg-app-hover",
+                  "px-2 py-1 rounded text-left hover:bg-app-hover flex items-baseline gap-1.5",
                   currentSize === p.value && "bg-accent-primary/15 text-accent-primary",
                 )}
               >
-                <span className="block leading-tight" style={{ fontSize: p.value }}>{p.label}</span>
+                {/* 弹层内统一字号，避免 24px"超大"撑破布局；预览效果在编辑区呈现 */}
+                <span className="text-[13px] font-medium leading-tight">{p.label}</span>
                 <span className="text-[10px] text-tx-tertiary">{p.value}</span>
               </button>
             ))}
@@ -833,6 +873,10 @@ function FontSizePopover({ editor, iconSize = 15, compact = false }: FontSizePop
                   applyCustom();
                 }
               }}
+              // 阻止冒泡到弹层根 div 的 onMouseDown preventDefault，
+              // 否则浏览器认为 mousedown 默认行为被取消，input 不会获得 focus，
+              // 表现为"输入框打不进字"。
+              onMouseDown={(e) => e.stopPropagation()}
               className="flex-1 px-2 py-1 text-xs rounded border border-app-border bg-app-surface focus:outline-none focus:ring-1 focus:ring-accent-primary"
             />
             <button
@@ -852,7 +896,8 @@ function FontSizePopover({ editor, iconSize = 15, compact = false }: FontSizePop
             <Eraser size={12} />
             清除字号
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -873,14 +918,40 @@ function ColorPopover({ editor, iconSize = 15, compact = false }: ColorPopoverPr
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"fg" | "bg">("fg");
   const ref = useRef<HTMLDivElement | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const popRef = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const fgColor: string | null = editor.getAttributes("textStyle")?.color || null;
   const bgColor: string | null = editor.getAttributes("highlight")?.color || null;
   const isActive = !!fgColor || !!bgColor;
 
+  // 打开时基于按钮位置计算弹层坐标（fixed 定位，绕过工具栏 overflow-x-auto 裁切）
+  useEffect(() => {
+    if (!open || !btnRef.current) return;
+    const update = () => {
+      const r = btnRef.current!.getBoundingClientRect();
+      const POP_W = 224; // w-56
+      let left = r.left;
+      if (left + POP_W > window.innerWidth - 8) left = window.innerWidth - POP_W - 8;
+      if (left < 8) left = 8;
+      setPos({ top: r.bottom + 4, left });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onDocDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (ref.current?.contains(t)) return;
+      if (popRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDocDown);
     return () => document.removeEventListener("mousedown", onDocDown);
@@ -904,6 +975,7 @@ function ColorPopover({ editor, iconSize = 15, compact = false }: ColorPopoverPr
   return (
     <div ref={ref} className="relative" onMouseDown={(e) => e.preventDefault()}>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={isActive ? `颜色: ${fgColor || ""} ${bgColor ? "背景: " + bgColor : ""}`.trim() : "颜色"}
@@ -924,8 +996,13 @@ function ColorPopover({ editor, iconSize = 15, compact = false }: ColorPopoverPr
         </span>
         <ChevronDown size={10} className="opacity-60" />
       </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 w-56 p-2 rounded-lg shadow-lg bg-app-elevated border border-app-border">
+      {open && createPortal(
+        <div
+          ref={popRef}
+          style={{ position: "fixed", top: pos.top, left: pos.left }}
+          className="z-[100] w-56 p-2 rounded-lg shadow-lg bg-app-elevated border border-app-border"
+          onMouseDown={(e) => e.preventDefault()}
+        >
           {/* Tab */}
           <div className="flex gap-1 mb-2 p-0.5 rounded bg-app-surface">
             <button
@@ -974,6 +1051,7 @@ function ColorPopover({ editor, iconSize = 15, compact = false }: ColorPopoverPr
                 type="color"
                 value={current || (tab === "fg" ? "#ef4444" : "#fef9c3")}
                 onChange={(e) => applyColor(e.target.value)}
+                onMouseDown={(e) => e.stopPropagation()}
                 className="w-4 h-4 p-0 border-0 bg-transparent cursor-pointer"
               />
               <span className="text-tx-secondary">自定义</span>
@@ -987,7 +1065,8 @@ function ColorPopover({ editor, iconSize = 15, compact = false }: ColorPopoverPr
               清除
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -1037,6 +1116,8 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
   const [showAI, setShowAI] = useState(false);
   const [aiSelectedText, setAiSelectedText] = useState("");
   const [aiPosition, setAiPosition] = useState<{ top: number; left: number } | undefined>();
+  // 内嵌 docx 预览：点附件链接 → 弹层显示 WordViewer，避免被浏览器当成下载
+  const [docxPreview, setDocxPreview] = useState<{ url: string; filename: string } | null>(null);
   // 图片预览状态
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [imageZoom, setImageZoom] = useState(1);
@@ -1279,6 +1360,9 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
       // extensions 列表保持一致，否则 generateHTML/JSON 时 textStyle 会被
       // schema 过滤掉 → 字号/颜色丢失
       ...TextStyleKit,
+      // 查找替换：纯装饰器插件，不污染 schema，不参与导入/导出。
+      // 只负责在 doc 上画高亮和维护命中状态，UI 在 SearchReplacePanel。
+      createSearchReplaceExtension(),
     ],
     content: parseContent(note.content),
     editable,
@@ -1299,6 +1383,18 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
           const anchor = target?.closest?.("a") as HTMLAnchorElement | null;
           if (!anchor) return false;
           const href = anchor.getAttribute("href") || "";
+          // 自研 OOXML 内嵌预览：上传附件链接形如
+          //   <a data-attachment="1" href="/api/attachments/<id>" download="原文件名.docx" ...>
+          // 对 .docx 走自研预览（与 FileManager 抽屉里复用同一组件 DocxAttachmentPreview）。
+          // 用 download 属性判断后缀比从 href 解析更准（href 是 /api/attachments/<id> 没扩展名）。
+          if (anchor.getAttribute("data-attachment") === "1") {
+            const fname = anchor.getAttribute("download") || "";
+            if (/\.docx$/i.test(fname)) {
+              event.preventDefault();
+              setDocxPreview({ url: href, filename: fname });
+              return true;
+            }
+          }
           if (/^(mailto:|tel:|sms:)/i.test(href)) {
             event.preventDefault();
             const plain = href.replace(/^(mailto:|tel:|sms:)/i, "").split("?")[0];
@@ -2839,6 +2935,29 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
     }
   }, [editor, showPasteToast, t]);
 
+  // 导出当前笔记为 .docx：走 Tiptap JSON → DocxIR → docx 链路。
+  // 注意：图片若是相对 URL 会同源 fetch 转 data URL，所以这函数是 async；
+  //      点击后给一个 toast 提示，避免大笔记导出时用户以为按钮没反应。
+  const handleExportDocx = useCallback(async () => {
+    if (!editor) return;
+    const currentNote = noteRef.current;
+    const title = (titleRef.current?.value || currentNote?.title || "未命名文档").trim() || "未命名文档";
+    let toastId: number | undefined;
+    try {
+      toastId = toast.info("正在生成 Word 文档…");
+      const json = JSON.stringify(editor.getJSON());
+      const { exportNoteAsDocx, downloadDocxBlob } = await import("@/lib/wordNoteService");
+      const blob = await exportNoteAsDocx(json, title);
+      downloadDocxBlob(blob, title);
+      if (toastId !== undefined) toast.dismiss?.(toastId);
+      toast.success("已导出为 .docx");
+    } catch (err: any) {
+      console.error("[TiptapEditor] export docx failed:", err);
+      if (toastId !== undefined) toast.dismiss?.(toastId);
+      toast.error(err?.message || "导出 Word 文档失败");
+    }
+  }, [editor]);
+
   const handleAIInsert = useCallback((text: string) => {
     if (!editor) return;
     const { to } = editor.state.selection;
@@ -2857,6 +2976,8 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
   // 内容不在顶端（>4px）时给 sticky 工具栏加底部阴影，
   // 让其视觉上「浮」于内容之上——跟 Notion / Bear / Craft 等主流移动端编辑器一致。
   const [toolbarShadow, setToolbarShadow] = useState(false);
+  // 查找替换面板开关；Ctrl/Cmd+F 切换。
+  const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -2874,6 +2995,25 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
     if (!el) return;
     el.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
+
+  // 全局 Ctrl/Cmd+F 快捷键打开查找面板，避免与浏览器原生查找冲突
+  // 仅当焦点在编辑器容器内时才拦截，最大限度尊重用户在标题输入框等其他地方的习惯。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+        const root = scrollContainerRef.current?.parentElement;
+        const active = document.activeElement;
+        const inEditor = root && active instanceof Node && root.contains(active);
+        // 编辑器内 / 已打开搜索面板 时才接管，避免影响全局浏览器查找
+        if (inEditor || searchOpen) {
+          e.preventDefault();
+          setSearchOpen(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [searchOpen]);
 
   if (!editor) return null;
 
@@ -3188,12 +3328,37 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
 
         {!isGuest && <ToolbarDivider />}
 
+        {/* 查找替换：Ctrl/Cmd+F 也可唤起；访客只读下面板会隐藏替换输入框 */}
+        <ToolbarButton
+          onClick={() => setSearchOpen((v) => !v)}
+          isActive={searchOpen}
+          title={t('searchReplace.toolbarTitle') || '查找替换 (Ctrl+F)'}
+        >
+          <Search size={iconSize} />
+        </ToolbarButton>
+
+        {/* 导出为 .docx —— 所有笔记都可用，不区分是不是 Word 笔记 */}
+        <ToolbarButton onClick={handleExportDocx} title="导出为 Word 文档">
+          <FileDown size={iconSize} className="text-sky-600" />
+        </ToolbarButton>
+
         {!isGuest && (
           <ToolbarButton onClick={openAIAssistant} title={t('tiptap.aiAssistant')}>
             <Sparkles size={iconSize} className="text-violet-500" />
           </ToolbarButton>
         )}
       </div>
+
+      {/* 查找替换浮窗：依附最外层 relative，右上角应于序列。
+          - editable=false 的只读场景仍可查找，只是隐藏替换输入框 */}
+      {editor && (
+        <SearchReplacePanel
+          editor={editor}
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          editable={editable}
+        />
+      )}
 
       {/* Title */}
       <div className="px-4 md:px-8 pt-4 md:pt-6 pb-0">
@@ -3416,6 +3581,80 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
       >
         <EditorContent editor={editor} />
       </div>
+
+      {/* docx 附件内嵌预览弹层：点正文里的 📎 *.docx 链接触发，复用 FileManager 抽屉同款组件 */}
+      {docxPreview && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDocxPreview(null)}
+          onKeyDown={(e) => { if (e.key === "Escape") setDocxPreview(null); }}
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+        >
+          <div
+            className="bg-app-bg text-tx-primary rounded-lg shadow-2xl w-[min(1200px,96vw)] h-[min(820px,92vh)] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-app-border shrink-0">
+              <div className="text-sm font-medium truncate">📎 {docxPreview.filename}</div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={docxPreview.url}
+                  download={docxPreview.filename}
+                  className="text-xs px-2 py-1 rounded border border-app-border hover:bg-app-hover"
+                >
+                  下载
+                </a>
+                <button
+                  type="button"
+                  className="p-1 rounded hover:bg-app-hover"
+                  onClick={() => setDocxPreview(null)}
+                  aria-label="关闭"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto">
+              <Suspense fallback={<div className="p-6 text-xs text-tx-tertiary">加载预览组件…</div>}>
+                <DocxAttachmentPreview
+                  url={docxPreview.url}
+                  filename={docxPreview.filename}
+                  heightClass="min-h-[600px]"
+                  onReplace={async (file) => {
+                    // 上传新 .docx 覆盖旧附件 + 更新笔记 content 指向新 url。
+                    // 从 docxPreview.url 末尾解析旧 attachmentId（形如 /api/attachments/<uuid>）。
+                    const m = docxPreview.url.match(/attachments\/([^/?#]+)$/);
+                    const oldId = m ? m[1] : "";
+                    const noteId = noteRef.current?.id || "";
+                    if (!noteId || !oldId) {
+                      toast.error("无法识别当前附件，刷新后重试");
+                      return;
+                    }
+                    try {
+                      const { replaceWordAttachment } = await import("@/lib/wordNoteService");
+                      const res = await replaceWordAttachment({ noteId, oldAttachmentId: oldId, file });
+                      toast.success("已上传新版本");
+                      // 关掉预览：旧 url 已经 404，再渲染会报错；下次点开附件链接会用新的 url。
+                      setDocxPreview(null);
+                      // 触发笔记内容刷新：让外层 EditorPane 拉一次最新 note，编辑器才会拿到带新 link 的 content。
+                      try {
+                        window.dispatchEvent(new CustomEvent("nowen:note-updated", { detail: { noteId: res.note.id } }));
+                      } catch { /* ignore */ }
+                    } catch (err: any) {
+                      console.error("Replace docx failed:", err);
+                      toast.error(err?.message || "上传新版本失败");
+                    }
+                  }}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* 回到顶部按钮：滚动超过阈值后显示在编辑区右下角 */}
       <AnimatePresence>
@@ -3774,7 +4013,12 @@ function parseContent(content: string): any {
         (parsed.type === "doc" ||
           (typeof parsed.type === "string" && Array.isArray(parsed.content)))
       ) {
-        return parsed;
+        // 历史脏 JSON 修复：早期导入路径可能写入了 schema 不合法的 doc
+        // （典型：表格 content 不满足 contentMatch）。直接喂给 setContent
+        // 不会立刻报错，但任何后续 transaction 都会触发 contentMatchAt 崩溃。
+        // 这里走一遍 headless Editor 的 schema fixup 兜底，~10-20ms 切笔记
+        // 时一次开销，用户无感。详见 tiptapSchemaRepair.ts 顶部注释。
+        return repairTiptapJson(parsed);
       }
       // 是合法 JSON 但不是 Tiptap doc → 当 MD / 纯文本继续往下走
     } catch {

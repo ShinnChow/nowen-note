@@ -396,6 +396,11 @@ function AppLayout() {
               exit={{ x: "-100%" }}
               transition={{ type: "spring", bounce: 0, duration: 0.35 }}
               className="fixed inset-y-0 left-0 z-50 w-[88%] max-w-[380px] md:hidden shadow-2xl flex"
+              // 底部避让 home indicator / 手势栏：抽屉容器统一处理，
+              // 内部 NavRail / Sidebar 不再各自加 safe-area-bottom，避免重复 padding。
+              // 顶部状态栏避让仍由 NavRail / Sidebar Header 各自的 paddingTop 处理
+              // （桌面端两者也复用，写在子组件里更通用）。
+              style={{ paddingBottom: 'var(--safe-area-bottom)' }}
             >
               <NavRail variant="mobile" />
               <div className="flex-1 min-w-0">
@@ -511,7 +516,7 @@ function MobileTopBar() {
   const actions = useAppActions();
   const { siteConfig } = useSiteSettings();
   return (
-    <header className="flex items-center px-4 py-3 border-b border-app-border bg-app-surface/50 md:hidden" style={{ paddingTop: 'calc(var(--safe-area-top) + 12px)' }}>
+    <header className="flex items-center px-4 py-3 border-b border-app-border bg-app-surface/50 md:hidden" style={{ paddingTop: 'calc(var(--safe-area-top) + 4px)' }}>
       <button
         onClick={() => actions.setMobileSidebar(true)}
         className="p-2 -ml-2 rounded-lg text-tx-secondary hover:bg-app-hover active:bg-app-active"

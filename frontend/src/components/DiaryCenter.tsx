@@ -11,6 +11,8 @@ import {
   X,
   Calendar,
   User as UserIcon,
+  Edit2,
+  Check,
 } from "lucide-react";
 import { api, getCurrentWorkspace } from "@/lib/api";
 import { Diary, DiaryStats } from "@/types";
@@ -731,13 +733,16 @@ function Lightbox({
 function DiaryCard({
   item,
   onDelete,
+  onUpdate,
 }: {
   item: Diary;
   onDelete: (id: string) => void;
+  onUpdate: (updated: Diary) => void;
 }) {
   const { t } = useTranslation();
   const [showConfirm, setShowConfirm] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const moodEmoji = getMoodEmoji(item.mood);
   // 工作区下展示发布者；个人空间下省略（一定是自己）。
   const showCreator =
@@ -751,6 +756,20 @@ function DiaryCard({
     }
     onDelete(item.id);
   };
+
+  // 编辑模式直接渲染编辑器，整张卡被替换；保存/取消会回到只读视图
+  if (isEditing) {
+    return (
+      <DiaryEditor
+        item={item}
+        onCancel={() => setIsEditing(false)}
+        onSaved={(updated) => {
+          onUpdate(updated);
+          setIsEditing(false);
+        }}
+      />
+    );
+  }
 
   return (
     <>
@@ -795,19 +814,34 @@ function DiaryCard({
                 )}
               </div>
 
-              {/* 删除按钮 */}
-              <button
-                onClick={handleDelete}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] transition-all",
-                  showConfirm
-                    ? "bg-red-500/10 text-red-500"
-                    : "opacity-100 md:opacity-0 md:group-hover:opacity-100 text-tx-tertiary hover:text-red-400 hover:bg-red-500/5",
-                )}
-              >
-                <Trash2 size={12} />
-                <span>{showConfirm ? t("diary.confirmDelete") : t("diary.delete")}</span>
-              </button>
+              {/* 操作按钮：编辑 + 删除 */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className={cn(
+                    "flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] transition-all",
+                    "opacity-100 md:opacity-0 md:group-hover:opacity-100",
+                    "text-tx-tertiary hover:text-accent-primary hover:bg-accent-primary/10",
+                  )}
+                >
+                  <Edit2 size={12} />
+                  <span>{t("diary.edit")}</span>
+                </button>
+
+                {/* 删除按钮 */}
+                <button
+                  onClick={handleDelete}
+                  className={cn(
+                    "flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] transition-all",
+                    showConfirm
+                      ? "bg-red-500/10 text-red-500"
+                      : "opacity-100 md:opacity-0 md:group-hover:opacity-100 text-tx-tertiary hover:text-red-400 hover:bg-red-500/5",
+                  )}
+                >
+                  <Trash2 size={12} />
+                  <span>{showConfirm ? t("diary.confirmDelete") : t("diary.delete")}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -824,6 +858,426 @@ function DiaryCard({
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+// ============================================================
+// 单条说说编辑器（就地编辑模式）
+// ============================================================
+/**
+ * 设计要点：
+ *   - 编辑模式直接替换原卡片，避免在小屏空间塞两套 UI；
+ *   - 图片复用 ComposeBox 的"先上传后绑定"模型：
+ *       原本已发布的图片用 PendingImage 表示（id 取自 server，previewUrl
+ *       直接拼远端 URL，status=ready）；新加的走 upload 流程；点 × 仅从
+ *       本地队列移除（实际删除在保存时由后端按 images 差集处理）；
+ *   - 保存调用 api.updateDiary(id, { contentText, mood, images })，
+ *     后端返回更新后的 Diary，由父组件用 onSaved 回写到列表中；
+ *   - 内容与图片至少一项非空（与 POST 同口径）。
+ */
+function DiaryEditor({
+  item,
+  onCancel,
+  onSaved,
+}: {
+  item: Diary;
+  onCancel: () => void;
+  onSaved: (updated: Diary) => void;
+}) {
+  const { t } = useTranslation();
+  const [text, setText] = useState(item.contentText || "");
+  const [mood, setMood] = useState(item.mood || "");
+  const [showMoods, setShowMoods] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // 复用 PendingImage 结构：原有的图片初始化为 ready 状态（id 已知，预览用远端 URL）
+  const [images, setImages] = useState<PendingImage[]>(() =>
+    (item.images || []).map((id) => ({
+      localKey: id, // 已有 id 直接当 localKey，稳定
+      id,
+      previewUrl: api.diaryImages.urlFor(id),
+      status: "ready" as const,
+    })),
+  );
+  const imagesRef = useRef<PendingImage[]>([]);
+  imagesRef.current = images;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const moodRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 自动调整高度
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    }
+  }, []);
+  useEffect(() => {
+    autoResize();
+  }, [autoResize]);
+
+  // 点击外部关闭心情面板
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (moodRef.current && !moodRef.current.contains(e.target as Node)) {
+        setShowMoods(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // 卸载时回收"新增图"的 blob URL（已有图的 previewUrl 是 http(s)，不需要 revoke）
+  useEffect(() => {
+    return () => {
+      for (const img of imagesRef.current) {
+        if (img.previewUrl.startsWith("blob:")) {
+          try {
+            URL.revokeObjectURL(img.previewUrl);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    };
+  }, []);
+
+  // 添加新图（沿用 ComposeBox 的校验 + 并发上传逻辑）
+  const addFiles = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      const current = imagesRef.current;
+      const remaining = MAX_IMAGES_PER_DIARY - current.length;
+      if (remaining <= 0) return;
+
+      const accepted: File[] = [];
+      const rejected: { name: string; reason: string }[] = [];
+      for (const f of files) {
+        if (accepted.length >= remaining) break;
+        const mime = (f.type || "").toLowerCase();
+        if (!ALLOWED_IMAGE_MIMES.has(mime)) {
+          rejected.push({ name: f.name || "image", reason: "type" });
+          continue;
+        }
+        if (f.size > MAX_DIARY_IMAGE_SIZE) {
+          rejected.push({ name: f.name || "image", reason: "size" });
+          continue;
+        }
+        accepted.push(f);
+      }
+      if (rejected.length) {
+        for (const r of rejected) {
+          toast.error(
+            r.reason === "size"
+              ? t("diary.imageTooLarge").replace("{{name}}", r.name)
+              : t("diary.imageTypeUnsupported").replace("{{name}}", r.name),
+          );
+        }
+      }
+      if (!accepted.length) return;
+
+      const newItems: PendingImage[] = accepted.map((f) => ({
+        localKey: crypto.randomUUID(),
+        id: null,
+        previewUrl: URL.createObjectURL(f),
+        status: "uploading",
+      }));
+      setImages((prev) => [...prev, ...newItems]);
+
+      newItems.forEach((it, idx) => {
+        const file = accepted[idx];
+        api.diaryImages
+          .upload(file)
+          .then((res) => {
+            setImages((prev) =>
+              prev.map((p) =>
+                p.localKey === it.localKey
+                  ? { ...p, id: res.id, status: "ready" as const }
+                  : p,
+              ),
+            );
+          })
+          .catch((err) => {
+            console.error("Diary image upload failed:", err);
+            setImages((prev) =>
+              prev.map((p) =>
+                p.localKey === it.localKey
+                  ? {
+                      ...p,
+                      status: "error" as const,
+                      errorMessage: err?.message || "upload failed",
+                    }
+                  : p,
+              ),
+            );
+          });
+      });
+    },
+    [t],
+  );
+
+  // 移除图片：仅本地移除；真正删除（连同盘上文件）由后端在 save 时根据差集处理
+  const removeImage = useCallback((localKey: string) => {
+    const target = imagesRef.current.find((p) => p.localKey === localKey);
+    if (!target) return;
+    setImages((prev) => prev.filter((p) => p.localKey !== localKey));
+    if (target.previewUrl.startsWith("blob:")) {
+      try {
+        URL.revokeObjectURL(target.previewUrl);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    void addFiles(files);
+    e.target.value = "";
+  };
+
+  const hasPendingUploads = images.some((p) => p.status === "uploading");
+  const hasErrorImages = images.some((p) => p.status === "error");
+  const readyImageIds = images
+    .filter((p) => p.status === "ready" && p.id)
+    .map((p) => p.id!) as string[];
+
+  const canSave =
+    !saving &&
+    !hasPendingUploads &&
+    (text.trim().length > 0 || readyImageIds.length > 0);
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      const updated = await api.updateDiary(item.id, {
+        contentText: text.trim(),
+        mood,
+        images: readyImageIds,
+      });
+      onSaved(updated);
+    } catch (e: any) {
+      console.error("Save diary failed:", e);
+      toast.error(e?.message || t("diary.saveFailed"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+    }
+  };
+
+  const selectedMoodEmoji = getMoodEmoji(mood);
+  const remainingSlots = MAX_IMAGES_PER_DIARY - images.length;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      className="bg-app-surface/60 backdrop-blur-sm rounded-2xl border border-accent-primary/40 ring-1 ring-accent-primary/20 shadow-sm"
+    >
+      <div className="p-4 pb-2">
+        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-accent-primary">
+          <Edit2 size={11} />
+          <span>{t("diary.editing")}</span>
+        </div>
+
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            autoResize();
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={t("diary.editPlaceholder")}
+          rows={2}
+          className="w-full bg-transparent text-tx-primary placeholder:text-tx-tertiary text-sm leading-relaxed resize-none outline-none min-h-[52px]"
+          autoFocus
+        />
+
+        {/* 图片缩略图 */}
+        {images.length > 0 && (
+          <div className="mt-2 grid grid-cols-4 sm:grid-cols-5 gap-2">
+            {images.map((img) => (
+              <div
+                key={img.localKey}
+                className="relative aspect-square rounded-lg overflow-hidden border border-app-border bg-app-hover/40 group/img"
+              >
+                <img
+                  src={img.previewUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  draggable={false}
+                />
+                {img.status === "uploading" && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <Loader2 size={18} className="animate-spin text-white" />
+                  </div>
+                )}
+                {img.status === "error" && (
+                  <div
+                    className="absolute inset-0 bg-red-500/60 flex items-center justify-center text-[10px] text-white text-center px-1"
+                    title={img.errorMessage}
+                  >
+                    {t("diary.uploadFailed")}
+                  </div>
+                )}
+                <button
+                  onClick={() => removeImage(img.localKey)}
+                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
+                  aria-label={t("diary.removeImage")}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 底部操作栏 */}
+      <div className="flex items-center justify-between px-4 pb-3">
+        <div className="flex items-center gap-1">
+          {/* 心情按钮 */}
+          <div ref={moodRef} className="relative">
+            <button
+              onClick={() => setShowMoods(!showMoods)}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs transition-all",
+                mood
+                  ? "bg-accent-primary/10 text-accent-primary"
+                  : "text-tx-tertiary hover:text-tx-secondary hover:bg-app-hover",
+              )}
+            >
+              {selectedMoodEmoji ? (
+                <span className="text-sm">{selectedMoodEmoji}</span>
+              ) : (
+                <Smile size={15} />
+              )}
+              <span className="hidden sm:inline">
+                {mood ? t(`diary.mood${mood.charAt(0).toUpperCase() + mood.slice(1)}`) : t("diary.mood")}
+              </span>
+            </button>
+
+            <AnimatePresence>
+              {showMoods && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: -4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute top-full left-0 mt-2 p-2.5 bg-app-elevated rounded-xl border border-app-border shadow-lg z-20 w-[220px]"
+                >
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {MOODS.map(({ value: v, emoji }) => (
+                      <button
+                        key={v}
+                        onClick={() => {
+                          setMood(mood === v ? "" : v);
+                          setShowMoods(false);
+                        }}
+                        className={cn(
+                          "w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-base transition-all",
+                          mood === v
+                            ? "bg-accent-primary/15 scale-110 ring-1 ring-accent-primary/30"
+                            : "hover:bg-app-hover hover:scale-110",
+                        )}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* 图片按钮 */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={remainingSlots <= 0}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs transition-all",
+              remainingSlots <= 0
+                ? "text-tx-tertiary/50 cursor-not-allowed"
+                : "text-tx-tertiary hover:text-tx-secondary hover:bg-app-hover",
+            )}
+            title={
+              remainingSlots <= 0
+                ? t("diary.imageLimitReached").replace(
+                    "{{n}}",
+                    String(MAX_IMAGES_PER_DIARY),
+                  )
+                : t("diary.addImage")
+            }
+          >
+            <ImagePlus size={15} />
+            <span className="hidden sm:inline">{t("diary.image")}</span>
+            {images.length > 0 && (
+              <span className="text-[10px] text-tx-tertiary tabular-nums">
+                {images.length}/{MAX_IMAGES_PER_DIARY}
+              </span>
+            )}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* 取消 */}
+          <button
+            onClick={onCancel}
+            disabled={saving}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-tx-secondary bg-app-hover hover:bg-app-hover/80 transition-all disabled:opacity-50"
+          >
+            <X size={13} />
+            <span>{t("diary.cancel")}</span>
+          </button>
+
+          {/* 保存 */}
+          <button
+            onClick={handleSave}
+            disabled={!canSave}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-all",
+              canSave
+                ? "bg-accent-primary text-white hover:bg-accent-primary/90 shadow-sm shadow-accent-primary/20 active:scale-95"
+                : "bg-app-hover text-tx-tertiary cursor-not-allowed",
+            )}
+            title={
+              hasPendingUploads
+                ? t("diary.waitingUpload")
+                : hasErrorImages
+                ? t("diary.errorImagesHint")
+                : undefined
+            }
+          >
+            {saving ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Check size={13} />
+            )}
+            <span>{t("diary.save")}</span>
+          </button>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -1163,6 +1617,14 @@ export default function DiaryCenter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 编辑保存：用后端返回的最新 Diary 替换列表中对应项；
+  // 不重排（保持原 createdAt 顺序），不重拉时间线（避免编辑过程中的视觉跳动）。
+  const handleUpdate = useCallback((updated: Diary) => {
+    setItems((prev) =>
+      prev.map((item) => (item.id === updated.id ? updated : item)),
+    );
+  }, []);
+
   // 筛选变化的处理：写到 state，effect 会自动触发刷新
   const handleFilterChange = useCallback(
     (next: RangePreset, range: DateRange) => {
@@ -1244,7 +1706,12 @@ export default function DiaryCenter() {
                   <div className="space-y-3">
                     <AnimatePresence mode="popLayout">
                       {dayItems.map((item) => (
-                        <DiaryCard key={item.id} item={item} onDelete={handleDelete} />
+                        <DiaryCard
+                          key={item.id}
+                          item={item}
+                          onDelete={handleDelete}
+                          onUpdate={handleUpdate}
+                        />
                       ))}
                     </AnimatePresence>
                   </div>

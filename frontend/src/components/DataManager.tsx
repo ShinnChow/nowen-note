@@ -14,7 +14,8 @@ import { useTranslation } from "react-i18next";
 import { exportAllNotes, ExportProgress } from "@/lib/exportService";
 import {
   readMarkdownFiles, readMarkdownFromZipWithMeta, importNotes,
-  ImportFileInfo, ImportProgress
+  ImportFileInfo, ImportProgress,
+  PDF_NO_TEXT_LAYER_FLAG, PDF_TOO_LARGE_FLAG, MAX_PDF_SIZE,
 } from "@/lib/importService";
 import { useApp, useAppActions } from "@/store/AppContext";
 import { api, withSudo, getCurrentWorkspace, setCurrentWorkspace } from "@/lib/api";
@@ -161,6 +162,9 @@ export default function DataManager() {
     count: number;
   } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  // 笔记导入阶段的错误提示（例如 PDF 超过 50MB / PDF 无文本层 / 解析失败）。
+  // 在 Dropzone 下方以红字展示，重新选文件或点击取消时清空。
+  const [notesImportError, setNotesImportError] = useState<string>("");
   const [selectedNotebookId, setSelectedNotebookId] = useState<string>("");
   // 新增：是否"为每个文件创建以文件名命名的外层笔记本"
   const [perFileNotebook, setPerFileNotebook] = useState(false);
@@ -220,50 +224,72 @@ export default function DataManager() {
   };
 
   const processFiles = async (files: FileList) => {
+    setNotesImportError("");
     let result: ImportFileInfo[] = [];
     const fileArray = Array.from(files);
     const zipFile = fileArray.find((f) => f.name.endsWith(".zip"));
 
-    if (zipFile) {
-      const r = await readMarkdownFromZipWithMeta(zipFile);
-      result = r.files;
-      setHasZip(true);
-      // zip 由其内部目录/zip 文件名派生笔记本，关闭 per-file
-      setPerFileNotebook(false);
+    try {
+      if (zipFile) {
+        const r = await readMarkdownFromZipWithMeta(zipFile);
+        result = r.files;
+        setHasZip(true);
+        // zip 由其内部目录/zip 文件名派生笔记本，关闭 per-file
+        setPerFileNotebook(false);
 
-      // P1-2：试图依据 meta.rootNotebookId 预选目标笔记本
-      // 仅当 scope 与侧边栏匹配且 rootNotebookId 在当前笔记本列表里仍存在时才预选，
-      // 避免传递 "看不见的 id" 到后端造成导入到错误位置。
-      // 注：scopeMatchesGlobal 在 handleImport 里也算了一次（同语义），这里独立局部
-      // 计算一份，避免提升引用 / 闭包绑定问题（TS 也不允许引用还未声明的常量）。
-      const scopeMatchesGlobal = effectiveWorkspaceId === getCurrentWorkspace();
-      if (r.meta && r.meta.rootNotebookId && scopeMatchesGlobal) {
-        const hit = state.notebooks.find((nb) => nb.id === r.meta!.rootNotebookId);
-        if (hit) {
-          setSelectedNotebookId(hit.id);
-          setZipMetaHint({ kind: "matched", notebookName: hit.name });
+        // P1-2：试图依据 meta.rootNotebookId 预选目标笔记本
+        const scopeMatchesGlobal = effectiveWorkspaceId === getCurrentWorkspace();
+        if (r.meta && r.meta.rootNotebookId && scopeMatchesGlobal) {
+          const hit = state.notebooks.find((nb) => nb.id === r.meta!.rootNotebookId);
+          if (hit) {
+            setSelectedNotebookId(hit.id);
+            setZipMetaHint({ kind: "matched", notebookName: hit.name });
+          } else {
+            setZipMetaHint({
+              kind: "missing",
+              rootNotebookName: r.meta.rootNotebookName,
+            });
+          }
         } else {
-          // 未命中：不覆盖用户上次选择，仅提示
-          setZipMetaHint({
-            kind: "missing",
-            rootNotebookName: r.meta.rootNotebookName,
-          });
+          setZipMetaHint(null);
         }
       } else {
-        // 不是 nowen-note 导出的 zip，或 scope 不匹配：清理上一轮 hint
+        result = await readMarkdownFiles(files);
+        setHasZip(false);
         setZipMetaHint(null);
+        // 散文件默认开启 per-file：以文件名作为笔记本名，而非统一落到「导入的笔记」
+        setPerFileNotebook(true);
       }
-    } else {
-      result = await readMarkdownFiles(files);
-      setHasZip(false);
-      setZipMetaHint(null);
-      // 散文件默认开启 per-file：以文件名作为笔记本名，而非统一落到"导入的笔记"
-      setPerFileNotebook(true);
+    } catch (err: any) {
+      // PDF 专用错误标志：超大 / 无文本层 / 其他解析失败
+      const flag = err?.flag;
+      const fileName: string = err?.fileName || "";
+      if (flag === PDF_TOO_LARGE_FLAG) {
+        setNotesImportError(
+          t("dataManager.pdfTooLarge", {
+            file: fileName,
+            limit: Math.round(MAX_PDF_SIZE / 1024 / 1024),
+          }),
+        );
+      } else if (flag === PDF_NO_TEXT_LAYER_FLAG) {
+        setNotesImportError(
+          t("dataManager.pdfNoTextLayer", { file: fileName }),
+        );
+      } else {
+        setNotesImportError(
+          t("dataManager.importReadFailed", {
+            error: err?.message || String(err),
+          }),
+        );
+      }
+      setImportFiles([]);
+      // 重置文件选择器，以便重选同名文件能触发 onChange
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
     }
 
     setImportFiles(result);
   };
-
   const toggleFileSelection = (index: number) => {
     setImportFiles((prev) =>
       prev.map((f, i) => (i === index ? { ...f, selected: !f.selected } : f))
@@ -315,6 +341,14 @@ export default function DataManager() {
       // refresh 拿到的还是侧边栏 ws 的，不会看到导入的笔记本）。
       if (scopeMatchesGlobal) {
         api.getNotebooks().then(actions.setNotebooks).catch(console.error);
+        // 同步触发 NoteList 重拉当前视图笔记。
+        // 后端虽然会通过 WebSocket 广播 "notes:imported" 触发刷新，但
+        // 1) 用户处于离线/弱网恢复期时 ws 可能尚未重连；
+        // 2) 浏览器在背景标签页限频时 ws 消息可能延迟数秒到达；
+        // 此时用户回到主界面会看到"导入成功 toast 已弹，但笔记列表是旧的"
+        // 的错觉。这里在 HTTP 调用的 happy path 里补一次显式 refresh，把
+        // ws 当作"加固通道"而不是"唯一通道"。
+        actions.refreshNotes();
       }
       setTimeout(() => {
         setImportFiles([]);
@@ -345,6 +379,7 @@ export default function DataManager() {
     setImportFiles([]);
     setImportProgress(null);
     setHasZip(false);
+    setNotesImportError("");
   };
 
   const selectedCount = importFiles.filter((f) => f.selected).length;
@@ -694,7 +729,7 @@ export default function DataManager() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".md,.txt,.markdown,.html,.htm,.zip,.png,.jpg,.jpeg,.gif,.webp,.svg,.bmp"
+                accept=".md,.txt,.markdown,.html,.htm,.pdf,.zip,.png,.jpg,.jpeg,.gif,.webp,.svg,.bmp"
                 onChange={handleFileSelect}
                 disabled={personalImportLocked}
                 className="hidden"
@@ -711,6 +746,22 @@ export default function DataManager() {
               <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-1">
                 {t('dataManager.supportedFiles')}
               </p>
+            </div>
+          )}
+
+          {/* 笔记导入错误提示（PDF 超大 / 无文本层 / 其他读取失败） */}
+          {notesImportError && importFiles.length === 0 && (
+            <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg border border-red-200/60 dark:border-red-900/40 bg-red-50/40 dark:bg-red-500/5 text-xs text-red-600 dark:text-red-400">
+              <span className="flex-shrink-0 mt-0.5">⚠</span>
+              <span className="flex-1 break-all">{notesImportError}</span>
+              <button
+                type="button"
+                onClick={() => setNotesImportError("")}
+                className="text-red-500/80 hover:text-red-600 dark:hover:text-red-300 ml-2 flex-shrink-0"
+                aria-label="close"
+              >
+                ×
+              </button>
             </div>
           )}
 

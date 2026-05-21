@@ -1335,6 +1335,19 @@ export const api = {
     return request<DiaryTimeline>(`/diary/timeline${qs ? `?${qs}` : ""}`);
   },
   deleteDiary: (id: string) => request(`/diary/${id}`, { method: "DELETE" }),
+  /**
+   * 编辑一条说说。仅传入需要修改的字段；图片字段传入即覆盖（差集
+   * attach / 反 attach 由后端处理，会自动清理被移除的图片）。
+   * 鉴权：作者本人 + 工作区 admin/owner（与 deleteDiary 一致）。
+   */
+  updateDiary: (
+    id: string,
+    data: { contentText?: string; mood?: string; images?: string[] },
+  ) =>
+    request<Diary>(`/diary/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
   getDiaryStats: (range?: { from?: string; to?: string }) => {
     const params = new URLSearchParams();
     if (range?.from) params.set("from", range.from);

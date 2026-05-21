@@ -11,6 +11,23 @@ export function isNativePlatform(): boolean {
   return Capacitor.isNativePlatform();
 }
 
+// ---------------------------------------------------------------------------
+// 模块加载时立刻把 `data-native` 标记写到 <html>，让 CSS 里 html[data-native="..."]
+// 的安全区兜底（见 index.css）从 **首次渲染** 起就生效。如果等到 useStatusBarSync
+// 的 useEffect 才设置，登录页 / SplashGate 等先渲染的组件会拿不到 --safe-area-top
+// 的兜底值，导致顶栏贴住状态栏。
+// ---------------------------------------------------------------------------
+if (typeof document !== "undefined") {
+  try {
+    const platform = Capacitor.getPlatform(); // "android" | "ios" | "web"
+    if (platform === "android" || platform === "ios") {
+      document.documentElement.setAttribute("data-native", platform);
+    }
+  } catch {
+    /* 非浏览器环境忽略 */
+  }
+}
+
 /**
  * P0: Android 返回键处理
  * 按层级依次关闭：编辑器 → 侧边栏 → 确认退出
@@ -94,19 +111,50 @@ export function useStatusBarSync() {
     // 延迟再执行一次，防止初始化时序问题
     const timer = setTimeout(ensureNoOverlay, 500);
 
-    // Android overlay:false 下 env(safe-area-inset-top) 永远是 0，
-    // 但顶部 header 还是希望与状态栏有视觉隔离。策略：
-    //   - 优先用 visualViewport.offsetTop（部分机型/嵌入场景能拿到实际偏移）
-    //   - 否则按 Android Material 规范兜底 24 CSS px（与 24dp 等价）
+    // Android overlay:false 下 env(safe-area-inset-top) 永远是 0；
+    // 但 Android 15+ (targetSdk>=35) 强制 Edge-to-Edge，setOverlaysWebView(false)
+    // 在新系统上事实上不再生效——状态栏会持续 overlay 在 WebView 上。无论哪种
+    // 情况，顶部都需要避让一段距离。
+    //
+    // 测量策略（按可信度从高到低尝试）：
+    //   1) env(safe-area-inset-top)：浏览器规范的安全区，Capacitor 6+ Android 14+
+    //      Edge-to-Edge 下能正确返回真实状态栏（含刘海避让）。最可信，优先使用。
+    //   2) 兜底常量 28px：覆盖普通屏真实状态栏（Android 24dp ≈ 24-30px CSS）。
+    //      故意不再用 `screen.height - visualViewport.height` 做差值估算——
+    //      该差值在 Edge-to-Edge 下混合了状态栏 + 系统导航条 + 输入法等多种
+    //      占用，硬分给顶部会导致顶部留白远大于真实状态栏（实测 70~80px），
+    //      视觉上极不雅观。刘海屏由 (1) env() 提供真值即可，无需"猜"。
     //   - 只在 Android 上注入，iOS 走 env()
     let applyStatusBarHeight: (() => void) | null = null;
     if (platform === "android") {
       applyStatusBarHeight = () => {
-        const vv = window.visualViewport;
-        const measured = vv?.offsetTop && vv.offsetTop > 0 ? vv.offsetTop : 24;
+        // 1) 先尝试读 env(safe-area-inset-top) —— 临时塞进一个隐藏元素再 getComputedStyle
+        let topInset = 0;
+        try {
+          const probe = document.createElement("div");
+          probe.style.cssText =
+            "position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none;";
+          document.body.appendChild(probe);
+          const rect = probe.getBoundingClientRect();
+          topInset = rect.height;
+          document.body.removeChild(probe);
+        } catch {
+          /* ignore */
+        }
+
+        // 2) 兜底：env() 失效时使用 28px 常量。不再做差值估算，避免误差。
+        //    刘海/挖孔屏 env() 通常正常返回 36-50px+，由 (1) 自动覆盖。
+        const finalTop = topInset > 0 ? topInset : 28;
+
         document.documentElement.style.setProperty(
           "--android-status-bar-height",
-          `${measured}px`,
+          `${finalTop}px`,
+        );
+        // Android 15+ Edge-to-Edge 下底部导航/手势栏也是 overlay。
+        // 兜底 24px（手势条 16dp + 少量呼吸），与 CSS 兜底保持一致。
+        document.documentElement.style.setProperty(
+          "--android-nav-bar-height",
+          `24px`,
         );
       };
       applyStatusBarHeight();

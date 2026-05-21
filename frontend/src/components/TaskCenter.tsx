@@ -392,7 +392,7 @@ const TaskDetail = React.forwardRef<HTMLDivElement, {
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-app-border" style={{ paddingTop: 'calc(var(--safe-area-top) + 12px)' }}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-app-border" style={{ paddingTop: 'calc(var(--safe-area-top) + 4px)' }}>
         <span className="text-sm font-semibold text-tx-primary">{t('tasks.taskDetail')}</span>
         <button onClick={onClose} className="p-1 rounded-md hover:bg-app-hover transition-colors">
           <X size={16} className="text-tx-secondary" />

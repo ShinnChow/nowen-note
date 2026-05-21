@@ -54,6 +54,8 @@ import {
   Link2,
   ChevronDown,
   Globe,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { api, resolveAttachmentUrl } from "@/lib/api";
 import { FileItem, FileDetail, FileStats, FileSortKey, FileCategory } from "@/types";
@@ -70,6 +72,16 @@ import {
   imageHostFormatLabel,
   type ImageHostFormat,
 } from "@/lib/imageHostFormats";
+import DocxAttachmentPreview from "@/office/word/DocxAttachmentPreview";
+
+// docx 的 MIME，命中即在抽屉里渲染原生 WordViewer 而不是只显示一个 MIME 图标。
+// 后端可能落 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"，
+// 也可能因老附件没识别出来落 "application/octet-stream"，所以兼容用文件名后缀兜底。
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+function isDocxFile(d: { mimeType?: string | null; filename?: string | null }): boolean {
+  if (d.mimeType === DOCX_MIME) return true;
+  return !!d.filename && /\.docx$/i.test(d.filename);
+}
 
 // ---------------------------------------------------------------------------
 // 工具：文件大小可读化 / MIME → 图标 / 时间格式化
@@ -974,7 +986,7 @@ export default function FileManager() {
       {/* 顶栏 */}
       <div
         className="flex flex-wrap items-center gap-3 px-4 md:px-6 py-3 border-b border-app-border bg-app-surface/40"
-        style={{ paddingTop: "calc(var(--safe-area-top) + 12px)" }}
+        style={{ paddingTop: "calc(var(--safe-area-top) + 4px)" }}
       >
         <div className="flex items-center gap-2 shrink-0">
           <div
@@ -1980,11 +1992,17 @@ function DetailDrawer({
   const [renameDraft, setRenameDraft] = useState("");
   const [renameSubmitting, setRenameSubmitting] = useState(false);
 
+  // 抽屉放大态：默认 520px 适合看图/元信息，docx 这类文档窄了费眼。
+  // 用户点 Maximize 切到 90vw，关闭抽屉时不持久化（下次开新文件回到默认窄态）。
+  const [expanded, setExpanded] = useState(false);
+
   // 切换不同附件时退出编辑态，避免跨详情残留草稿
   useEffect(() => {
     setRenaming(false);
     setRenameDraft("");
     setRenameSubmitting(false);
+    // 切附件时也收起放大态：上一份是 docx 放大了，这份是图片就该回到窄态
+    setExpanded(false);
   }, [detail?.id]);
 
   const startRename = useCallback(() => {
@@ -2030,20 +2048,35 @@ function DetailDrawer({
         animate={{ x: 0 }}
         exit={{ x: "100%" }}
         transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-        className="fixed right-0 top-0 bottom-0 z-50 w-full sm:w-[480px] md:w-[520px] bg-app-surface border-l border-app-border shadow-2xl flex flex-col"
+        className={cn(
+          "fixed right-0 top-0 bottom-0 z-50 bg-app-surface border-l border-app-border shadow-2xl flex flex-col transition-[width] duration-200",
+          expanded
+            ? "w-full sm:w-[90vw] md:w-[90vw]"
+            : "w-full sm:w-[480px] md:w-[520px]",
+        )}
       >
         {/* Drawer header */}
         <div
           className="flex items-center justify-between px-4 py-3 border-b border-app-border shrink-0"
-          style={{ paddingTop: "calc(var(--safe-area-top) + 12px)" }}
+          style={{ paddingTop: "calc(var(--safe-area-top) + 4px)" }}
         >
           <h3 className="text-sm font-semibold text-tx-primary">文件详情</h3>
-          <button
-            className="p-1.5 rounded-md text-tx-tertiary hover:text-tx-primary hover:bg-app-hover"
-            onClick={onClose}
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* 放大/还原：仅桌面端意义大（移动端本来就全宽） */}
+            <button
+              className="hidden sm:inline-flex p-1.5 rounded-md text-tx-tertiary hover:text-tx-primary hover:bg-app-hover"
+              onClick={() => setExpanded((v) => !v)}
+              title={expanded ? "还原宽度" : "放大查看（适合 docx 等文档）"}
+            >
+              {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+            <button
+              className="p-1.5 rounded-md text-tx-tertiary hover:text-tx-primary hover:bg-app-hover"
+              onClick={onClose}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Drawer body */}
@@ -2062,6 +2095,14 @@ function DetailDrawer({
                     src={resolveAttachmentUrl(detail.url)}
                     alt={detail.filename}
                     className="w-full max-h-[360px] object-contain bg-zinc-950/5"
+                  />
+                ) : isDocxFile(detail) ? (
+                  // .docx 走自研 OOXML 预览（W1.5）。
+                  // 放大态给更高的预览区（80vh），窄抽屉里给保守的 500px 起，避免把元信息挤出视口。
+                  <DocxAttachmentPreview
+                    url={resolveAttachmentUrl(detail.url)}
+                    filename={detail.filename}
+                    heightClass={expanded ? "min-h-[80vh]" : "min-h-[500px]"}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center py-10 text-tx-tertiary">

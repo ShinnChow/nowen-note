@@ -23,6 +23,7 @@ import {
   RemoteUpdateBanner,
   RemoteDeleteBanner,
 } from "@/components/PresenceBar";
+import { EditorErrorBoundary } from "@/components/EditorErrorBoundary";
 import { useRealtimeNote } from "@/hooks/useRealtimeNote";
 import { useYDoc } from "@/hooks/useYDoc";
 import { normalizeToMarkdown, detectFormat, markdownToPlainText } from "@/lib/contentFormat";
@@ -1974,6 +1975,9 @@ export default function EditorPane() {
               </div>
             </div>
           )}
+          {/* ErrorBoundary 包裹三种编辑器：切笔记为 key，崩溃后自动重置；
+              底层还能打到 console 的 [EditorErrorBoundary] 日志与 window.__lastDirtyDoc */}
+          <EditorErrorBoundary resetKey={activeNote.id}>
           {htmlPreviewMode ? (
             <HtmlPreviewPane
               key={`html-${activeNote.id}`}
@@ -2012,6 +2016,7 @@ export default function EditorPane() {
               editable={!activeNote.isLocked && !modeSwitching}
             />
           )}
+          </EditorErrorBoundary>
           {/*
             UX1/UX2：编辑器切换中 overlay。
             - 盖在当前编辑器上方，阻挡误点击 / 视觉提示"切换中"；

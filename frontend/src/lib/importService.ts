@@ -1,7 +1,7 @@
 import { api } from "./api";
 import { marked, Renderer } from "marked";
 import i18n from "i18next";
-import { generateJSON } from "@tiptap/core";
+import { Editor, generateJSON } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
@@ -16,7 +16,8 @@ import { TextStyleKit } from "@/components/FontSizeExtension";
 const lowlight = createLowlight(common);
 
 // TipTap 扩展列表（与编辑器保持一致）
-const tiptapExtensions = [
+// 导出供 tiptapSchemaRepair.ts 复用，避免再复制一份 schema 定义
+export const tiptapExtensions = [
   StarterKit.configure({
     codeBlock: false,
     heading: { levels: [1, 2, 3] },
@@ -42,7 +43,7 @@ export interface ImportFileInfo {
   content: string;
   size: number;
   selected: boolean;
-  source?: string; // 来源标识: "md" | "txt" | "html" | "xiaomi" | "oppo" | "vivo" | "oneplus"
+  source?: string; // 来源标识: "md" | "txt" | "html" | "xiaomi" | "oppo" | "vivo" | "oneplus" | "pdf"
   notebookName?: string; // （已废弃，仅为向后兼容）从路径/目录推导出的单层笔记本名
   notebookPath?: string[]; // 笔记本层级路径（从根到子），如 ["我是文章2", "test2", "新笔记本"]
   imageMap?: Record<string, string>; // 相对路径 -> base64 data URI（zip 内的图片资源）
@@ -83,11 +84,155 @@ export type ImportProgress = {
 };
 
 // 支持的文件扩展名
-const SUPPORTED_EXTENSIONS = [".md", ".txt", ".markdown", ".html", ".htm"];
+const SUPPORTED_EXTENSIONS = [".md", ".txt", ".markdown", ".html", ".htm", ".pdf"];
+
+// PDF 单文件大小上限：50 MB
+// 超过此值会直接抛出错误，避免浏览器内存爆掉或 pdfjs 解析超时。
+export const MAX_PDF_SIZE = 50 * 1024 * 1024;
 
 function isSupportedFile(name: string): boolean {
   return SUPPORTED_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
 }
+
+function isPdfFile(name: string): boolean {
+  return name.toLowerCase().endsWith(".pdf");
+}
+
+/**
+ * 用 pdfjs-dist 从 PDF 抽取文本层并组装成 HTML。
+ *
+ * 设计要点：
+ * 1. 纯前端、按需懒加载，避免影响首屏体积；
+ * 2. 仅依赖 PDF 的「文本层」(getTextContent)，不做 OCR——
+ *    扫描件 PDF 没有文本层时返回空字符串，由调用方决定如何提示用户；
+ * 3. 通过 y 坐标聚合同一行的 text item，再按段落空行切分，
+ *    保证导入后每段独立成 <p>，而不是整篇挤成一坨；
+ * 4. 不显式指定 workerSrc，使用 pdfjs 自带的 worker 入口；
+ *    若运行环境拒绝创建 worker，会回退到主线程解析（pdfjs 内部已处理）。
+ */
+async function extractPdfToHtml(buffer: ArrayBuffer): Promise<string> {
+  // 动态加载，避免与首屏耦合；这里用兼容版（legacy）以最大化浏览器/移动端兼容性
+  const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+  // pdfjs v4 强制要求显式指定 workerSrc（不再支持空字符串/fake worker），
+  // 否则会抛 'No "GlobalWorkerOptions.workerSrc" specified'。
+  // 使用 Vite 的 `?url` 后缀 import：Vite 会在构建期将 worker 文件作为独立资源
+  // 拷贝到 dist，并在开发期由 dev server 直接以正确的 MIME (module) 提供，
+  // 比硬编码 CDN 更稳，也无需联网。
+  if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
+    // Vite 的 `?url` 后缀 import 由 vite/client 提供类型声明，TS 能正确推断
+    const workerUrl = (await import("pdfjs-dist/legacy/build/pdf.worker.mjs?url")).default;
+    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  }
+
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    // 关闭外部 cmap/standardFont 远程下载，离线/内网环境也能解析
+    isEvalSupported: false,
+    useSystemFonts: true,
+  });
+  const pdf = await loadingTask.promise;
+
+  const htmlParts: string[] = [];
+  // 跟踪是否抽取到任何可见文本。
+  //
+  // 历史 bug：早先只用 `html.trim()` 判断 PDF 是否有文本层，
+  // 但 `htmlParts` 在多页文档中会塞页分隔符 "<p></p>"——一份"扫描件 / 全图 PDF"
+  // 跑下来 lineTexts 全空，htmlParts 却堆了 N-1 个 "<p></p>"，
+  // `html.trim()` 不再为空，于是绕过 OCR 提示，建出一条**0 词 0 字符**的空笔记。
+  // 这里独立用 hasAnyText 计数，保证只统计实际有内容的行。
+  let hasAnyText = false;
+  let extractedLineCount = 0;
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+
+    // 把同一行的 item 按 y 坐标聚合（pdfjs 的 transform[5] 是 y）
+    // 行间允许 ±2 像素的浮动误差
+    type Line = { y: number; items: { x: number; str: string }[] };
+    const lines: Line[] = [];
+
+    for (const it of content.items as any[]) {
+      const str: string = typeof it.str === "string" ? it.str : "";
+      if (!str) continue;
+      const tr = it.transform as number[] | undefined;
+      const x = tr ? tr[4] : 0;
+      const y = tr ? tr[5] : 0;
+
+      // 找一条 y 接近的现有行
+      let target = lines.find((l) => Math.abs(l.y - y) < 2);
+      if (!target) {
+        target = { y, items: [] };
+        lines.push(target);
+      }
+      target.items.push({ x, str });
+      // 处理 pdfjs 标记的「行尾」hasEOL：手动断行
+      if (it.hasEOL) {
+        target = { y: y - 0.001, items: [] };
+        lines.push(target);
+      }
+    }
+
+    // 行内按 x 排序后拼接；行整体按 y 从大到小（PDF 坐标系自上而下 y 递减）
+    lines.sort((a, b) => b.y - a.y);
+    const lineTexts: string[] = lines
+      .map((line) => {
+        line.items.sort((a, b) => a.x - b.x);
+        // 行末尾的空白裁掉，但行内空白保留（中文 PDF 里空格分词常有意义）
+        return line.items.map((i) => i.str).join("").replace(/\s+$/g, "");
+      })
+      // 这里同时过滤"看起来非空但只有不可见字符"的行——
+      // 部分 PDF 的文本层会含 \u0000 / \u00A0 / \u200B（零宽空格）等，
+      // 视觉上是空，却让 .length > 0 通过。
+      .filter((t) => /\S/.test(t.replace(/[\u0000-\u001f\u007f\u200b\u200c\u200d\u2060\ufeff]/g, "")));
+
+    // 段落聚合：连续非空行视为同一段，遇到空行/原始空行边界则分段
+    // 由于上面已 filter 掉空行，这里把每个 lineText 视为独立段落即可
+    // —— 对于普通文本 PDF 这种处理已能得到清晰的段落分隔（每行一个 <p>）
+    for (const lt of lineTexts) {
+      const escaped = lt
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      htmlParts.push(`<p>${escaped}</p>`);
+      hasAnyText = true;
+      extractedLineCount++;
+    }
+
+    // 页与页之间空一行，便于后续编辑。
+    // 注意：仅在 hasAnyText 已经成立时才插入页分隔符——否则一份纯扫描件
+    // 会因为 N-1 个 "<p></p>" 让 html.trim() 看起来非空，绕过 OCR 提示。
+    if (pageNum < pdf.numPages && hasAnyText) {
+      htmlParts.push("<p></p>");
+    }
+  }
+
+  // 主动释放资源，避免 worker/document 句柄堆积
+  try { await pdf.destroy(); } catch { /* ignore */ }
+
+  // 真正没抽到任何可见文本——直接返回空串，由调用方抛 PDF_NO_TEXT_LAYER_FLAG，
+  // 弹"该 PDF 无可提取文本，请使用 OCR 工具处理后再导入"。
+  if (!hasAnyText) {
+    return "";
+  }
+
+  // 调试日志：抽到了多少行有效文本、文档总页数。
+  // 用户反馈"导入后笔记是空的"时，第一时间能在 console 看到 lineCount 区分
+  // "前端抽取阶段就空" vs "抽取正常但下游被吞"。
+  // 仅 dev 环境输出，避免线上 console 噪音；Vite 的 import.meta.env.DEV 在打包时被 inline。
+  if (import.meta.env.DEV) {
+    console.info(`[importService] PDF extracted: ${extractedLineCount} lines from ${pdf.numPages} page(s)`);
+  }
+
+  return htmlParts.join("\n");
+}
+
+// PDF 无可提取文本时抛出的错误标志（DataManager 层据此弹出 OCR 提示）
+export const PDF_NO_TEXT_LAYER_FLAG = "__PDF_NO_TEXT_LAYER__";
+
+// PDF 文件超过大小上限时抛出的错误标志
+export const PDF_TOO_LARGE_FLAG = "__PDF_TOO_LARGE__";
 
 // 笔记本名的最大长度（超出会被截断），与后端 notebooks.name 字段兼容
 const MAX_NOTEBOOK_NAME_LENGTH = 60;
@@ -110,7 +255,7 @@ export function deriveNotebookNameFromFile(fileName: string): string | null {
   // 只取最后一段（例如 webkitRelativePath: "folder/a.md" -> "a.md"）
   const base = fileName.split(/[\\/]+/).pop() || fileName;
 
-  // 去掉支持的扩展名
+  // 去掉支持的扩展名（含 .pdf）
   let name = base;
   for (const ext of SUPPORTED_EXTENSIONS) {
     if (name.toLowerCase().endsWith(ext)) {
@@ -284,8 +429,47 @@ export async function readMarkdownFiles(
   for (const file of fileArray) {
     if (!isSupportedFile(file.name)) continue;
 
+    const fileNameTitle = file.name.replace(/\.(md|txt|markdown|html|htm|pdf)$/i, "");
+
+    // PDF：单独走 pdfjs 抽取文本层
+    if (isPdfFile(file.name)) {
+      if (file.size > MAX_PDF_SIZE) {
+        const err = new Error(`${PDF_TOO_LARGE_FLAG}:${file.name}`);
+        (err as any).flag = PDF_TOO_LARGE_FLAG;
+        (err as any).fileName = file.name;
+        throw err;
+      }
+      try {
+        const buf = await file.arrayBuffer();
+        const html = await extractPdfToHtml(buf);
+        if (!html.trim()) {
+          const err = new Error(`${PDF_NO_TEXT_LAYER_FLAG}:${file.name}`);
+          (err as any).flag = PDF_NO_TEXT_LAYER_FLAG;
+          (err as any).fileName = file.name;
+          throw err;
+        }
+        result.push({
+          name: file.name,
+          title: fileNameTitle,
+          content: html,
+          size: file.size,
+          selected: true,
+          source: "pdf",
+          imageMap: hasImages ? imageMap : undefined,
+        });
+      } catch (err: any) {
+        // 已经携带 flag 的错误（无文本层 / 文件过大）原样上抛由 UI 提示
+        if (err && err.flag) throw err;
+        // 其他解析失败：包装成统一错误
+        console.error("PDF 解析失败:", file.name, err);
+        const wrapped = new Error(`PDF 解析失败：${file.name}`);
+        (wrapped as any).fileName = file.name;
+        throw wrapped;
+      }
+      continue;
+    }
+
     const text = await file.text();
-    const fileNameTitle = file.name.replace(/\.(md|txt|markdown|html|htm)$/i, "");
 
     if (isHtmlFile(file.name)) {
       const source = detectHtmlSource(text, file.name);
@@ -515,9 +699,52 @@ export async function readMarkdownFromZipWithMeta(
     // 跳过 macOS 资源文件
     if (path.includes("__MACOSX") || path.startsWith(".")) continue;
 
-    const text = await zipEntry.async("text");
     const fileName = path.split("/").pop() || path;
-    const fileNameTitle = fileName.replace(/\.(md|txt|markdown|html|htm)$/i, "");
+    const fileNameTitle = fileName.replace(/\.(md|txt|markdown|html|htm|pdf)$/i, "");
+
+    // PDF：从 zip 内部条目走二进制 → pdfjs 抽文本
+    if (isPdfFile(fileName)) {
+      const notebookPath = deriveNotebookPath(path, outerFolderName);
+      const notebookName = notebookPath.length > 0 ? notebookPath[notebookPath.length - 1] : undefined;
+      try {
+        const arr = await zipEntry.async("uint8array");
+        if (arr.byteLength > MAX_PDF_SIZE) {
+          const err = new Error(`${PDF_TOO_LARGE_FLAG}:${fileName}`);
+          (err as any).flag = PDF_TOO_LARGE_FLAG;
+          (err as any).fileName = fileName;
+          throw err;
+        }
+        // 复制成独立 ArrayBuffer，避免 jszip 内部缓冲被复用
+        const buf = arr.buffer.slice(arr.byteOffset, arr.byteOffset + arr.byteLength);
+        const html = await extractPdfToHtml(buf);
+        if (!html.trim()) {
+          const err = new Error(`${PDF_NO_TEXT_LAYER_FLAG}:${fileName}`);
+          (err as any).flag = PDF_NO_TEXT_LAYER_FLAG;
+          (err as any).fileName = fileName;
+          throw err;
+        }
+        result.push({
+          name: path,
+          title: fileNameTitle,
+          content: html,
+          size: arr.byteLength,
+          selected: true,
+          source: "pdf",
+          notebookName,
+          notebookPath,
+          imageMap,
+        });
+      } catch (err: any) {
+        if (err && err.flag) throw err;
+        console.error("PDF 解析失败:", path, err);
+        const wrapped = new Error(`PDF 解析失败：${fileName}`);
+        (wrapped as any).fileName = fileName;
+        throw wrapped;
+      }
+      continue;
+    }
+
+    const text = await zipEntry.async("text");
     // 完整层级：zip 文件名（最外层） + zip 内部所有中间目录
     const notebookPath = deriveNotebookPath(path, outerFolderName);
     // notebookName 保留为末级目录名（向后兼容 & 日志用）
@@ -647,7 +874,61 @@ export function markdownToSimpleHtml(md: string, imageMap?: Record<string, strin
   marked.use({ renderer, gfm: true, breaks: false });
 
   const html = marked.parse(content) as string;
-  return html;
+  // 规范化 marked 输出的 GFM 表格 HTML，使其符合 Tiptap table schema
+  // （否则带表格的 md 在下游 generateJSON 时会产出非法 content，触发
+  //  ProseMirror 的 "Called contentMatchAt on a node with invalid content"）
+  return normalizeTableHtml(html);
+}
+
+// 规范化表格 HTML，让它能被 Tiptap 的 Table schema 接受。
+//
+// Tiptap 官方 @tiptap/extension-table 的 schema 要求：
+//   table > tableRow > (tableCell | tableHeader)
+// 它**不接受** <thead>/<tbody>/<tfoot> 作为 <table> 的直接子节点。
+//
+// 但 marked 在 gfm:true 下输出的标准表格是：
+//   <table><thead><tr>...</tr></thead><tbody><tr>...</tr></tbody></table>
+// 这会让 generateJSON 产出 schema 不合法的 JSON——init 时不报，但第一次
+// 经过 transaction 时（如 SearchReplacePanel 的 highlight decoration plugin）
+// 触发 contentMatchAt 抛错，整个编辑器白屏。
+//
+// 这里用最简的字符串替换把 <thead>/<tbody>/<tfoot> 标签剥掉（保留里面的
+// <tr>），并把 <th>/<td> 上的 align 属性删掉（Tiptap 默认表格不识别）。
+function normalizeTableHtml(html: string): string {
+  if (!html || html.indexOf("<table") === -1) return html;
+  return html
+    // 剥掉 <thead>/<tbody>/<tfoot> 包裹标签（保留内部 <tr>）
+    .replace(/<\/?(thead|tbody|tfoot)\b[^>]*>/gi, "")
+    // 删掉单元格上的 align 属性（marked 用来表示 :---: 对齐）
+    .replace(/(<t[hd])\s+align="[^"]*"/gi, "$1")
+    .replace(/(<t[hd])\s+align='[^']*'/gi, "$1");
+}
+
+// Layer 2 兜底：用一个离屏 Editor 把任意脏 HTML 修复成合 schema 的 JSON。
+//
+// 触发场景：normalizeTableHtml 没覆盖到的未知脏姿势（嵌套 list 异常、
+// 自定义标签、错配标签等）让 generateJSON 抛错，或产出空 doc。
+// ProseMirror 的 setContent 内置 schema fixup（丢非法子节点 / 补必需包裹），
+// 比手写规则鲁棒得多。代价：实例化一个 headless Editor，~10-20ms。
+//
+// 注意：Tiptap 4 的 Editor 构造函数在没传 element 时跑 headless 模式，
+// 不需要真实 DOM 节点。
+function repairHtmlViaHeadlessEditor(html: string): unknown | null {
+  let editor: Editor | null = null;
+  try {
+    editor = new Editor({
+      extensions: tiptapExtensions,
+      content: html,
+      // 静默丢弃非法内容而不是抛错；不设置时默认就是 false，这里写明意图
+      enableContentCheck: false,
+    });
+    return editor.getJSON();
+  } catch (e) {
+    console.warn("[importService] headless editor repair failed:", e);
+    return null;
+  } finally {
+    try { editor?.destroy(); } catch { /* ignore */ }
+  }
 }
 
 // 在 imageMap 中查找图片路径对应的 data URI
@@ -724,11 +1005,15 @@ function textToHtml(text: string): string {
 }
 
 // 根据来源转换内容为 TipTap JSON 字符串
-function convertToTiptapJson(fileInfo: ImportFileInfo): string {
+export function convertToTiptapJson(fileInfo: ImportFileInfo): string {
   const { content, source, imageMap } = fileInfo;
 
   let html: string;
   switch (source) {
+    case "pdf":
+      // PDF 在读取阶段已被组装成纯净的 <p> HTML，不需要再次清洗或解析
+      html = content;
+      break;
     case "html":
     case "xiaomi":
     case "oppo":
@@ -746,20 +1031,52 @@ function convertToTiptapJson(fileInfo: ImportFileInfo): string {
   }
 
   // 将 HTML 转为 TipTap JSON 格式（与编辑器保存格式一致）
+  //
+  // 两层防御：
+  //   Layer 1（已在 markdownToSimpleHtml 末尾做）：normalizeTableHtml 把
+  //     marked 产出的 <thead>/<tbody> 剥成 Tiptap 接受的形态；
+  //   Layer 2（此处）：generateJSON 仍可能在未知脏 HTML 上产出"内部不合
+  //     schema 的 JSON"——init 时不报、transaction 时崩。这里用一个
+  //     headless Editor 让 ProseMirror 的 setContent 走自家 schema fixup
+  //     兜底，保证任何 html 都能产出合 schema 的 JSON。
   try {
     const json = generateJSON(html, tiptapExtensions);
+
+    // 防御：generateJSON 在 schema 命中失败时不会抛错，而是吐出
+    // `{ type: "doc", content: [{ type: "paragraph" }] }` 这样的"空 doc"。
+    // 此时如果原 html 其实非空，先尝试 headless Editor 修复；仍失败再
+    // 回退到 HTML 字符串。
+    const looksEmpty =
+      json &&
+      json.type === "doc" &&
+      Array.isArray(json.content) &&
+      (json.content.length === 0 ||
+        (json.content.length === 1 &&
+          json.content[0]?.type === "paragraph" &&
+          !json.content[0]?.content));
+    if (looksEmpty && html.replace(/<[^>]+>/g, "").trim().length > 0) {
+      console.warn("[importService] generateJSON produced empty doc, retrying via headless editor");
+      const repaired = repairHtmlViaHeadlessEditor(html);
+      if (repaired) return JSON.stringify(repaired);
+      return html;
+    }
+
     return JSON.stringify(json);
-  } catch {
-    // 转换失败时回退为 HTML 字符串（Tiptap 编辑器也能解析）
+  } catch (err) {
+    // generateJSON 抛错（最常见：parseHTML 出来的内容不满足某个 node 的
+    // contentMatch）。先试 headless Editor 修复，再回退 HTML 字符串。
+    console.warn("[importService] generateJSON threw, retrying via headless editor:", err);
+    const repaired = repairHtmlViaHeadlessEditor(html);
+    if (repaired) return JSON.stringify(repaired);
     return html;
   }
 }
 
 // 提取纯文本用于搜索索引
-function extractPlainText(fileInfo: ImportFileInfo): string {
+export function extractPlainText(fileInfo: ImportFileInfo): string {
   const { content, source } = fileInfo;
 
-  if (source === "html" || source === "xiaomi" || source === "oppo" || source === "vivo" || source === "oneplus") {
+  if (source === "pdf" || source === "html" || source === "xiaomi" || source === "oppo" || source === "vivo" || source === "oneplus") {
     return content
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -867,4 +1184,70 @@ export async function importNotes(
     });
     return { success: false, count: 0 };
   }
+}
+
+// =============================================================================
+// 单文件快速导入（拖拽专用）
+// -----------------------------------------------------------------------------
+// 与 importNotes 不同：不走 dialog/选择/分组那套批量流程，
+// 直接把一份 .md / .markdown / .txt 转成一条笔记落库。
+// 用于 NoteList 的"拖文件进来即导入"快捷路径，逻辑要尽量轻。
+// =============================================================================
+export interface ImportMarkdownAsNoteResult {
+  note: import("@/types").Note;
+  previewText: string;
+}
+
+const IMPORT_TEXT_MAX_SIZE = 10 * 1024 * 1024; // 10MB，足够覆盖绝大多数手写笔记
+
+export async function importMarkdownAsNote(params: {
+  notebookId: string;
+  file: File;
+}): Promise<ImportMarkdownAsNoteResult> {
+  const { notebookId, file } = params;
+  if (!file) throw new Error("未选择文件");
+  if (file.size > IMPORT_TEXT_MAX_SIZE) {
+    throw new Error(
+      `文件过大（${(file.size / 1024 / 1024).toFixed(1)} MB），上限 ${IMPORT_TEXT_MAX_SIZE / 1024 / 1024} MB`,
+    );
+  }
+
+  const text = await file.text();
+  const lower = file.name.toLowerCase();
+  const isMd = lower.endsWith(".md") || lower.endsWith(".markdown");
+  const source: ImportFileInfo["source"] = isMd ? "md" : "txt";
+
+  // 标题：md 优先取首个一级标题；否则用文件名（去扩展名）
+  const fileBaseName = file.name.replace(/\.(md|markdown|txt)$/i, "");
+  let title = fileBaseName;
+  if (isMd) {
+    const m = text.match(/^\s*#\s+(.+?)\s*$/m);
+    if (m && m[1].trim()) title = m[1].trim();
+  }
+
+  const fileInfo: ImportFileInfo = {
+    name: file.name,
+    title,
+    content: text,
+    size: text.length,
+    selected: true,
+    source,
+  };
+
+  const content = convertToTiptapJson(fileInfo);
+  const previewText = extractPlainText(fileInfo).slice(0, 200);
+
+  // md frontmatter 里若有 createdAt / updatedAt 就尊重它
+  const dates = isMd ? extractFrontmatterDates(text) : {};
+
+  const baseNote = (await api.createNote({ notebookId, title })) as import("@/types").Note;
+  const updated = (await api.updateNote(baseNote.id, {
+    content,
+    contentText: previewText,
+    version: baseNote.version,
+    ...(dates.createdAt ? { createdAt: dates.createdAt } : {}),
+    ...(dates.updatedAt ? { updatedAt: dates.updatedAt } : {}),
+  } as Partial<import("@/types").Note>)) as import("@/types").Note;
+
+  return { note: updated, previewText };
 }

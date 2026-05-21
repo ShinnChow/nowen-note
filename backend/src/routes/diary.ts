@@ -363,6 +363,173 @@ diary.get("/timeline", requireWorkspaceFeature("diaries"), (c) => {
   });
 });
 
+/**
+ * 编辑一条说说
+ *   PUT /api/diary/:id
+ *   body: { contentText?: string, mood?: string, images?: string[] }
+ *
+ * 鉴权：复用 canManageResource —— 个人说说仅作者本人；工作区说说允许
+ *        作者本人 + 该工作区 admin/owner（与 DELETE 同口径）。
+ *
+ * 处理要点：
+ *   - 仅更新调用方显式传入的字段（undefined 跳过，不会被清空）；
+ *   - 图片更新（images 字段）需要做"差集 attach / 反 attach"：
+ *       新增：把"属于本人 + 仍悬空"的图片 attach 到该 diary；
+ *       移除：把"属于本人 + 当前 attach 到该 diary 但不在新列表里"的图片
+ *             连同磁盘文件一并删除（与 DELETE 整条说说同口径）。
+ *     这样既保证存量图片不被反复改写，也避免漏删导致磁盘孤儿；
+ *   - 与 POST 一样：text 与 images 至少一项非空，纯空说说不允许保存；
+ *   - 整批写入放进事务，部分失败整体回滚，避免出现"图片删了但 diary 没改"的中间态。
+ */
+diary.put("/:id", (c) => {
+  return (async () => {
+    const db = getDb();
+    const userId = c.req.header("X-User-Id")!;
+    const id = c.req.param("id");
+
+    const row = db
+      .prepare("SELECT * FROM diaries WHERE id = ?")
+      .get(id) as DiaryRow | undefined;
+    if (!row) return c.json({ error: "Not found" }, 404);
+
+    if (!canManageResource(row.userId, row.workspaceId, userId)) {
+      return c.json({ error: "无权编辑该说说", code: "FORBIDDEN" }, 403);
+    }
+
+    let body: any;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON" }, 400);
+    }
+
+    // 解析输入。注意"未传"和"传空字符串/空数组"含义不同：
+    //   - 未传（undefined）：保持不变；
+    //   - 显式传入：覆盖该字段。
+    const newContentText: string | undefined =
+      typeof body.contentText === "string" ? body.contentText.trim() : undefined;
+    const newMood: string | undefined =
+      typeof body.mood === "string" ? body.mood : undefined;
+    const newImagesRaw: string[] | undefined = Array.isArray(body.images)
+      ? body.images
+          .filter((x: unknown) => typeof x === "string")
+          .slice(0, MAX_IMAGES_PER_DIARY)
+      : undefined;
+
+    // 计算合并后的最终值（仅用来做"text 和 images 至少一项非空"校验）
+    const finalText = newContentText !== undefined ? newContentText : row.contentText;
+    const finalImagesPreview =
+      newImagesRaw !== undefined ? newImagesRaw : (() => {
+        try {
+          const parsed = JSON.parse(row.images || "[]");
+          return Array.isArray(parsed) ? parsed.filter((x: unknown) => typeof x === "string") : [];
+        } catch {
+          return [];
+        }
+      })();
+    if (!finalText && finalImagesPreview.length === 0) {
+      return c.json({ error: "Content or images required" }, 400);
+    }
+
+    // 如果调用方没改任何字段，直接回当前值（幂等）
+    if (
+      newContentText === undefined &&
+      newMood === undefined &&
+      newImagesRaw === undefined
+    ) {
+      return c.json(rowToDiary(row));
+    }
+
+    // 准备图片差集（仅当调用方显式传入 images 时才处理）
+    let toUnlinkIds: string[] = [];
+    let finalImageOrder: string[] = [];
+    if (newImagesRaw !== undefined) {
+      // 当前已绑定的图片
+      const currentRows = db
+        .prepare(
+          "SELECT id FROM diary_attachments WHERE diaryId = ? AND userId = ?",
+        )
+        .all(id, userId) as { id: string }[];
+      const currentIds = new Set(currentRows.map((r) => r.id));
+      const targetIds = new Set(newImagesRaw);
+      toUnlinkIds = [...currentIds].filter((x) => !targetIds.has(x));
+      finalImageOrder = newImagesRaw; // 顺序由调用方指定，但下面会被"实际仍存在"过滤
+    }
+
+    const tx = db.transaction(() => {
+      // 1) 处理图片：先 unlink + 删除文件，再 attach 新图
+      if (newImagesRaw !== undefined) {
+        if (toUnlinkIds.length > 0) {
+          // 先删盘（DB 行还在的时候才能查到 path），再删 DB 行
+          deleteDiaryImageFilesByIds(toUnlinkIds);
+          const ph = toUnlinkIds.map(() => "?").join(",");
+          db.prepare(
+            `DELETE FROM diary_attachments WHERE id IN (${ph}) AND diaryId = ? AND userId = ?`,
+          ).run(...toUnlinkIds, id, userId);
+        }
+        // attach 新增的悬空图片到该 diary（顺序保留交给最后一步覆写 images 字段）
+        const newOnes = newImagesRaw.filter((x) => !toUnlinkIds.includes(x));
+        if (newOnes.length > 0) {
+          const ph = newOnes.map(() => "?").join(",");
+          db.prepare(
+            `UPDATE diary_attachments
+                SET diaryId = ?, workspaceId = ?
+              WHERE id IN (${ph})
+                AND userId = ?
+                AND (diaryId IS NULL OR diaryId = ?)`,
+          ).run(id, row.workspaceId, ...newOnes, userId, id);
+        }
+        // 取真正属于本 diary 的图片，按调用方传入顺序排序覆写
+        const validRows = db
+          .prepare(
+            `SELECT id FROM diary_attachments WHERE diaryId = ? AND userId = ?`,
+          )
+          .all(id, userId) as { id: string }[];
+        const validSet = new Set(validRows.map((r) => r.id));
+        finalImageOrder = newImagesRaw.filter((x) => validSet.has(x));
+      }
+
+      // 2) 更新 diary 主行
+      const updates: string[] = [];
+      const args: unknown[] = [];
+      if (newContentText !== undefined) {
+        updates.push("contentText = ?");
+        args.push(newContentText);
+      }
+      if (newMood !== undefined) {
+        updates.push("mood = ?");
+        args.push(newMood);
+      }
+      if (newImagesRaw !== undefined) {
+        updates.push("images = ?");
+        args.push(JSON.stringify(finalImageOrder));
+      }
+      if (updates.length > 0) {
+        args.push(id);
+        db.prepare(
+          `UPDATE diaries SET ${updates.join(", ")} WHERE id = ?`,
+        ).run(...args);
+      }
+    });
+
+    try {
+      tx();
+    } catch (err: any) {
+      return c.json({ error: `保存失败：${err?.message || err}` }, 500);
+    }
+
+    // 返回更新后的整条记录（顺手 LEFT JOIN 取 creatorName 保持契约一致）
+    const updated = db
+      .prepare(
+        `SELECT diaries.*, users.username AS creatorName
+           FROM diaries LEFT JOIN users ON users.id = diaries.userId
+          WHERE diaries.id = ?`,
+      )
+      .get(id) as DiaryRow;
+    return c.json(rowToDiary(updated));
+  })();
+});
+
 // 删除一条说说（同时清理它名下所有图片：磁盘 + DB 行）
 // Y2: 工作区说说走 canManageResource —— 创建者本人 + admin/owner 可删；
 //      个人说说仍只有创建者本人可删。

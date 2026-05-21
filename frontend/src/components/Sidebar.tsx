@@ -6,7 +6,7 @@ import {
   Settings, LogOut, FilePlus, FolderPlus, Edit2, X, BrainCircuit,
   Sparkles, NotebookPen, Smile, GripVertical,
   FolderInput, Check, Home, Download, FolderOpen,
-  Columns2, Columns3,
+  Columns2, Columns3, FileType2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -705,6 +705,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     const showExport = !isPersonal || isAdmin || personalExportAllowed;
     const items: ContextMenuItem[] = [
       { id: "new_note", label: t('sidebar.newNote'), icon: <FilePlus size={14} /> },
+      { id: "new_word_note", label: t('sidebar.importWordNote') || "导入 Word 文档", icon: <FileType2 size={14} /> },
       { id: "new_sub", label: t('sidebar.newSubNotebook'), icon: <FolderPlus size={14} /> },
       { id: "sep1", label: "", separator: true },
       { id: "change_icon", label: t('sidebar.changeIcon'), icon: <Smile size={14} /> },
@@ -995,6 +996,43 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
           createdAt: note.createdAt,
         } as any);
         actions.refreshNotebooks();
+        break;
+      }
+      case "new_word_note": {
+        // 导入 Word 文档：选择 .docx → mammoth 解析 → 生成可编辑的富文本笔记。
+        // 走 dynamic import 避免把 mammoth (~800KB) 加到首屏 bundle。
+        try {
+          const { pickDocxFile, importDocxAsNote } = await import("@/lib/wordNoteService");
+          const { toast } = await import("@/lib/toast");
+          const file = await pickDocxFile();
+          if (!file) break; // 用户取消
+          toast.info("正在导入 Word 文档…");
+          const { note } = await importDocxAsNote({ notebookId: targetId, file });
+          actions.setActiveNote(note as any);
+          actions.setSelectedNotebook(targetId);
+          actions.setViewMode("notebook");
+          actions.addNoteToList({
+            id: note.id,
+            userId: note.userId,
+            title: note.title,
+            contentText: note.contentText || "",
+            notebookId: note.notebookId,
+            isPinned: note.isPinned || 0,
+            isFavorite: note.isFavorite || 0,
+            isLocked: note.isLocked || 0,
+            isArchived: note.isArchived || 0,
+            isTrashed: note.isTrashed || 0,
+            version: note.version || 1,
+            sortOrder: note.sortOrder || 0,
+            updatedAt: note.updatedAt,
+            createdAt: note.createdAt,
+          } as any);
+          actions.refreshNotebooks();
+          toast.success("导入成功");
+        } catch (err: any) {
+          const { toast } = await import("@/lib/toast");
+          toast.error(err?.message || "导入 Word 文档失败");
+        }
         break;
       }
       case "new_sub": {
@@ -1296,7 +1334,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
           代价：用户首次发现需要点 2 次才到目标态——属于可接受的学习成本。
           v16 P3 后续 (mobile 双层化)：移动变体的关闭按钮也迁到 NavRail 顶部，
           Header 这里只剩纯标题。 */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-app-border" style={{ paddingTop: 'calc(var(--safe-area-top) + 8px)' }}>
+      <div className="flex items-center justify-between px-4 py-2 border-b border-app-border" style={{ paddingTop: 'calc(var(--safe-area-top) + 4px)' }}>
         <h1 className="text-sm font-semibold text-tx-primary tracking-wide">{siteConfig.title}</h1>
         <div className="flex items-center gap-1">
           {isDesktop && (() => {
