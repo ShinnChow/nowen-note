@@ -40,6 +40,7 @@ import type { SyntaxNode } from "@lezer/common";
 import { MathInline, MathBlock } from "@/components/MathExtensions";
 import { FootnoteReference, FootnoteDefinition } from "@/components/FootnoteExtensions";
 import { TextStyleKit } from "@/components/FontSizeExtension";
+import { Video as VideoExtension, videoNodeToMarkdown } from "@/components/VideoExtension";
 
 // ---------- 格式识别 ----------
 
@@ -139,6 +140,9 @@ function getTiptapExtensions() {
     // 没有这三个扩展，generateHTML 时 textStyle mark 会被 schema 过滤掉
     // → Turndown 拿不到 inline style → 切到 MD 后再切回 RTE 时颜色/字号丢失。
     ...TextStyleKit,
+    // 视频节点：必须与 TiptapEditor 保持一致，否则 generateHTML 时 video 节点
+    // 会被 schema 过滤，导致切换到 MD 后视频丢失。
+    VideoExtension,
   ];
   return _extensions;
 }
@@ -349,6 +353,32 @@ function getTurndown(): TurndownService {
       // content 中的换行折成 markdown 的「续行缩进」（4 空格），符合 Pandoc 写法
       const escapedContent = content.replace(/\n/g, "\n    ");
       return `\n\n[^${id}]: ${escapedContent}\n\n`;
+    },
+  });
+
+  /**
+   * 视频节点：Tiptap renderHTML 输出
+   *   <div data-video-platform="..." data-kind="..." data-src="..." data-original-url="...">
+   *     <iframe|video src="..." .../>
+   *   </div>
+   * Turndown 默认会递归处理该 div 并丢掉所有子节点。
+   * 这里接管：当检测到 data-video-platform 时，调 videoNodeToMarkdown 产出
+   *   - HTML 块（支持原样播放）
+   *   - + 一行 [🎬 视频链接](url) 兼容不能渲染 HTML 的 MD 场景
+   * 返回的块前后带空行，MD 解析器会当作独立块级 HTML 处理。
+   */
+  td.addRule("videoEmbed", {
+    filter: (node) =>
+      node.nodeName === "DIV" &&
+      (node as Element).getAttribute("data-video-platform") != null,
+    replacement: (_content, node) => {
+      const el = node as Element;
+      return videoNodeToMarkdown({
+        src: el.getAttribute("data-src") || "",
+        kind: (el.getAttribute("data-kind") as any) || "iframe",
+        platform: (el.getAttribute("data-video-platform") as any) || "unknown",
+        originalUrl: el.getAttribute("data-original-url") || "",
+      });
     },
   });
 

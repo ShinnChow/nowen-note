@@ -31,13 +31,14 @@ import { replaceDataUrlImagesWithAttachments } from "@/lib/rtfImageUploader";
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, Heading1, Heading2, Heading3,
-  Quote, ImagePlus, Paperclip, CheckSquare, Highlighter, Minus, Undo, Redo,
+  Quote, ImagePlus, Film, Paperclip, CheckSquare, Highlighter, Minus, Undo, Redo,
   Code, FileCode, Sparkles, X, ZoomIn, ZoomOut, RotateCcw,
   Table2, Indent, Outdent, AlignLeft, AlignCenter, AlignRight, Trash2,
   FileType, FileDown, Check, AlertCircle, Info, ArrowUp, Link as LinkIcon,
-  ExternalLink, Unlink2, Workflow, Sigma, BookOpen,
+  ExternalLink, Unlink2, Workflow, Sigma, BookOpen, Download,
   Type, Palette, Eraser, ChevronDown, Search,
 } from "lucide-react";
+import { downloadAttachment } from "@/lib/downloadFile";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/toast";
 import { prompt as promptDialog } from "@/components/ui/confirm";
@@ -59,6 +60,7 @@ import {
 } from "@/components/FontSizeExtension";
 import CodeBlockView from "@/components/CodeBlockView";
 import { SearchReplacePanel, createSearchReplaceExtension } from "@/components/SearchReplacePanel";
+import { Video as VideoExtension } from "@/components/VideoExtension";
 
 
 import { useTranslation } from "react-i18next";
@@ -1149,11 +1151,25 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
   });
   // 光标停在链接内（且无选区）时浮出的链接气泡：打开 / 编辑 / 取消链接
   // 与 bubble（文本选区格式化）互斥——选区有内容时优先显示文本气泡。
+  // 链接气泡：附件链接（href 形如 /api/attachments/<id>）需要单独的下载交互，
+  // 因此把 filename 一并存进来——下载时给浏览器一个友好的文件名，否则会用
+  // URL 末尾的 uuid 当文件名。filename 取自 <a download="..."> DOM 属性。
+  // source 区分气泡触发来源：
+  //   - "caret"：光标停在链接里（selectionUpdate 触发），跟随光标，blur 时关
+  //   - "hover"：鼠标悬停在链接上（mouseover 触发），不依赖 focus，鼠标离开 + 延迟才关
+  // 区分的目的是让两条触发链路互不干扰：hover 离开不能关掉光标停留的气泡，
+  // 反之 blur 不能关掉鼠标正在 hover 的气泡。
+  // from/to ：该 link mark 在文档里的起止位置。动作按钮（取消链接/编辑链接）
+  // 点击时先 setTextSelection({from,to}) 才能让 extendMarkRange("link") 生效——
+  // 否则 hover 触发时光标可能不在链接里，unsetLink 会静默失败。
   const [linkBubble, setLinkBubble] = useState<{
-    open: boolean; top: number; left: number; href: string;
+    open: boolean; top: number; left: number; href: string; filename: string;
+    source: "caret" | "hover"; from: number; to: number;
   }>({
-    open: false, top: 0, left: 0, href: "",
+    open: false, top: 0, left: 0, href: "", filename: "", source: "caret", from: 0, to: 0,
   });
+  // hover 关闭延迟定时器：用户从链接移到气泡上时给一个缓冲，避免穿过空隙时闪烁
+  const linkHoverCloseTimer = useRef<NodeJS.Timeout | null>(null);
 
   // 斜杠命令事件处理器（稳定引用）
   const slashHandlers = useRef(createSlashEventHandlers());
@@ -1370,6 +1386,10 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
       // 查找替换：纯装饰器插件，不污染 schema，不参与导入/导出。
       // 只负责在 doc 上画高亮和维护命中状态，UI 在 SearchReplacePanel。
       createSearchReplaceExtension(),
+      // 视频节点：直链 mp4/webm + B 站 / YouTube / 腾讯视频 / Vimeo embed。
+      // atom + block + draggable，NodeView 用透明遮罩防 iframe 抢焦点。
+      // parseHTML 同时识别 <iframe> / <video>，让剪藏过来的视频内容也能落到此节点。
+      VideoExtension,
     ],
     content: parseContent(note.content),
     editable,
@@ -2306,8 +2326,13 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
   // 抽成共享回调避免两处重复 ~40 行 prompt + 解析 + apply 逻辑。
   // 输入框支持 markdown.com.cn 标准 `https://x.com "标题"` 写法，
   // 解析时把空格后的 "..." 部分作为 link mark 的 title 属性。
-  const openLinkEditor = useCallback(async () => {
+  // range 参数：hover 触发时传入该 link 在文档里的位置，先切换选区再读取/修改；
+  //   caret 触发时不传，使用当前选区原语义不变。
+  const openLinkEditor = useCallback(async (range?: { from: number; to: number }) => {
     if (!editor) return;
+    if (range && range.from < range.to) {
+      editor.chain().focus().setTextSelection(range).run();
+    }
     const { from, to, empty } = editor.state.selection;
     const previousAttrs = editor.getAttributes("link") as { href?: string; title?: string | null };
     const previous = previousAttrs?.href ?? "";
@@ -2366,9 +2391,14 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
     }
   }, [editor, t]);
 
-  // 取消链接：扩到 link mark 范围后 unsetLink
-  const removeLink = useCallback(() => {
+  // 取消链接：扩到 link mark 范围后 unsetLink。
+  // range 参数：hover 触发时传入该 link 位置，避免“鼠标在链接上但光标不在”时静默失败。
+  const removeLink = useCallback((range?: { from: number; to: number }) => {
     if (!editor) return;
+    if (range && range.from < range.to) {
+      editor.chain().focus().setTextSelection(range).extendMarkRange("link").unsetLink().run();
+      return;
+    }
     editor.chain().focus().extendMarkRange("link").unsetLink().run();
   }, [editor]);
 
@@ -2477,15 +2507,26 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
           const cx = caretRect.left; // 光标 x（零宽矩形，left===right）
           // 气泡宽度约 280px，居中减半，并夹到视口内
           const left = Math.max(8, Math.min(cx - 140, window.innerWidth - 290));
-          setLinkBubble({ open: true, top, left, href });
+          // 附件链接需要 filename：从 DOM 上的 <a download="..."> 属性取——
+          // ProseMirror 在 link mark attrs 里不存 download，但渲染出的 DOM
+          // 节点上保留了。用 view.domAtPos 拿到包裹文本的 anchor 元素。
+          let filename = "";
+          try {
+            const dom = view.domAtPos(from).node as Node | null;
+            const el = dom instanceof Element ? dom : dom?.parentElement ?? null;
+            const anchor = el?.closest?.("a") as HTMLAnchorElement | null;
+            filename = anchor?.getAttribute("download") ?? "";
+          } catch { /* 取不到就空，下载时降级用 URL 末尾段 */ }
+          setLinkBubble({ open: true, top, left, href, filename, source: "caret", from: start, to: end });
         } else {
-          setLinkBubble(b => b.open ? { ...b, open: false } : b);
+          // 仅关闭 caret 触发的气泡，hover 触发的留给 mouse 事件去关
+          setLinkBubble(b => (b.open && b.source === "caret") ? { ...b, open: false } : b);
         }
         return;
       }
 
-      // 有选区 → 链接气泡关闭，走原有文本/图片气泡逻辑
-      setLinkBubble(b => b.open ? { ...b, open: false } : b);
+      // 有选区 → 关闭 caret 链接气泡（hover 的不动），走原有文本/图片气泡逻辑
+      setLinkBubble(b => (b.open && b.source === "caret") ? { ...b, open: false } : b);
 
       const isImage = editor.isActive("image");
 
@@ -2516,16 +2557,100 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
         if (!editor.view.hasFocus()) {
           setBubble(b => b.open ? { ...b, open: false } : b);
           setImageBubble(b => b.open ? { ...b, open: false } : b);
-          setLinkBubble(b => b.open ? { ...b, open: false } : b);
+          // 只关 caret 触发的链接气泡；hover 气泡不依赖编辑器 focus
+          setLinkBubble(b => (b.open && b.source === "caret") ? { ...b, open: false } : b);
         }
       });
     };
 
     editor.on("selectionUpdate", updateBubble);
     editor.on("blur", onBlur);
+
+    // ---- hover 触发链接气泡 ----
+    // ProseMirror 的编辑器 DOM 不适合用 React 合成事件（需要给 contentEditable
+    // 外部跳过事件体系），直接原生 addEventListener。用事件委派，在父 dom 上听
+    // mouseover/mouseout，用 closest('a[href]') 过滤。
+    const editorDom = editor.view.dom as HTMLElement;
+    const ATTACHMENT_RE = /^\/api\/attachments\/[0-9a-fA-F-]{36}/;
+
+    const showBubbleForAnchor = (anchor: HTMLAnchorElement) => {
+      const href = anchor.getAttribute("href") || "";
+      if (!href) return;
+      // 附件链接优先用 download 属性；拿不到就从链接文本“📎 名字 (大小)”里抠
+      let filename = anchor.getAttribute("download") || "";
+      if (!filename && ATTACHMENT_RE.test(href)) {
+        const txt = anchor.textContent || "";
+        const m = txt.match(/📎\s*(.+?)\s*\([^)]*\)\s*$/);
+        filename = m ? m[1] : txt.replace(/^📎\s*/, "");
+      }
+      const rect = anchor.getBoundingClientRect();
+      const { top } = placeBubble(rect, 40, 280);
+      // 与 caret 路径一致：气泡约 280宽，以链接横中为准，夹到视口内
+      const cx = rect.left + rect.width / 2;
+      const left = Math.max(8, Math.min(cx - 140, window.innerWidth - 290));
+      // 从 anchor DOM 反查 ProseMirror 位置，再沿 link mark 向两侧扩到边界。
+      // 拿不到位置就记 0/0，点击动作时会降级走原选区逻辑。
+      let from = 0, to = 0;
+      try {
+        const view = editor.view;
+        const pos = view.posAtDOM(anchor, 0);
+        if (pos >= 0) {
+          const linkType = view.state.schema.marks.link;
+          let s = pos, e = pos;
+          while (s > 0) {
+            const $p = view.state.doc.resolve(s - 1);
+            if ($p.marks().some((m) => m.type === linkType && m.attrs.href === href)) s -= 1;
+            else break;
+          }
+          while (e < view.state.doc.content.size) {
+            const $p = view.state.doc.resolve(e);
+            if ($p.marks().some((m) => m.type === linkType && m.attrs.href === href)) e += 1;
+            else break;
+          }
+          from = s; to = e;
+        }
+      } catch { /* 位置定不住就保持 0/0 */ }
+      setLinkBubble({ open: true, top, left, href, filename, source: "hover", from, to });
+    };
+
+    const onMouseOver = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor || !editorDom.contains(anchor)) return;
+      // hover 中取消待关闭
+      if (linkHoverCloseTimer.current) {
+        clearTimeout(linkHoverCloseTimer.current);
+        linkHoverCloseTimer.current = null;
+      }
+      showBubbleForAnchor(anchor);
+    };
+
+    const onMouseOut = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      // relatedTarget 仍在同一个 anchor 里（跨子节点移动）不算离开
+      const next = e.relatedTarget as Node | null;
+      if (next && anchor.contains(next)) return;
+      // 延迟关闭，给鼠标从链接过渡到气泡留缓冲期
+      if (linkHoverCloseTimer.current) clearTimeout(linkHoverCloseTimer.current);
+      linkHoverCloseTimer.current = setTimeout(() => {
+        setLinkBubble(b => (b.open && b.source === "hover") ? { ...b, open: false } : b);
+      }, 150);
+    };
+
+    editorDom.addEventListener("mouseover", onMouseOver);
+    editorDom.addEventListener("mouseout", onMouseOut);
+
     return () => {
       editor.off("selectionUpdate", updateBubble);
       editor.off("blur", onBlur);
+      editorDom.removeEventListener("mouseover", onMouseOver);
+      editorDom.removeEventListener("mouseout", onMouseOut);
+      if (linkHoverCloseTimer.current) {
+        clearTimeout(linkHoverCloseTimer.current);
+        linkHoverCloseTimer.current = null;
+      }
     };
   }, [editor]);
 
@@ -3192,6 +3317,28 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
         <ToolbarButton onClick={handleImageUpload} title={t('tiptap.insertImage')}>
           <ImagePlus size={iconSize} />
         </ToolbarButton>
+        <ToolbarButton
+          onClick={async () => {
+            // 弹窗输入视频 URL；setVideo 会做 URL 解析，失败给 toast 提示。
+            // 支持：直链 mp4/webm/ogg + B 站 / YouTube / 腾讯视频 / Vimeo。
+            const url = await promptDialog({
+              title: t('tiptap.insertVideo') || '插入视频',
+              placeholder: 'https://www.bilibili.com/video/BV...  或 .mp4 直链',
+              defaultValue: '',
+              confirmText: t('common.confirm'),
+              cancelText: t('common.cancel'),
+              allowEmpty: false,
+            });
+            if (!url) return;
+            const ok = (editor.commands as any).setVideo(url.trim());
+            if (!ok) {
+              toast.error(t('tiptap.videoUrlInvalid') || '无法识别该视频链接');
+            }
+          }}
+          title={t('tiptap.insertVideo') || '插入视频'}
+        >
+          <Film size={iconSize} />
+        </ToolbarButton>
         <ToolbarButton onClick={handleAttachmentUpload} title={t('tiptap.insertAttachment')}>
           <Paperclip size={iconSize} />
         </ToolbarButton>
@@ -3512,12 +3659,27 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
         </div>
       )}
 
-      {/* 链接气泡菜单：光标停在链接内（无选区）时浮出 — 打开 / 编辑 / 取消链接 */}
+      {/* 链接气泡菜单：光标停在链接内（无选区）或鼠标 hover 链接时浮出 — 打开 / 编辑 / 取消链接 */}
       {editor && editable && linkBubble.open && (
         <div
           className="fixed z-50 flex items-center gap-1 bg-app-elevated border border-app-border rounded-lg shadow-lg px-2 py-1 max-w-[320px]"
           style={{ top: linkBubble.top, left: linkBubble.left }}
           onMouseDown={(e) => e.preventDefault()}
+          onMouseEnter={() => {
+            // 鼠标进入气泡本体时，取消 hover 关闭定时器，保证点击按钮可达
+            if (linkHoverCloseTimer.current) {
+              clearTimeout(linkHoverCloseTimer.current);
+              linkHoverCloseTimer.current = null;
+            }
+          }}
+          onMouseLeave={() => {
+            // 仅对 hover 触发的气泡生效；caret 触发的气泡跟随光标/blur 关闭
+            if (linkBubble.source !== "hover") return;
+            if (linkHoverCloseTimer.current) clearTimeout(linkHoverCloseTimer.current);
+            linkHoverCloseTimer.current = setTimeout(() => {
+              setLinkBubble(b => (b.open && b.source === "hover") ? { ...b, open: false } : b);
+            }, 150);
+          }}
         >
           {/* href 预览：超长时截断，给足上下文 + tooltip 完整 */}
           <a
@@ -3530,20 +3692,46 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
             {linkBubble.href}
           </a>
           <div className="w-px h-4 bg-app-border mx-0.5" />
+          {/* 附件链接（href 形如 /api/attachments/<id>）展示「下载」按钮——
+             点击链接文本本身已在 handleDOMEvents.click 里走内联预览抽屉，
+             所以气泡里只补强"下载到本地"这个明确动作。普通 http(s) 链接
+             保留"打开链接"在新标签页打开。 */}
+          {/^\/api\/attachments\//.test(linkBubble.href) ? (
+            <ToolbarButton
+              onClick={() => {
+                void downloadAttachment(linkBubble.href, linkBubble.filename || "");
+              }}
+              title={t('tiptap.linkDownload')}
+            >
+              <Download size={14} />
+            </ToolbarButton>
+          ) : (
+            <ToolbarButton
+              onClick={() => openLinkUrl(linkBubble.href)}
+              title={t('tiptap.linkOpen')}
+            >
+              <ExternalLink size={14} />
+            </ToolbarButton>
+          )}
           <ToolbarButton
-            onClick={() => openLinkUrl(linkBubble.href)}
-            title={t('tiptap.linkOpen')}
-          >
-            <ExternalLink size={14} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={openLinkEditor}
+            onClick={() => {
+              // hover 触发时光标可能不在链接上，必须传入 from/to 让两个 callback
+              // 内部先 setTextSelection 再 extendMarkRange，否则 unsetLink 会静默失败。
+              // caret 触发时 from===to===0 不传，沿用当前选区语义。
+              const range = linkBubble.source === "hover" && linkBubble.from < linkBubble.to
+                ? { from: linkBubble.from, to: linkBubble.to } : undefined;
+              void openLinkEditor(range);
+            }}
             title={t('tiptap.linkEdit')}
           >
             <LinkIcon size={14} />
           </ToolbarButton>
           <ToolbarButton
-            onClick={removeLink}
+            onClick={() => {
+              const range = linkBubble.source === "hover" && linkBubble.from < linkBubble.to
+                ? { from: linkBubble.from, to: linkBubble.to } : undefined;
+              removeLink(range);
+            }}
             title={t('tiptap.linkRemove')}
           >
             <Unlink2 size={14} />

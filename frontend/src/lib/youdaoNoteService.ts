@@ -57,6 +57,7 @@ import {
   markdownToSimpleHtml,
 } from "./importService";
 import { TextStyleKit } from "@/components/FontSizeExtension";
+import { Video as VideoExtension } from "@/components/VideoExtension";
 
 const lowlight = createLowlight(common);
 
@@ -77,6 +78,8 @@ const tiptapExtensions = [
   TableCell,
   // TextStyle + Color + FontSize：与编辑器保持一致
   ...TextStyleKit,
+  // 视频节点：与编辑器保持一致，否则有道导入中的 video 会被吞
+  VideoExtension,
 ];
 
 // ============================================================

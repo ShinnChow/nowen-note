@@ -14,6 +14,7 @@ import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table
 import { common, createLowlight } from "lowlight";
 import { api, resolveAttachmentUrl } from "./api";
 import { TextStyleKit } from "@/components/FontSizeExtension";
+import { Video as VideoExtension } from "@/components/VideoExtension";
 
 // TipTap 扩展列表（需与 importService / 编辑器保持一致，否则某些节点会被吞掉）
 const lowlight = createLowlight(common);
@@ -36,6 +37,8 @@ const tiptapExtensions = [
   // 否则 generateHTML 会把 textStyle mark 从 schema 过滤 → 导出的 .md/.html
   // 丢颜色字号。
   ...TextStyleKit,
+  // 视频节点：与编辑器保持一致，否则导出时 video 节点会被吞
+  VideoExtension,
 ];
 
 /**

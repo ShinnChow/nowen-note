@@ -1,6 +1,7 @@
 {
   "common": {
     "cancel": "Cancel",
+    "chars": "chars",
     "confirm": "Confirm",
     "save": "Save",
     "expand": "Expand sidebar",
@@ -307,6 +308,7 @@
     "clearFormat": "Clear Formatting (Ctrl+Shift+X)",
     "link": "Link",
     "linkOpen": "Open link",
+    "linkDownload": "Download",
     "linkEdit": "Edit link",
     "linkRemove": "Remove link",
     "bulletList": "Bullet List",
@@ -317,6 +319,8 @@
     "inlineCode": "Inline Code",
     "horizontalRule": "Horizontal Rule",
     "insertImage": "Insert Image",
+    "insertVideo": "Insert Video",
+    "videoUrlInvalid": "Cannot recognize this video URL",
     "insertAttachment": "Insert Attachment",
     "attachmentUploading": "Uploading attachment...",
     "attachmentUploaded": "Attachment uploaded",
@@ -426,6 +430,8 @@
     "linkDesc": "Insert or edit a link",
     "image": "Image",
     "imageDesc": "Upload and insert an image",
+    "video": "Video",
+    "videoDesc": "Insert a Bilibili / YouTube / mp4 video link",
     "table": "Table",
     "tableDesc": "Insert a 3×3 table",
     "ai": "AI Assistant",

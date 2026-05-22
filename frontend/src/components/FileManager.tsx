@@ -65,6 +65,7 @@ import { useApp, useAppActions } from "@/store/AppContext";
 import { toast } from "@/lib/toast";
 import { confirm as confirmDialog } from "@/components/ui/confirm";
 import { copyText } from "@/lib/clipboard";
+import { downloadAttachment } from "@/lib/downloadFile";
 import {
   formatImageHostSnippet,
   imageHostFormatLabel,
@@ -867,12 +868,9 @@ export default function FileManager() {
 
   // ---- 下载 ----
   //
-  // 为什么不用 window.open / <a href> 直接打开 /api/attachments/<id>：
-  //   1. 图片、PDF 这类 MIME 浏览器会直接在当前 tab 里预览而不是下载；
-  //   2. 直接点 <a href download="x.png"> 在跨 origin 场景（App 客户端/独立前端域）
-  //      下 download 属性会被忽略，还是变成预览。
-  // 所以这里走 fetch → blob → createObjectURL → 临时 <a download> 触发，
-  // 兼容所有 MIME 且能保留用户上传时的原始 filename。
+  // 下载策略：同源走原生 <a download>（同步、零手势丢失），跨源回退 fetch+blob。
+  // 由 downloadAttachment 统一实现，避免编辑器 / 文件管理 / 详情抽屉三处各写一份。
+  // 详见 frontend/src/lib/downloadFile.ts。
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   // 用 ref 同步 downloadingId 的最新值，避免 downloadItem useCallback 依赖
   // downloadingId 状态——否则每次开始/结束下载 downloadItem 引用都会变，
@@ -885,18 +883,7 @@ export default function FileManager() {
     if (downloadingIdRef.current === item.id) return;
     setDownloadingId(item.id);
     try {
-      const res = await fetch(resolveAttachmentUrl(item.url));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const objUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objUrl;
-      a.download = item.filename || `file-${item.id}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // 下一帧再 revoke，避免部分浏览器还没启动下载就被回收
-      setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+      await downloadAttachment(resolveAttachmentUrl(item.url), item.filename || `file-${item.id}`);
     } catch (err: any) {
       console.error("[FileManager] download failed:", err);
       toast.error(`下载失败: ${err?.message || "未知错误"}`);

@@ -12,6 +12,7 @@ import TaskItem from "@tiptap/extension-task-item";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
 import { common, createLowlight } from "lowlight";
 import { TextStyleKit } from "@/components/FontSizeExtension";
+import { Video as VideoExtension } from "@/components/VideoExtension";
 
 const lowlight = createLowlight(common);
 
@@ -35,6 +36,8 @@ export const tiptapExtensions = [
   // TextStyle + Color + FontSize：与编辑器保持一致，否则导入近来的
   // 带颜色/字号的 HTML 会被 generateJSON schema-filter 掉
   ...TextStyleKit,
+  // 视频节点：与编辑器保持一致，否则导入/修复阶段 video 节点会被吃
+  VideoExtension,
 ];
 
 export interface ImportFileInfo {

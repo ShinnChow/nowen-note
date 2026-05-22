@@ -30,6 +30,7 @@ import TaskItem from "@tiptap/extension-task-item";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
 import { common, createLowlight } from "lowlight";
 import { TextStyleKit } from "@/components/FontSizeExtension";
+import { Video as VideoExtension } from "@/components/VideoExtension";
 
 // Tiptap 扩展集：与 TiptapEditor / importService 保持一致，否则带颜色 / 字号 /
 // 表格 / 任务列表的 HTML 在 generateJSON 阶段会被 schema 过滤掉。
@@ -47,6 +48,7 @@ const tiptapExtensions = [
   TableHeader,
   TableCell,
   ...TextStyleKit,
+  VideoExtension,
 ];
 
 export interface CreateWordNoteResult {

@@ -5,7 +5,7 @@ import {
   Heading1, Heading2, Heading3, List, ListOrdered, CheckSquare,
   Quote, FileCode, Minus, ImagePlus, Sparkles,
   Bold, Italic, Highlighter, Table2,
-  Strikethrough, Code, Link as LinkIcon, Workflow, Sigma, BookOpen
+  Strikethrough, Code, Link as LinkIcon, Workflow, Sigma, BookOpen, Film
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -443,6 +443,33 @@ export function getDefaultSlashCommands(t: (key: string) => string, onImageUploa
       category: t("slash.catInsert"),
       keywords: ["image", "picture", "photo", "图片", "插图"],
       action: () => onImageUpload?.(),
+    },
+    {
+      // 视频：弹窗输 URL 后调 setVideo。支持直链 mp4/webm + B 站 / YouTube /
+      // 腾讯视频 / Vimeo。URL 解析失败时 setVideo 返回 false，这里丢个警告。
+      id: "video",
+      label: t("slash.video") || "视频",
+      description: t("slash.videoDesc") || "插入 B 站 / YouTube / mp4 等视频链接",
+      icon: <Film size={16} />,
+      category: t("slash.catInsert"),
+      keywords: ["video", "movie", "bilibili", "youtube", "mp4", "视频", "记录片"],
+      action: (editor) => {
+        void (async () => {
+          const url = await promptDialog({
+            title: t("slash.video") || "插入视频",
+            placeholder: "https://www.bilibili.com/video/BV...  或 .mp4 直链",
+            defaultValue: "",
+            confirmText: t("common.confirm"),
+            cancelText: t("common.cancel"),
+            allowEmpty: false,
+          });
+          if (!url) return;
+          const ok = (editor.commands as any).setVideo(url.trim());
+          if (!ok) {
+            console.warn("[slash] setVideo failed: unrecognized url", url);
+          }
+        })();
+      },
     },
     {
       id: "table",

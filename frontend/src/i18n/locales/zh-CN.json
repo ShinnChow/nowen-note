@@ -1,6 +1,7 @@
 {
   "common": {
     "cancel": "取消",
+    "chars": "字符",
     "confirm": "确认",
     "save": "保存",
     "expand": "展开侧栏",
@@ -314,6 +315,7 @@
     "clearFormat": "清除格式 (Ctrl+Shift+X)",
     "link": "链接",
     "linkOpen": "打开链接",
+    "linkDownload": "下载",
     "linkEdit": "编辑链接",
     "linkRemove": "取消链接",
     "bulletList": "无序列表",
@@ -324,6 +326,8 @@
     "inlineCode": "行内代码",
     "horizontalRule": "分割线",
     "insertImage": "插入图片",
+    "insertVideo": "插入视频",
+    "videoUrlInvalid": "无法识别该视频链接，请检查后重试",
     "insertAttachment": "插入附件",
     "attachmentUploading": "附件上传中...",
     "attachmentUploaded": "附件上传成功",
@@ -433,6 +437,8 @@
     "linkDesc": "插入或编辑链接",
     "image": "图片",
     "imageDesc": "上传并插入图片",
+    "video": "视频",
+    "videoDesc": "插入 B 站 / YouTube / mp4 等视频链接",
     "table": "表格",
     "tableDesc": "插入 3×3 表格",
     "ai": "AI 助手",

@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/lib/toast";
 import { confirm as confirmDialog } from "@/components/ui/confirm";
 import { copyText } from "@/lib/clipboard";
+import { downloadAttachment } from "@/lib/downloadFile";
 import {
   formatImageHostSnippet,
   imageHostFormatLabel,
@@ -237,28 +238,22 @@ export default function AttachmentDetailDrawer({
     [detail],
   );
 
-  // ---- 下载（fetch → blob → a[download]，跨 origin 也能强制下载） ----
+  // ---- 下载 ----
+  // 同源场景走原生 <a download>，同步触发，避免"第一次点击丢失用户手势"导致下载被拦截。
+  // 跨源场景由 downloadAttachment 内部回退到 fetch+blob，保留原 filename。
+  // 保留 200ms 视觉反馈防连点；不再用 await fetch 阻塞 UI。
   const [downloading, setDownloading] = useState(false);
   const handleDownload = useCallback(async () => {
     if (!detail || downloading) return;
     setDownloading(true);
     try {
-      const res = await fetch(resolveAttachmentUrl(detail.url));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const objUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objUrl;
-      a.download = detail.filename || `file-${detail.id}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+      await downloadAttachment(resolveAttachmentUrl(detail.url), detail.filename);
     } catch (err: any) {
       console.error("[AttachmentDetailDrawer] download failed:", err);
       toast.error(`下载失败: ${err?.message || "未知错误"}`);
     } finally {
-      setDownloading(false);
+      // 200ms 后复位，给按钮一个轻微的"按下"反馈
+      setTimeout(() => setDownloading(false), 200);
     }
   }, [detail, downloading]);
 
@@ -577,11 +572,10 @@ export default function AttachmentDetailDrawer({
                   onClick={handleDownload}
                   disabled={downloading}
                 >
-                  {downloading ? (
-                    <Loader2 size={14} className="mr-1 animate-spin" />
-                  ) : (
-                    <Download size={14} className="mr-1" />
-                  )}
+                  {/* 不在 downloading 时切图标——同源场景下载是同步触发的，
+                      200ms 内切换 Loader2 → Download 反而造成"按钮抖一下"的视觉闪烁。
+                      靠 disabled 防连点已经够了。 */}
+                  <Download size={14} className="mr-1" />
                   下载文件
                 </Button>
                 {showDelete && (
