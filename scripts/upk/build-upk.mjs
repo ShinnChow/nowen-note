@@ -60,12 +60,36 @@ const pkg = JSON.parse(readFileSync(join(PROJECT_ROOT, 'package.json'), 'utf8'))
 const VERSION = String(arg('version', pkg.version));
 const BUILD_NO = String(arg('build', process.env.UPK_BUILD_NO || '1'));
 const ARCH = String(arg('arch', 'all')); // all | amd64 | arm64
-const IMAGE_REF = String(
+const IMAGE_REF_RAW = String(
     arg('image', process.env.UPK_IMAGE_REF || `nowen-note:${VERSION}`),
 );
 const DOCKERHUB_REPO = process.env.DOCKERHUB_REPO || '';
 const AUTO_PULL = arg('pull', false) === true;
 const KEEP_IMAGES = arg('keep-images', false) === true;
+
+// 检测 ref 是否是 "repo:" 或 "repo:v" 这种 tag 残缺的写法
+// 正常 tag 至少 2 个字符（v1 / latest / dev / 1.0 ...），
+// 单独的 v/V 几乎可以确定是把 v${VERSION} 写漏了版本号
+function isBrokenRef(ref) {
+    const idx = ref.lastIndexOf(':');
+    if (idx === -1) return false; // 没冒号 = 用 latest，合法
+    // 注意 registry 端口号也含冒号，如 host:5000/repo —— 这种冒号后没有 /，应认为不是 tag
+    const tag = ref.slice(idx + 1);
+    if (tag.includes('/')) return false; // host:port/xxx
+    if (tag.length === 0) return true;
+    if (tag.length < 2 && /^[vV]?$/.test(tag)) return true;
+    return false;
+}
+if (isBrokenRef(IMAGE_REF_RAW)) {
+    console.error(
+        `[upk] 错误：镜像 ref "${IMAGE_REF_RAW}" 看起来 tag 残缺（很可能是漏写了版本号，例如 ":v" 应为 ":v${VERSION}"）`,
+    );
+    console.error(
+        `[upk]      请用 --image <repo:tag> 或 UPK_IMAGE_REF 显式指定，或者直接 unset UPK_IMAGE_REF 让脚本回退到 nowen-note:${VERSION}`,
+    );
+    process.exit(1);
+}
+const IMAGE_REF = IMAGE_REF_RAW;
 
 const ARCH_LIST =
     ARCH === 'all' ? ['amd64', 'arm64'] : ARCH === 'amd64' ? ['amd64'] : ARCH === 'arm64' ? ['arm64'] : null;
@@ -164,9 +188,11 @@ for (const a of ARCH_LIST) {
             `${DOCKERHUB_REPO}:v${VERSION}-${a}`,
         );
     }
+    // 去重 + 过滤掉 tag 残缺的 ref（防御 isBrokenRef 漏网或拼接产物本身就坏）
+    const uniqCandidates = [...new Set(candidates)].filter((c) => !isBrokenRef(c));
     const platform = `linux/${a}`;
     let picked = null;
-    for (const c of candidates) {
+    for (const c of uniqCandidates) {
         const ia = imageArch(c);
         if (ia === a) {
             picked = c;
@@ -176,7 +202,7 @@ for (const a of ARCH_LIST) {
     if (!picked && AUTO_PULL) {
         // 本地全部找不到，按候选顺序尝试 docker pull --platform linux/<arch>
         // 注意：必须用 --platform 强制指定架构，否则 docker pull 默认拉本机架构
-        for (const c of candidates) {
+        for (const c of uniqCandidates) {
             if (dockerPull(c, platform) && imageArch(c) === a) {
                 picked = c;
                 break;
@@ -185,7 +211,7 @@ for (const a of ARCH_LIST) {
     }
     if (!picked) {
         console.warn(
-            `[upk] 警告：本机 docker 中找不到 ${a} 架构的镜像（已尝试：${candidates.join(', ')}），跳过 ${a}`,
+            `[upk] 警告：本机 docker 中找不到 ${a} 架构的镜像（已尝试：${uniqCandidates.join(', ')}），跳过 ${a}`,
         );
         console.warn(
             `[upk]      可用方案：① 加 --pull 自动拉 ② 手动 docker buildx build --platform ${platform} -t nowen-note:${VERSION} --load .`,
