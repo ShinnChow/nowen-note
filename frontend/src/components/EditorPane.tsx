@@ -1384,32 +1384,70 @@ export default function EditorPane() {
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Mobile Editor Header - 返回按钮 */}
-      <header className="flex items-center gap-2 px-3 py-2 border-b border-app-border bg-app-surface/50 md:hidden" style={{ paddingTop: 'calc(var(--safe-area-top) + 8px)' }}>
-        <button
-          onClick={() => actions.setMobileView("list")}
-          className="flex items-center text-accent-primary py-1.5 px-1.5 -ml-1.5 rounded-lg active:bg-app-hover"
-        >
-          <ChevronLeft size={24} />
-          <span className="text-sm font-medium">{t('editor.back')}</span>
-        </button>
-        <div className="ml-auto flex items-center gap-1.5">
-          <PresenceBar users={presenceUsers} isConnected={isConnected} maxVisible={2} />
+      {/* Mobile Editor Header — iOS 风格双行结构
+          第 1 行：返回 + 面包屑（笔记本路径）+ 同步状态
+          第 2 行：当前笔记标题（截断）+ 收藏 + 更多
+          说明：
+            - 小屏宽度有限，原来一行塞 5 个图标按钮已挤压，且看不到笔记本路径与标题；
+            - 锁/置顶属低频开关，挪进 ⋯ 菜单，菜单项里反映当前状态；
+            - Presence 头像在小屏意义不大，移动端不渲染；桌面端保留。 */}
+      <header className="flex flex-col border-b border-app-border bg-app-surface/50 md:hidden" style={{ paddingTop: 'var(--safe-area-top)' }}>
+        {/* 第 1 行：返回 + 面包屑 + 同步 */}
+        <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+          <button
+            onClick={() => actions.setMobileView("list")}
+            className="flex items-center text-accent-primary py-1 px-1 -ml-1 rounded-lg active:bg-app-hover shrink-0"
+            aria-label={t('editor.back')}
+          >
+            <ChevronLeft size={22} />
+          </button>
+          {/* 面包屑：完整路径，最后一段加粗强调，超长可滚动避免截断成 "..."
+              点击调起"移动到笔记本"菜单（与桌面端面包屑可点击的语义一致） */}
+          <button
+            onClick={() => { setShowMobileMenu(true); setShowMobileMoveMenu(true); }}
+            className="flex-1 min-w-0 flex items-center gap-1 text-xs text-tx-tertiary active:bg-app-hover rounded-md px-1.5 py-1 overflow-hidden"
+            title={t('editor.moveToNotebook')}
+          >
+            {currentPath.length > 0 ? (
+              <span className="flex items-center gap-1 min-w-0 overflow-hidden">
+                {currentPath.map((nb, idx) => {
+                  const isLast = idx === currentPath.length - 1;
+                  return (
+                    <React.Fragment key={nb.id}>
+                      {idx > 0 && <ChevronRight size={10} className="text-tx-tertiary/60 shrink-0" />}
+                      <span className={cn("flex items-center gap-0.5 shrink-0", isLast && "text-tx-secondary font-medium")}>
+                        <span className="leading-none">{nb.icon || "📁"}</span>
+                        <span className={cn("truncate", isLast ? "max-w-[120px]" : "max-w-[64px]")}>{nb.name}</span>
+                      </span>
+                    </React.Fragment>
+                  );
+                })}
+              </span>
+            ) : (
+              <span>—</span>
+            )}
+          </button>
           <SyncIndicator syncStatus={syncStatus} lastSyncedAt={lastSyncedAt} onManualSync={handleManualSync} />
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleLock}
-            title={activeNote.isLocked ? t('editor.unlockTooltip') : t('editor.lockTooltip')}>
-            {activeNote.isLocked
-              ? <Lock size={16} className="text-orange-500" />
-              : <Unlock size={16} />}
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={togglePin}>
-            <Pin size={16} className={cn(activeNote.isPinned && "text-accent-primary fill-accent-primary")} />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleFavorite}>
-            <Star size={16} className={cn(activeNote.isFavorite && "text-amber-400 fill-amber-400")} />
+        </div>
+        {/* 第 2 行：标题 + 收藏 + 更多 */}
+        <div className="flex items-center gap-1 px-3 pb-2 pt-0.5">
+          <div className="flex-1 min-w-0 flex items-center gap-1.5">
+            {/* 锁/置顶 状态徽章（只显示已激活状态，未激活不占位）
+                注意：isLocked / isPinned 在 SQLite 里是 0/1，直接 `value && <Icon/>`
+                当 value=0 时短路结果是数字 0，React 会把 0 当文本渲染出来——
+                所以这里必须用显式布尔判断，否则页面会出现裸的 "0"。 */}
+            {activeNote.isLocked ? <Lock size={13} className="text-orange-500 shrink-0" /> : null}
+            {activeNote.isPinned ? <Pin size={13} className="text-accent-primary fill-accent-primary shrink-0" /> : null}
+            <span className="truncate text-sm font-semibold text-tx-primary">
+              {activeNote.title || t('editor.untitled')}
+            </span>
+          </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={toggleFavorite}
+            aria-label={activeNote.isFavorite ? t('editor.unfavoriteTooltip') : t('editor.favoriteTooltip')}>
+            <Star size={17} className={cn(activeNote.isFavorite && "text-amber-400 fill-amber-400")} />
           </Button>
           {/* 更多操作按钮 */}
-          <div className="relative" ref={mobileMenuRef}>
+          <div className="relative shrink-0" ref={mobileMenuRef}>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setShowMobileMenu(!showMobileMenu); setShowMobileMoveMenu(false); }}>
               <MoreHorizontal size={16} />
             </Button>
@@ -1423,6 +1461,26 @@ export default function EditorPane() {
                   transition={{ duration: 0.12 }}
                   className="absolute top-full right-0 mt-1 w-56 bg-app-elevated border border-app-border rounded-lg shadow-xl z-50 py-1 overflow-hidden"
                 >
+                  {/* 锁定 / 解锁 —— 原顶栏外露按钮，移入菜单避免拥挤 */}
+                  <button
+                    onClick={() => { toggleLock(); setShowMobileMenu(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                  >
+                    {activeNote.isLocked
+                      ? <Lock size={15} className="text-orange-500" />
+                      : <Unlock size={15} className="text-tx-tertiary" />}
+                    <span>{activeNote.isLocked ? t('editor.unlockTooltip') : t('editor.lockTooltip')}</span>
+                  </button>
+                  {/* 置顶 / 取消置顶 */}
+                  <button
+                    onClick={() => { togglePin(); setShowMobileMenu(false); }}
+                    disabled={!!activeNote.isLocked}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
+                  >
+                    <Pin size={15} className={cn(activeNote.isPinned ? "text-accent-primary fill-accent-primary" : "text-tx-tertiary")} />
+                    <span>{activeNote.isPinned ? t('editor.unpinTooltip') : t('editor.pinTooltip')}</span>
+                  </button>
+                  <div className="h-px bg-app-border mx-2 my-0.5" />
                   {/* 移动笔记本 */}
                   <button
                     onClick={() => setShowMobileMoveMenu(!showMobileMoveMenu)}
@@ -1670,18 +1728,27 @@ export default function EditorPane() {
           >
             {currentPath.length > 0 ? (
               <span className="flex items-center gap-1 min-w-0">
-                {currentPath.map((nb, idx) => (
-                  <React.Fragment key={nb.id}>
-                    {idx > 0 && <ChevronRight size={11} className="text-tx-tertiary/60 shrink-0" />}
-                    <span className={cn(
-                      "flex items-center gap-1 shrink-0 truncate",
-                      idx === currentPath.length - 1 && "text-tx-secondary font-medium"
-                    )}>
-                      <span>{nb.icon || "📁"}</span>
-                      <span className="truncate max-w-[120px]">{nb.name}</span>
-                    </span>
-                  </React.Fragment>
-                ))}
+                {currentPath.map((nb, idx) => {
+                  const isLast = idx === currentPath.length - 1;
+                  // 末段允许收缩并截断（min-w-0 + 不加 shrink-0），中间段保持紧凑不收缩
+                  // 之前所有段都用 shrink-0 + truncate，导致 truncate 失效、文字与 emoji/箭头视觉重叠
+                  return (
+                    <React.Fragment key={nb.id}>
+                      {idx > 0 && <ChevronRight size={11} className="text-tx-tertiary/60 shrink-0" />}
+                      <span
+                        className={cn(
+                          "flex items-center gap-1",
+                          isLast ? "min-w-0 text-tx-secondary font-medium" : "shrink-0"
+                        )}
+                      >
+                        <span className="shrink-0 leading-none">{nb.icon || "📁"}</span>
+                        <span className={cn("truncate", isLast ? "max-w-[180px]" : "max-w-[120px]")}>
+                          {nb.name}
+                        </span>
+                      </span>
+                    </React.Fragment>
+                  );
+                })}
               </span>
             ) : (
               <span>—</span>
