@@ -345,14 +345,29 @@ app.post("/", async (c) => {
     }
   }
 
-  const id = uuid();
-  db.prepare(`
-    INSERT INTO notes (id, userId, workspaceId, notebookId, title, content, contentText)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id, userId, inheritedWorkspaceId, body.notebookId,
-    body.title || "无标题笔记", body.content || "{}", body.contentText || "",
-  );
+  // Phase D: 接受 client 提供的 id（用于离线创建场景，前端用 UUID v4 直接生成）。
+  //   - 仅校验格式：必须是 UUID v4（避免被注入恶意值，比如路径片段）
+  //   - INSERT 时若 id 已存在，SQLite UNIQUE 约束会抛错，下方 try/catch 转 409
+  let id: string;
+  if (typeof body.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.id)) {
+    id = body.id;
+  } else {
+    id = uuid();
+  }
+  try {
+    db.prepare(`
+      INSERT INTO notes (id, userId, workspaceId, notebookId, title, content, contentText)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, userId, inheritedWorkspaceId, body.notebookId,
+      body.title || "无标题笔记", body.content || "{}", body.contentText || "",
+    );
+  } catch (e: any) {
+    if (String(e?.code || "").startsWith("SQLITE_CONSTRAINT")) {
+      return c.json({ error: "笔记 ID 已存在", code: "NOTE_ID_CONFLICT" }, 409);
+    }
+    throw e;
+  }
 
   // A2: 自动抽取 content 里的内联 data:image base64 → attachments 表 + 物理文件。
   // 创建路径同样可能携带 base64（如：富文本编辑器粘贴图片后立即新建笔记保存）。
