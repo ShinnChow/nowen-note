@@ -225,7 +225,18 @@ for (const a of ARCH_LIST) {
         continue;
     }
     const tarName = `nowen-note-${VERSION}-${a}.tar`;
-    saveImage(picked, join(archDir, tarName));
+    // ugcli check 会交叉验证 tar 内嵌的 RepoTag 与 docker-compose.yaml 的 image 字段是否一致。
+    // picked 可能是 cropflre/nowen-note:v1.1.6-amd64（带架构后缀），
+    // 而 compose 里写的是 IMAGE_REF（不带后缀）——不一致会被 check 拦下。
+    // 这里 save 前先 retag 到 IMAGE_REF，让 tar 里的 RepoTag 与 compose 对齐。
+    // 多架构之间会覆盖同一个 tag，但无所谓：每个架构的 tar 在这一轮循环里
+    // 已经落地。虚奇贵 NAS 部署时只 load 本机架构那一份。
+    if (picked !== IMAGE_REF) {
+        console.log(`[upk]   docker tag ${picked} ${IMAGE_REF}`);
+        const tagRet = spawnSync('docker', ['tag', picked, IMAGE_REF], { stdio: 'inherit' });
+        if (tagRet.status !== 0) throw new Error(`docker tag 失败: ${picked} -> ${IMAGE_REF}`);
+    }
+    saveImage(IMAGE_REF, join(archDir, tarName));
     realArchList.push(a);
 }
 
@@ -257,6 +268,16 @@ if (!UGCLI) {
     process.exit(1);
 }
 console.log(`[upk] 使用 ugcli: ${UGCLI}`);
+// 从 Windows 处同步过来的 ugcli 二进制可能丢失可执行位，会表现为
+// "Permission denied"——但 spawnSync 会拿到个错误退出码，在上层被误会为 check 失败。
+// 这里主动补上 +x，并口子个复发。
+if (process.platform !== 'win32') {
+    try {
+        execSync(`chmod +x "${UGCLI}"`);
+    } catch {
+        /* 未付予权限也不阻断后续，spawnSync 如果真的不能运行会报原始错误 */
+    }
+}
 
 console.log('[upk] ugcli check');
 const checkRet = spawnSync(UGCLI, ['check', '--path', WORK_DIR], { stdio: 'inherit' });

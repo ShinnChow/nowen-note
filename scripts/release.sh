@@ -1186,7 +1186,8 @@ EOF
         die "git tag ${VERSION_TAG} 已存在（本地）"
     fi
     # 检查 GitHub / Docker Hub 是否已存在（三端任何一处已占用都禁止覆盖）
-    if version_exists_anywhere "$VERSION"; then
+    # 例外：选项 10（_UPK_ONLY_MODE=1）补 upk 时，"已存在"恰恰是必要前提（要复用版本），跳过这条 die。
+    if [ "${_UPK_ONLY_MODE:-0}" != "1" ] && version_exists_anywhere "$VERSION"; then
         die "版本 ${VERSION_TAG} 在 本地 / GitHub / Docker Hub 中已存在，拒绝覆盖"
     fi
 fi
