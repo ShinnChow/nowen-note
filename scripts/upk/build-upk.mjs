@@ -298,21 +298,36 @@ if (packRet.status !== 0) {
 }
 
 // ---------- 6. 找产物 ----------
-function listUpks(dir) {
-    if (!existsSync(dir)) return [];
-    return readdirSync(dir)
-        .filter((f) => f.toLowerCase().endsWith('.upk'))
-        .map((f) => join(dir, f));
+// ugcli 实际把 .upk 写到 build_dir/pkgs/upk/<arch>_<app_id>_<ver>.<build>.upk，
+// 不同版本/工具链可能换路径（build_dir / build / pkgs/upk / ...），所以这里直接
+// 递归扫整个 WORK_DIR + OUT_DIR，找全所有 .upk，简单暴力但稳。
+function listUpksRecursive(dir, acc = []) {
+    if (!existsSync(dir)) return acc;
+    for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        let st;
+        try {
+            st = statSync(p);
+        } catch {
+            continue;
+        }
+        if (st.isDirectory()) listUpksRecursive(p, acc);
+        else if (name.toLowerCase().endsWith('.upk')) acc.push(p);
+    }
+    return acc;
 }
-const candidatesDir = [join(WORK_DIR, 'build_dir'), join(WORK_DIR, 'build'), WORK_DIR, OUT_DIR];
-const found = candidatesDir.flatMap(listUpks);
+const found = [...listUpksRecursive(WORK_DIR), ...listUpksRecursive(OUT_DIR)];
 const moved = [];
+const seen = new Set();
 for (const src of found) {
     const dst = join(OUT_DIR, basename(src));
     if (resolve(src) !== resolve(dst)) {
         cpSync(src, dst);
         rmSync(src, { force: true });
     }
+    const key = resolve(dst);
+    if (seen.has(key)) continue;
+    seen.add(key);
     moved.push(dst);
 }
 if (moved.length === 0) {
