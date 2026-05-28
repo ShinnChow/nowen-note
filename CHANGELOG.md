@@ -12,6 +12,13 @@
 
 <!-- ADD_NEW_HERE -->
 
+## v1.1.9 - 2026-05-28
+
+### 🐛 修复
+
+- **desktop**: prevent local mode reload loop (490f5a3)
+
+
 ## v1.1.8 - 2026-05-28
 
 ### 🐛 修复

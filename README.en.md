@@ -134,6 +134,12 @@ If this project helps you, feel free to scan the QR code and buy the author a co
 
 > 最近 5 个版本的更新内容，完整历史见 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.1.9 - 2026-05-28
+
+### 🐛 修复
+
+- **desktop**: prevent local mode reload loop (490f5a3)
+
 ### v1.1.8 - 2026-05-28
 
 ### 🐛 修复
@@ -149,6 +155,7 @@ If this project helps you, feel free to scan the QR code and buy the author a co
 
 ### 🐛 修复
 
+- 修复桌面端切回本地离线模式时，本地后端被误判为远端导致黑屏/反复闪屏的问题。
 - 修复后端实时删除广播编译错误 (22fcc3c)
 - improve multi-device note sync (0beb31e)
 - **upk**: 补回被上一个 commit 误删的 const found 行 (0e81338)
@@ -266,9 +273,5 @@ If this project helps you, feel free to scan the QR code and buy the author a co
 ### 📝 文档
 
 - **readme**: add Author's Note link in header (6e5d863)
-
-### v1.1.4 - 2026-05-20
-
-_本版本无可展示的 commit 变更（可能全部是合并 / 工作流修改）_
 
 <!-- CHANGELOG:END -->
