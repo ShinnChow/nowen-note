@@ -12,6 +12,24 @@
 
 <!-- ADD_NEW_HERE -->
 
+## v1.1.12 - 2026-06-01
+
+### 🐛 修复
+
+- resolve remaining TS null-check and changeIndent type errors (98fc8fd)
+- resolve all 13 TS7006/7022/7023/7031 implicit any errors (732420d)
+- clip row resize guide line to table bounds (a5a6c5c)
+- clip row resize guide line to editor bounds (45f9342)
+- table row height drag now follows mouse in real-time via transaction (1edae9c)
+- improve table row height resize UX - wider hit area and real-time visual feedback (539c56c)
+- Backspace at line start reduces indent level (437fb38)
+- table bubble merge button visibility + mini toolbar (ea6a088)
+
+### 📌 杂项
+
+- Update README.md (4b9a660)
+
+
 ## v1.1.11 - 2026-05-29
 
 ### ✨ 新增
