@@ -1537,7 +1537,7 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
         // 行首 Backspace ：若有 indent > 0 则先减缩进
         const currentIndent = (parent.attrs as any).indent || 0;
         if (currentIndent > 0) {
-          return editor.chain().focus().changeIndent(-1).run();
+          return (editor as any).chain().focus().changeIndent(-1).run();
         }
         // 仅对 heading / blockquote 做行首 backspace 转段落
         if (parentType !== "heading" && parentType !== "blockquote") {
@@ -2990,10 +2990,10 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
         .then((res) => {
           if (res.category === "image") {
             // 图片：与 handleImageUpload 一致，走 setImage
-            editor.chain().focus().setImage({ src: res.url }).run();
+            editor!.chain().focus().setImage({ src: res.url }).run();
           } else {
             const html = buildAttachmentLinkHtml(res.filename, res.url, res.size);
-            editor.chain().focus().insertContent(html).run();
+            editor!.chain().focus().insertContent(html).run();
           }
           toast.success(t("tiptap.attachmentUploaded") || "Attachment uploaded");
         })
