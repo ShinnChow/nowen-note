@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Sidebar from "@/components/Sidebar";
 import NavRail from "@/components/NavRail";
 import { useRailMode } from "@/hooks/useRailMode";
-import NoteList from "@/components/NoteList";
 import EditorPane from "@/components/EditorPane";
 import TaskCenter from "@/components/TaskCenter";
 import MindMapCenter from "@/components/MindMapEditor";
@@ -17,7 +16,7 @@ import LoginPage from "@/components/LoginPage";
 import QuickLoginGate from "@/components/QuickLoginGate";
 import QuickLoginEnrollDialog from "@/components/QuickLoginEnrollDialog";
 import WhatsNewModal, { useWhatsNew } from "@/components/WhatsNewModal";
-import { AppProvider, useApp, useAppActions, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SIDEBAR_WIDTH, MIN_NOTELIST_WIDTH, MAX_NOTELIST_WIDTH, DEFAULT_NOTELIST_WIDTH } from "@/store/AppContext";
+import { AppProvider, useApp, useAppActions, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SIDEBAR_WIDTH } from "@/store/AppContext";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SiteSettingsProvider, useSiteSettings } from "@/hooks/useSiteSettings";
 import { UserPreferencesProvider, useUserPreferences } from "@/hooks/useUserPreferences";
@@ -198,52 +197,6 @@ function SidebarResizeHandle() {
   );
 }
 
-function NoteListResizeHandle() {
-  const { state } = useApp();
-  const actions = useAppActions();
-  const isDragging = useRef(false);
-  const startX = useRef(0);
-  const startWidth = useRef(0);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isDragging.current = true;
-    startX.current = e.clientX;
-    startWidth.current = state.noteListWidth;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const handleMouseMove = (ev: MouseEvent) => {
-      if (!isDragging.current) return;
-      const newWidth = startWidth.current + (ev.clientX - startX.current);
-      actions.setNoteListWidth(Math.max(MIN_NOTELIST_WIDTH, Math.min(MAX_NOTELIST_WIDTH, newWidth)));
-    };
-
-    const handleMouseUp = () => {
-      isDragging.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  }, [state.noteListWidth, actions]);
-
-  // 笔记列表折叠后拖拽条也需同步隐藏，避免留下一根“孤儿拖柄”拖到空列。
-  if (state.noteListCollapsed) return null;
-
-  return (
-    <div
-      onMouseDown={handleMouseDown}
-      onDoubleClick={() => actions.setNoteListWidth(DEFAULT_NOTELIST_WIDTH)}
-      className="hidden md:flex w-1 cursor-col-resize items-center justify-center hover:bg-accent-primary/30 active:bg-accent-primary/50 transition-colors shrink-0 group"
-    >
-      <div className="w-[2px] h-8 rounded-full bg-transparent group-hover:bg-accent-primary/60 transition-colors" />
-    </div>
-  );
-}
 
 /**
  * P3: 侧边栏边缘滑动手势 Hook
@@ -614,23 +567,6 @@ function AppLayout() {
         </div>
       ) : (
         <div className="flex-1 flex relative overflow-hidden">
-          {/* 笔记列表 — 桌面端动态宽度，移动端全宽。
-              桌面端 noteListCollapsed = true 时整列不渲染（让编辑器占满）；
-              移动端不受该状态影响（本来就是 list/editor 单栏切换）。 */}
-          <div
-            className={`
-              flex flex-col shrink-0 h-full
-              max-md:!w-full
-              ${state.noteListCollapsed ? "max-md:flex md:hidden" : ""}
-              ${state.mobileView === "list" ? "flex" : "hidden md:flex"}
-            `}
-            style={{ width: `${state.noteListWidth}px` }}
-          >
-            <NoteList />
-          </div>
-
-          {/* 拖拽分割条 */}
-          <NoteListResizeHandle />
 
           {/* 编辑器 — 移动端全屏覆盖 */}
           <div className={`
