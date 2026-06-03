@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, Plus, Star, Trash2, Search, ChevronRight, FileText,
@@ -27,7 +27,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "@/lib/toast";
 import { prompt as appPrompt } from "@/components/ui/confirm";
 
-/* ===== Emoji 图标选择�?===== */
+/* ===== Emoji 图标选择器 ===== */
 const EMOJI_GROUPS = [
   {
     label: "objects",
@@ -93,7 +93,7 @@ function EmojiIconPicker({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  // 确保弹窗不溢出视�?
+  // 确保弹窗不溢出视口
   const [adjustedPos, setAdjustedPos] = useState(position);
   useEffect(() => {
     if (ref.current) {
@@ -178,7 +178,7 @@ function buildTree(notebooks: Notebook[]): Notebook[] {
       roots.push(node);
     }
   });
-  // �?sortOrder 稳定排序，确保拖拽后的新顺序立即反映�?UI
+  // 按 sortOrder 稳定排序，确保拖拽后的新顺序立即反映到 UI
   const byOrder = (a: Notebook, b: Notebook) =>
     (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
   const sortRecursive = (list: Notebook[]) => {
@@ -191,14 +191,14 @@ function buildTree(notebooks: Notebook[]): Notebook[] {
   return roots;
 }
 
-/* ===== 移动笔记本：树形选择器条�?===== */
+/* ===== 移动笔记本：树形选择器条目 ===== */
 function NotebookMoveTreeItem({
   notebook, depth, selectedId, disabledIds, currentParentId, onSelect,
 }: {
   notebook: Notebook; depth: number;
   selectedId: string | null;
-  disabledIds: Set<string>;          // 自身及子孙（禁用�?
-  currentParentId: string | null;    // 当前父级（显�?当前"标记�?
+  disabledIds: Set<string>;          // 自身及子孙（禁用）
+  currentParentId: string | null;    // 当前父级（显示"当前"标记）
   onSelect: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -262,7 +262,7 @@ function MoveNotebookModal({
   onMove: (newParentId: string | null) => void;
   onClose: () => void;
 }) {
-  // selectedId: null �?未选择�?__ROOT__" �?根级；其�?�?目标�?id
+  // selectedId: null → 未选择；"__ROOT__" → 根级；其他 → 目标父 id
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { t } = useTranslation();
 
@@ -281,7 +281,7 @@ function MoveNotebookModal({
 
   if (!isOpen || !notebook) return null;
 
-  // 计算自身及所有后�?id（禁用）
+  // 计算自身及所有后代 id（禁用）
   const disabledIds = new Set<string>();
   const collect = (id: string) => {
     disabledIds.add(id);
@@ -293,7 +293,7 @@ function MoveNotebookModal({
 
   const tree = buildTree(allNotebooks);
   const currentParentId = notebook.parentId ?? null;
-  // 有效选中目标（包�?root�?
+  // 有效选中目标（包含 root）
   const selectedTarget: string | null | undefined =
     selectedId === "__ROOT__" ? null : selectedId;
   const isChanged =
@@ -357,7 +357,7 @@ function MoveNotebookModal({
               />
             ))}
             {tree.length === 0 && (
-              <p className="text-xs text-tx-tertiary text-center py-4">{/* 无数�?*/}</p>
+              <p className="text-xs text-tx-tertiary text-center py-4">{/* 无数据 */}</p>
             )}
           </div>
         </div>
@@ -384,12 +384,15 @@ function NotebookItem({
   editingId, editValue, onEditChange, onEditSubmit, onEditCancel,
   onIconChange,
   draggable, onDragStart, onDragOver, onDragEnd, onDrop, dragOverId, dragOverZone,
-  notes, activeNoteId, onCreateNote, onDeleteNote, onRenameNote,
-  onToggleFavorite, onTogglePin,
 }: {
   notebook: Notebook; depth: number; onSelect: (id: string) => void;
   selectedId: string | null; onToggle: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string) => void;
+  /**
+   * 移动端长按触发，与 onContextMenu 等价但携带的是 touch 坐标。
+   * Android WebView 上不会派发 contextmenu 事件，因此必须有这条手动通路，
+   * 否则在手机上"建立的笔记本不能在手机端删除"。
+   */
   onLongPress?: (clientX: number, clientY: number, id: string) => void;
   editingId: string | null; editValue: string;
   onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
@@ -401,13 +404,6 @@ function NotebookItem({
   onDrop?: (e: React.DragEvent, id: string) => void;
   dragOverId?: string | null;
   dragOverZone?: "before" | "inside" | null;
-  notes?: NoteListItem[];
-  activeNoteId?: string | null;
-  onCreateNote?: (notebookId: string) => void;
-  onDeleteNote?: (noteId: string) => void;
-  onRenameNote?: (noteId: string, newTitle: string) => void;
-  onToggleFavorite?: (noteId: string) => void;
-  onTogglePin?: (noteId: string) => void;
 }) {
   const { t } = useTranslation();
   const isSelected = selectedId === notebook.id;
@@ -421,12 +417,12 @@ function NotebookItem({
   const iconRef = useRef<HTMLButtonElement>(null);
   const [showIconPicker, setShowIconPicker] = useState(false);
 
-  // 移动端长�?�?触发上下文菜单（删除/重命�?导出 等）�?
-  // - 600ms 阈值与笔记列表 (NoteList) / 思维导图项保持一致，避免用户跨场景手感不同�?
+  // 移动端长按 → 触发上下文菜单（删除/重命名/导出 等）。
+  // - 600ms 阈值与笔记列表 (NoteList) / 思维导图项保持一致，避免用户跨场景手感不同。
   // - touchmove / touchend / touchcancel 任一触发都要清掉计时器，否则用户只是
-  //   在列表上滑动也会误触菜单�?
+  //   在列表上滑动也会误触菜单。
   // - 计时器记录起始坐标：iOS/Android 在长按期间触摸点会有几像素抖动，
-  //   超过 ~10px 视为"用户在滚�?，主动取消�?
+  //   超过 ~10px 视为"用户在滚动"，主动取消。
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressStart = useRef<{ x: number; y: number } | null>(null);
   const cancelLongPress = () => {
@@ -454,7 +450,7 @@ function NotebookItem({
 
   return (
     <>
-      {/* 拖拽"排序到之�?的蓝线指示器 */}
+      {/* 拖拽"排序到之前"的蓝线指示器 */}
       {showBeforeIndicator && (
         <div
           className="h-0.5 bg-accent-primary rounded-full mx-2 my-0.5 pointer-events-none"
@@ -467,7 +463,7 @@ function NotebookItem({
         className={cn(
           "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm group transition-colors min-w-0",
           isSelected ? "bg-app-active text-tx-primary" : "text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
-          // inside 放置指示：显著的内边�?+ 背景高亮，让用户清楚"将作为子项放�?
+          // inside 放置指示：显著的内边框 + 背景高亮，让用户清楚"将作为子项放入"
           showInsideIndicator && "outline outline-2 outline-accent-primary bg-accent-primary/15"
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
@@ -491,7 +487,7 @@ function NotebookItem({
           if (!start) return;
           const touch = e.touches[0];
           if (!touch) return;
-          // 抖动容差�? 10px 视为用户在滚�?/ 拖动，撤销长按
+          // 抖动容差：> 10px 视为用户在滚动 / 拖动，撤销长按
           const dx = touch.clientX - start.x;
           const dy = touch.clientY - start.y;
           if (dx * dx + dy * dy > 100) cancelLongPress();
@@ -499,12 +495,12 @@ function NotebookItem({
         onTouchEnd={cancelLongPress}
         onTouchCancel={cancelLongPress}
         draggable={draggable && !isEditing}
-        // framer-motion �?motion.div �?onDragStart/onDrag/onDragEnd 的类�?
+        // framer-motion 的 motion.div 把 onDragStart/onDrag/onDragEnd 的类型
         // 重载为手势系统签名（MouseEvent | PointerEvent | TouchEvent + PanInfo），
-        // 且没有暴�?React.DragEvent 的重载分支。但只有�?motion 组件显式设置
+        // 且没有暴露 React.DragEvent 的重载分支。但只有在 motion 组件显式设置
         // drag prop 时才启用手势；我们没启用，运行时 motion 会把这些 handler
-        // 原样透传到底�?DOM �?ondragstart/ondragover 等（HTML5 DnD）�?
-        // 因此�?`as any` 绕过 TS 的手势签名约束，运行时行为与原生 DnD 一致�?
+        // 原样透传到底层 DOM 的 ondragstart/ondragover 等（HTML5 DnD）。
+        // 因此用 `as any` 绕过 TS 的手势签名约束，运行时行为与原生 DnD 一致。
         onDragStart={((e: React.DragEvent) => { e.stopPropagation(); onDragStart?.(e, notebook.id); }) as any}
         onDragOver={((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); onDragOver?.(e, notebook.id); }) as any}
         onDragEnd={() => onDragEnd?.()}
@@ -593,8 +589,8 @@ function NotebookItem({
                 onDragEnd={onDragEnd}
                 onDrop={onDrop}
                 dragOverId={dragOverId}
+                                dragOverZone={dragOverZone}
                 notes={notes}
-                dragOverZone={dragOverZone}
                 activeNoteId={activeNoteId}
                 onCreateNote={onCreateNote}
                 onDeleteNote={onDeleteNote}
@@ -603,7 +599,7 @@ function NotebookItem({
                 onTogglePin={onTogglePin}
               />
             ))}
-            {/* 该笔记本直属的笔记列表 */}
+            {/* Inline notes for this notebook */}
             {notes && notes.length > 0 && (
               <div className="space-y-0.5">
                 {notes.map((note) => (
@@ -627,15 +623,15 @@ function NotebookItem({
                 ))}
               </div>
             )}
-            {/* 新建笔记按钮 */}
+            {/* Create note button */}
             {onCreateNote && (
               <button
                 className="w-full flex items-center gap-1.5 py-1 text-[11px] text-tx-tertiary hover:text-accent-primary transition-colors"
-                style={{ paddingLeft: `${(depth + 1) * 16 + 28}px` }}
+                style={{ paddingLeft: ${(depth + 1) * 16 + 28}px }}
                 onClick={(e) => { e.stopPropagation(); onCreateNote(notebook.id); }}
               >
                 <Plus size={12} />
-                <span>新建笔记</span>
+                <span>{"\u65b0\u5efa\u7b14\u8bb0"}</span>
               </button>
             )}
           </motion.div>
@@ -644,8 +640,9 @@ function NotebookItem({
     </>
   );
 }
+}
 
-/** 内联笔记项 - 显示在笔记本树展开后的笔记列表中 */
+/** Inline note item - rendered inside expanded notebook tree */
 function NoteNoteItem({
   note, depth, isActive, onSelect, onDelete, onRename, onToggleFavorite, onTogglePin,
 }: {
@@ -680,10 +677,10 @@ function NoteNoteItem({
   const timeAgo = useMemo(() => {
     const d = new Date(note.updatedAt);
     const diff = Date.now() - d.getTime();
-    if (diff < 60000) return "刚刚";
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
-    if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`;
+    if (diff < 60000) return "\u521a\u521a";
+    if (diff < 3600000) return ${Math.floor(diff / 60000)}\u5206\u949f\u524d;
+    if (diff < 86400000) return ${Math.floor(diff / 3600000)}\u5c0f\u65f6\u524d;
+    if (diff < 604800000) return ${Math.floor(diff / 86400000)}\u5929\u524d;
     return d.toLocaleDateString();
   }, [note.updatedAt]);
 
@@ -694,7 +691,7 @@ function NoteNoteItem({
           "flex items-center gap-1.5 py-1 pr-1 rounded-md cursor-pointer text-xs group transition-colors min-w-0",
           isActive ? "bg-app-active text-tx-primary" : "text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
         )}
-        style={{ paddingLeft: `${depth * 16 + 28}px` }}
+        style={{ paddingLeft: ${depth * 16 + 28}px }}
         onClick={() => onSelect(note.id)}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMenuPos({ x: e.clientX, y: e.clientY }); setShowMenu(true); }}
       >
@@ -719,8 +716,8 @@ function NoteNoteItem({
           </div>
         )}
         <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {note.isPinned === 1 && <span className="text-[10px]">📌</span>}
-          {note.isFavorite === 1 && <span className="text-[10px]">⭐</span>}
+          {note.isPinned === 1 && <span className="text-[10px]">{String.fromCodePoint(0x1F4CC)}</span>}
+          {note.isFavorite === 1 && <span className="text-[10px]">{String.fromCodePoint(0x2B50)}</span>}
         </div>
       </div>
       {showMenu && (
@@ -731,20 +728,20 @@ function NoteNoteItem({
         >
           <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-app-hover flex items-center gap-2"
             onClick={() => { setShowMenu(false); onTogglePin(note.id); }}>
-            {note.isPinned ? "取消置顶" : "📌 置顶"}
+            {note.isPinned ? "\u53d6\u6d88\u7f6e\u9876" : String.fromCodePoint(0x1F4CC) + " \u7f6e\u9876"}
           </button>
           <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-app-hover flex items-center gap-2"
             onClick={() => { setShowMenu(false); onToggleFavorite(note.id); }}>
-            {note.isFavorite ? "取消收藏" : "⭐ 收藏"}
+            {note.isFavorite ? "\u53d6\u6d88\u6536\u85cf" : String.fromCodePoint(0x2B50) + " \u6536\u85cf"}
           </button>
           <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-app-hover flex items-center gap-2"
             onClick={() => { setShowMenu(false); setIsEditing(true); setEditValue(note.title); }}>
-            <Edit2 size={12} /> 重命名
+            <Edit2 size={12} /> {"\u91cd\u547d\u540d"}
           </button>
           <div className="my-1 border-t border-app-border/50" />
           <button className="w-full px-3 py-1.5 text-xs text-left hover:bg-app-hover flex items-center gap-2 text-accent-danger"
             onClick={() => { setShowMenu(false); onDelete(note.id); }}>
-            <Trash2 size={12} /> 删除
+            <Trash2 size={12} /> {"\u5220\u9664"}
           </button>
         </div>
       )}
@@ -752,22 +749,21 @@ function NoteNoteItem({
   );
 }
 
-
-// 笔记本右键菜单项 - 在组件内使用 t() 动态生�?
+// 笔记本右键菜单项 - 在组件内使用 t() 动态生成
 
 /**
  * Sidebar
  *
  * variant:
- *   - "mobile"（默认）：抽屉式主区——WorkspaceSwitcher + 搜索 + 笔记�?+ 标签�?
- *                      v16 P3 后续：移动端也已对齐桌面双层导航——导�?8 �?/ 设置 /
- *                      登出 / 关闭按钮全部迁移�?NavRail variant="mobile"，主区不再渲染�?
- *   - "desktop"：精简侧栏——仅 WorkspaceSwitcher + 搜索 + 笔记�?+ 标签�?
- *                导航、设置、登出、折叠按钮都迁移�?NavRail variant="desktop"�?
+ *   - "mobile"（默认）：抽屉式主区——WorkspaceSwitcher + 搜索 + 笔记本 + 标签。
+ *                      v16 P3 后续：移动端也已对齐桌面双层导航——导航 8 项 / 设置 /
+ *                      登出 / 关闭按钮全部迁移到 NavRail variant="mobile"，主区不再渲染。
+ *   - "desktop"：精简侧栏——仅 WorkspaceSwitcher + 搜索 + 笔记本 + 标签。
+ *                导航、设置、登出、折叠按钮都迁移到 NavRail variant="desktop"。
  *
- * 桌面端：App.tsx 渲染 <NavRail variant="desktop"/> + <Sidebar variant="desktop"/>�?
- * 移动端：App.tsx 渲染抽屉，内部为 <NavRail variant="mobile"/> + <Sidebar variant="mobile"/>�?
- * 桌面折叠态（sidebarCollapsed=true）下 App.tsx 隐藏整个 Sidebar 但保�?NavRail�?
+ * 桌面端：App.tsx 渲染 <NavRail variant="desktop"/> + <Sidebar variant="desktop"/>。
+ * 移动端：App.tsx 渲染抽屉，内部为 <NavRail variant="mobile"/> + <Sidebar variant="mobile"/>。
+ * 桌面折叠态（sidebarCollapsed=true）下 App.tsx 隐藏整个 Sidebar 但保留 NavRail。
  */
 export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | "mobile" } = {}) {
   const { state } = useApp();
@@ -775,20 +771,20 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
   const { siteConfig } = useSiteSettings();
   const isDesktop = variant === "desktop";
   const { t } = useTranslation();
-  // v16 P3 后续：Rail 三档视觉模式（icon / label / hidden），仅桌面变体使用�?
-  // 入口约定：Sidebar Header 那个按钮 = 循环切换到下一档，tooltip 提示下一档是什么�?
-  // 约束（在 App.tsx 实施）：sidebarCollapsed=true 时即�?mode=hidden 也强制显�?Rail�?
-  // 避免用户陷入"完全无侧栏入�?的死局——本组件不需要关心这个边界�?
+  // v16 P3 后续：Rail 三档视觉模式（icon / label / hidden），仅桌面变体使用。
+  // 入口约定：Sidebar Header 那个按钮 = 循环切换到下一档，tooltip 提示下一档是什么。
+  // 约束（在 App.tsx 实施）：sidebarCollapsed=true 时即便 mode=hidden 也强制显示 Rail，
+  // 避免用户陷入"完全无侧栏入口"的死局——本组件不需要关心这个边界。
   const [railMode, setRailMode] = useRailMode();
   const [searchInput, setSearchInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  // Y4: 当前工作区的功能开关。null = 个人空间（不受限），对象 = 工作�?normalized 配置�?
-  //     �?workspace-changed / workspace-features-changed 两个事件驱动刷新�?
+  // Y4: 当前工作区的功能开关。null = 个人空间（不受限），对象 = 工作区 normalized 配置。
+  //     由 workspace-changed / workspace-features-changed 两个事件驱动刷新。
   const [features, setFeatures] = useState<WorkspaceFeatures | null>(null);
-  // 是否系统管理�?+ 当前用户�?per-user 导出开关（v6 下沉后从 /api/me 读）�?
-  //   - 管理员：导出菜单项始终可见（保证数据救援能力�?
-  //   - 普通用户：�?me.personalExportEnabled 控制；老后端未返回字段时按 true 兜底
-  // �?DataManager/SettingsModal 保持同一取值方式，避免引入全局 CurrentUser hook�?
+  // 是否系统管理员 + 当前用户的 per-user 导出开关（v6 下沉后从 /api/me 读）。
+  //   - 管理员：导出菜单项始终可见（保证数据救援能力）
+  //   - 普通用户：受 me.personalExportEnabled 控制；老后端未返回字段时按 true 兜底
+  // 与 DataManager/SettingsModal 保持同一取值方式，避免引入全局 CurrentUser hook。
   const [isAdmin, setIsAdmin] = useState(false);
   const [personalExportAllowed, setPersonalExportAllowed] = useState(true);
   useEffect(() => {
@@ -803,7 +799,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       .catch(() => { if (!cancelled) setIsAdmin(false); });
     return () => { cancelled = true; };
   }, []);
-  // 标签区域折叠状�?- �?localStorage 恢复
+  // 标签区域折叠状态 - 从 localStorage 恢复
   const [tagsExpanded, setTagsExpanded] = useState(() => {
     try {
       const saved = localStorage.getItem("nowen-tags-expanded");
@@ -813,7 +809,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     }
   });
 
-  // 笔记本区域折叠状�?- �?localStorage 恢复
+  // 笔记本区域折叠状态 - 从 localStorage 恢复
   const [notebooksExpanded, setNotebooksExpanded] = useState(() => {
     try {
       const saved = localStorage.getItem("nowen-notebooks-expanded");
@@ -823,11 +819,11 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     }
   });
 
-  // v15 信息架构改造前：导航区是一个可折叠的扁�?8 项列表（与笔记本/标签的折叠策略一致）�?
-  // �?navExpanded + nowen-nav-expanded localStorage 控制。改造后导航被拆�?
-  // 工作�?/ 内容模块 / 工具 三组并始终展开，折叠交互被去掉——主入口不应被隐藏�?
+  // v15 信息架构改造前：导航区是一个可折叠的扁平 8 项列表（与笔记本/标签的折叠策略一致），
+  // 用 navExpanded + nowen-nav-expanded localStorage 控制。改造后导航被拆为
+  // 工作台 / 内容模块 / 工具 三组并始终展开，折叠交互被去掉——主入口不应被隐藏。
   // localStorage key 保留写权也不再读取，旧值会被自然遗忘；如果未来需要恢复，
-  // 可以重新引入这套 state�?
+  // 可以重新引入这套 state。
 
   // 切换标签折叠状态时持久化到 localStorage
   const toggleTagsExpanded = useCallback(() => {
@@ -847,100 +843,187 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     });
   }, []);
 
+  // ===== Inline notes: lazy-load when notebook expands =====
 
-  // ===== 内联笔记：展开笔记本时懒加载其直属笔记 =====
   const [notebookNotes, setNotebookNotes] = useState<Map<string, NoteListItem[]>>(new Map());
+
   const [noteLoading, setNoteLoading] = useState<Set<string>>(new Set());
 
+
+
   const loadNotesForNotebook = useCallback(async (notebookId: string) => {
+
     if (notebookNotes.has(notebookId) || noteLoading.has(notebookId)) return;
+
     setNoteLoading((prev) => new Set(prev).add(notebookId));
+
     try {
+
       const notes = await api.getNotes({ notebookId }) as NoteListItem[];
+
       setNotebookNotes((prev) => new Map(prev).set(notebookId, notes));
+
     } catch (err) {
+
       console.error("Failed to load notes:", notebookId, err);
+
     } finally {
+
       setNoteLoading((prev) => { const n = new Set(prev); n.delete(notebookId); return n; });
+
     }
+
   }, [notebookNotes, noteLoading]);
 
+
+
   const handleCreateNote = useCallback(async (notebookId: string) => {
+
     try {
+
       const note = await api.createNote({ notebookId, title: t("common.untitledNote") });
+
       actions.setActiveNote(note);
+
       setNotebookNotes((prev) => {
+
         const next = new Map(prev);
+
         const existing = next.get(notebookId) || [];
+
         next.set(notebookId, [...existing, { id: note.id, userId: note.userId, title: note.title, contentText: note.contentText || "", notebookId: note.notebookId, isPinned: note.isPinned || 0, isFavorite: note.isFavorite || 0, isLocked: note.isLocked || 0, isArchived: note.isArchived || 0, isTrashed: note.isTrashed || 0, version: note.version || 1, sortOrder: note.sortOrder || 0, updatedAt: note.updatedAt, createdAt: note.createdAt } as NoteListItem]);
+
         return next;
+
       });
+
       actions.refreshNotebooks();
+
     } catch (err) { console.error("Failed to create note:", err); }
+
   }, [actions, t]);
 
+
+
   const handleDeleteNote = useCallback(async (noteId: string, notebookId: string) => {
+
     try {
+
       await api.deleteNote(noteId);
+
       setNotebookNotes((prev) => { const next = new Map(prev); next.set(notebookId, (next.get(notebookId) || []).filter((n) => n.id !== noteId)); return next; });
+
       actions.refreshNotebooks();
+
     } catch (err) { console.error("Failed to delete note:", err); }
+
   }, [actions]);
+
+
 
   const handleRenameNote = useCallback(async (noteId: string, notebookId: string, newTitle: string) => {
+
     if (!newTitle.trim()) return;
+
     try {
+
       await api.updateNote(noteId, { title: newTitle.trim() });
+
       setNotebookNotes((prev) => { const next = new Map(prev); next.set(notebookId, (next.get(notebookId) || []).map((n) => n.id === noteId ? { ...n, title: newTitle.trim() } : n)); return next; });
+
       if (state.activeNote?.id === noteId) actions.setActiveNote({ ...state.activeNote!, title: newTitle.trim() });
+
     } catch (err) { console.error("Failed to rename note:", err); }
+
   }, [state.activeNote, actions]);
 
+
+
   const handleToggleFavorite = useCallback(async (noteId: string, notebookId: string) => {
+
     try {
+
       const notes = notebookNotes.get(notebookId) || [];
+
       const note = notes.find((n) => n.id === noteId);
+
       if (!note) return;
+
       const newVal = note.isFavorite ? 0 : 1;
+
       await api.updateNote(noteId, { isFavorite: newVal } as any);
+
       setNotebookNotes((prev) => { const next = new Map(prev); next.set(notebookId, (next.get(notebookId) || []).map((n) => n.id === noteId ? { ...n, isFavorite: newVal } : n)); return next; });
+
     } catch (err) { console.error("Failed to toggle favorite:", err); }
+
   }, [notebookNotes]);
+
+
 
   const handleTogglePin = useCallback(async (noteId: string, notebookId: string) => {
+
     try {
+
       const notes = notebookNotes.get(notebookId) || [];
+
       const note = notes.find((n) => n.id === noteId);
+
       if (!note) return;
+
       const newVal = note.isPinned ? 0 : 1;
+
       await api.updateNote(noteId, { isPinned: newVal } as any);
+
       setNotebookNotes((prev) => { const next = new Map(prev); next.set(notebookId, (next.get(notebookId) || []).map((n) => n.id === noteId ? { ...n, isPinned: newVal } : n)); return next; });
+
     } catch (err) { console.error("Failed to toggle pin:", err); }
+
   }, [notebookNotes]);
 
-  useEffect(() => {
-    state.notebooks.forEach((nb) => { if (nb.isExpanded === 1) loadNotesForNotebook(nb.id); });
-  }, [state.notebooks, loadNotesForNotebook]);
-  // 笔记本右键菜单项�?
 
-  // 监听 nowen:open-note 事件，打开笔记到编辑器
+
   useEffect(() => {
+
+    state.notebooks.forEach((nb) => { if (nb.isExpanded === 1) loadNotesForNotebook(nb.id); });
+
+  }, [state.notebooks, loadNotesForNotebook]);
+
+
+
+  // Listen for nowen:open-note to open note in editor
+
+  useEffect(() => {
+
     const handler = (e: Event) => {
+
       const detail = (e as CustomEvent).detail;
+
       if (detail?.note) {
+
         actions.setActiveNote(detail.note);
+
         actions.setMobileView("editor");
+
       }
+
     };
+
     window.addEventListener("nowen:open-note", handler);
+
     return () => window.removeEventListener("nowen:open-note", handler);
+
   }, [actions]);
+
+
+
+  // 笔记本右键菜单项。
   //
-  // "导出�?Markdown" 的可见性：
-  //   - 工作区下：保持原行为（始终可见）。工作区导出权限由后端的工作区成员资格控制�?
-  //   - 个人空间下：�?per-user 开�?personalExportAllowed（来自当前登录用户的
-  //     users.personalExportEnabled，v6 起从 /api/me 下发）控制；管理�?
-  //     （isAdmin）始终可见，确保管理员保留数据救援能力�?
+  // "导出为 Markdown" 的可见性：
+  //   - 工作区下：保持原行为（始终可见）。工作区导出权限由后端的工作区成员资格控制。
+  //   - 个人空间下：受 per-user 开关 personalExportAllowed（来自当前登录用户的
+  //     users.personalExportEnabled，v6 起从 /api/me 下发）控制；管理员
+  //     （isAdmin）始终可见，确保管理员保留数据救援能力。
   const notebookMenuItems: ContextMenuItem[] = useMemo(() => {
     const ws = getCurrentWorkspace();
     const isPersonal = !ws || ws === "personal";
@@ -948,7 +1031,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     const items: ContextMenuItem[] = [
       { id: "new_note", label: t('sidebar.newNote'), icon: <FilePlus size={14} /> },
       { id: "new_word_note", label: t('sidebar.importWordNote') || "导入 Word 文档", icon: <FileType2 size={14} /> },
-      { id: "new_url_note", label: t('sidebar.importUrlNote') || "导入公众号文�?, icon: <Link2 size={14} /> },
+      { id: "new_url_note", label: t('sidebar.importUrlNote') || "导入公众号文章", icon: <Link2 size={14} /> },
       { id: "new_sub", label: t('sidebar.newSubNotebook'), icon: <FolderPlus size={14} /> },
       { id: "sep1", label: "", separator: true },
       { id: "change_icon", label: t('sidebar.changeIcon'), icon: <Smile size={14} /> },
@@ -964,22 +1047,22 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     return items;
   }, [t, isAdmin, personalExportAllowed]);
 
-  // 右键菜单（桌面）/ 长按菜单（移动端共用同一�?state�?
+  // 右键菜单（桌面）/ 长按菜单（移动端共用同一份 state）
   const { menu, menuRef, openMenu, openMenuAt, closeMenu } = useContextMenu();
 
-  // 重命名状�?
+  // 重命名状态
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  // 更换图标状�?
+  // 更换图标状态
   const [iconPickerId, setIconPickerId] = useState<string | null>(null);
 
   // 删除确认
   const [deleteTarget, setDeleteTarget] = useState<Notebook | null>(null);
-  // 标签删除确认（自定义弹窗，替�?window.confirm�?
+  // 标签删除确认（自定义弹窗，替代 window.confirm）
   const [deleteTagTarget, setDeleteTagTarget] = useState<{ id: string; name: string; color: string } | null>(null);
 
-  // 清空回收站确�?
+  // 清空回收站确认
   const [emptyTrashOpen, setEmptyTrashOpen] = useState(false);
   const [emptyingTrash, setEmptyingTrash] = useState(false);
   const [trashCount, setTrashCount] = useState(0);
@@ -987,12 +1070,12 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
   // 移动笔记本模态框
   const [moveNbTarget, setMoveNbTarget] = useState<Notebook | null>(null);
 
-  // 笔记本拖拽排序状�?
+  // 笔记本拖拽排序状态
   const [dragNbId, setDragNbId] = useState<string | null>(null);
   const [dragOverNbId, setDragOverNbId] = useState<string | null>(null);
   const [dragOverNbZone, setDragOverNbZone] = useState<"before" | "inside" | null>(null);
 
-  // 标签颜色选择浮层状态（通过右键 / 长按触发�?
+  // 标签颜色选择浮层状态（通过右键 / 长按触发）
   const [tagColorPopover, setTagColorPopover] = useState<{
     tagId: string;
     tagName: string;
@@ -1000,7 +1083,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     x: number;
     y: number;
   } | null>(null);
-  // 长按计时�?
+  // 长按计时器
   const tagLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tagLongPressFired = useRef(false);
 
@@ -1011,7 +1094,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       api.getNotebooks().then(actions.setNotebooks).catch(console.error);
       api.getTags().then(actions.setTags).catch(console.error);
     };
-    // Y4: 加载当前工作区的功能开关——个人空间固定置 null（全开�?
+    // Y4: 加载当前工作区的功能开关——个人空间固定置 null（全开）
     const loadFeatures = () => {
       const ws = getCurrentWorkspace();
       if (!ws || ws === "personal") {
@@ -1035,7 +1118,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       // 触发 NoteList 重新拉取
       actions.refreshNotes();
     };
-    // Y4: MembersPanel �?owner 改功能开关后会广播此事件，让 Sidebar 立即更新可见�?
+    // Y4: MembersPanel 中 owner 改功能开关后会广播此事件，让 Sidebar 立即更新可见项
     const onFeaturesChanged = () => loadFeatures();
     window.addEventListener("nowen:workspace-changed", onWorkspaceChange);
     window.addEventListener("nowen:workspace-features-changed", onFeaturesChanged);
@@ -1045,7 +1128,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     };
   }, []);
 
-  // 更换笔记本图�?
+  // 更换笔记本图标
   const handleIconChange = useCallback(async (id: string, emoji: string) => {
     await api.updateNotebook(id, { icon: emoji }).catch(console.error);
     actions.setNotebooks(
@@ -1053,10 +1136,10 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     );
   }, [state.notebooks, actions]);
 
-  // 判断 candidateId 是否�?sourceId 的后代（用于循环引用防护�?
+  // 判断 candidateId 是否为 sourceId 的后代（用于循环引用防护）
   const isDescendant = useCallback((sourceId: string, candidateId: string): boolean => {
     if (sourceId === candidateId) return true;
-    // �?candidate 向上溯源，若链路包含 sourceId �?candidate �?source 的后�?
+    // 从 candidate 向上溯源，若链路包含 sourceId 则 candidate 是 source 的后代
     let cursor: string | null = candidateId;
     const visited = new Set<string>();
     while (cursor) {
@@ -1069,7 +1152,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     return false;
   }, [state.notebooks]);
 
-  // 笔记本拖拽：按鼠标垂直位置区�?before"（同级排到之前）�?inside"（设为子项）
+  // 笔记本拖拽：按鼠标垂直位置区分"before"（同级排到之前）与"inside"（设为子项）
   const handleNbDragStart = useCallback((e: React.DragEvent, id: string) => {
     setDragNbId(id);
     e.dataTransfer.effectAllowed = "move";
@@ -1092,8 +1175,8 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       return;
     }
     // 根据鼠标在目标元素内的纵向位置划分区域：
-    //   �?30% �?before（同级排到目标之前）
-    //   �?70% �?inside（成为该笔记本的子项�?
+    //   上 30% → before（同级排到目标之前）
+    //   下 70% → inside（成为该笔记本的子项）
     // 扩大 inside 命中区，避免用户在行中央偏上时误触发 before 导致"拖了等于没拖"
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const offset = e.clientY - rect.top;
@@ -1123,7 +1206,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     if (!sourceNb || !targetNb) return;
 
     if (zone === "inside") {
-      // 放进 target 作为子项：父级改�?targetId
+      // 放进 target 作为子项：父级改为 targetId
       if (sourceNb.parentId === targetId) return;
       // 乐观更新
       actions.setNotebooks(
@@ -1142,11 +1225,11 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         actions.refreshNotebooks();
       }
     } else {
-      // before：将 source 移到 target 的同级（父级 = target.parentId），并排�?target 之前
+      // before：将 source 移到 target 的同级（父级 = target.parentId），并排到 target 之前
       const newParentId = targetNb.parentId ?? null;
       const changedParent = sourceNb.parentId !== newParentId;
 
-      // 重新计算同级列表（target 所在的父级下的所有笔记本，按 sortOrder�?
+      // 重新计算同级列表（target 所在的父级下的所有笔记本，按 sortOrder）
       const siblings = state.notebooks
         .filter((n) => (n.parentId ?? null) === newParentId && n.id !== sourceId)
         .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1156,7 +1239,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       const newOrder = [...siblings];
       newOrder.splice(targetIdx, 0, { ...sourceNb, parentId: newParentId });
 
-      // 乐观更新状�?
+      // 乐观更新状态
       const updatedMap = new Map(newOrder.map((n, i) => [n.id, i]));
       actions.setNotebooks(
         state.notebooks.map((n) => {
@@ -1171,7 +1254,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       );
 
       try {
-        // 如果父级变化，先调用 move 接口（允�?parentId �?null�?
+        // 如果父级变化，先调用 move 接口（允许 parentId 为 null）
         if (changedParent) {
           await api.moveNotebook(sourceId, { parentId: newParentId });
         }
@@ -1203,7 +1286,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
   const handleCreateNotebook = async () => {
     const nb = await api.createNotebook({ name: t('common.newNotebook'), icon: "📒" });
     actions.setNotebooks([...state.notebooks, nb]);
-    // 自动进入重命�?
+    // 自动进入重命名
     setEditingId(nb.id);
     setEditValue(nb.name);
   };
@@ -1242,14 +1325,14 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         break;
       }
       case "new_word_note": {
-        // 导入 Word 文档：选择 .docx �?mammoth 解析 �?生成可编辑的富文本笔记�?
-        // �?dynamic import 避免�?mammoth (~800KB) 加到首屏 bundle�?
+        // 导入 Word 文档：选择 .docx → mammoth 解析 → 生成可编辑的富文本笔记。
+        // 走 dynamic import 避免把 mammoth (~800KB) 加到首屏 bundle。
         try {
           const { pickDocxFile, importDocxAsNote } = await import("@/lib/wordNoteService");
           const { toast } = await import("@/lib/toast");
           const file = await pickDocxFile();
           if (!file) break; // 用户取消
-          toast.info("正在导入 Word 文档�?);
+          toast.info("正在导入 Word 文档…");
           const { note } = await importDocxAsNote({ notebookId: targetId, file });
           actions.setActiveNote(note as any);
           actions.setSelectedNotebook(targetId);
@@ -1279,30 +1362,30 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         break;
       }
       case "new_url_note": {
-        // 导入公众号文章：用项目统一�?prompt 弹窗输入 URL（替代原�?window.prompt�?
-        // - validate 内联做格式校验：错误信息直接展示在弹窗里，避免关闭后�?toast 报错
-        // - 后端会抓�?HTML、下载图片到附件库、并把笔记落�?targetId 笔记�?
+        // 导入公众号文章：用项目统一的 prompt 弹窗输入 URL（替代原生 window.prompt）
+        // - validate 内联做格式校验：错误信息直接展示在弹窗里，避免关闭后再 toast 报错
+        // - 后端会抓取 HTML、下载图片到附件库、并把笔记落到 targetId 笔记本
         const raw = await appPrompt({
-          title: t('sidebar.importUrlNote') || "导入公众号文�?,
-          description: t('sidebar.importUrlPrompt') || "请输入微信公众号文章链接（https://mp.weixin.qq.com/s/...�?,
+          title: t('sidebar.importUrlNote') || "导入公众号文章",
+          description: t('sidebar.importUrlPrompt') || "请输入微信公众号文章链接（https://mp.weixin.qq.com/s/...）",
           placeholder: "https://mp.weixin.qq.com/s/...",
           confirmText: t('common.confirm') || "导入",
           cancelText: t('common.cancel') || "取消",
           validate: (v) => {
             const s = (v || "").trim();
-            if (!s) return t('urlImport.emptyUrl') || "请输入文章链�?;
+            if (!s) return t('urlImport.emptyUrl') || "请输入文章链接";
             if (!/^https:\/\/mp\.weixin\.qq\.com\/s[\/?]/.test(s)) {
-              return t('urlImport.unsupportedUrl') || "暂只支持微信公众号文章链�?;
+              return t('urlImport.unsupportedUrl') || "暂只支持微信公众号文章链接";
             }
             return null;
           },
         });
         if (raw == null) break; // 用户取消
         const url = raw.trim();
-        const toastId = toast.info(t('urlImport.importing') || "正在导入文章�?, 0);
+        const toastId = toast.info(t('urlImport.importing') || "正在导入文章…", 0);
         try {
           const result = await api.urlImport(url, targetId);
-          // urlImport 只返�?noteId+title，需要再取完�?note 推到 store
+          // urlImport 只返回 noteId+title，需要再取完整 note 推到 store
           const note = await api.getNote(result.noteId);
           actions.setActiveNote(note as any);
           actions.setSelectedNotebook(targetId);
@@ -1326,7 +1409,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
           actions.refreshNotebooks();
           toast.dismiss(toastId);
           const failedTip = result.images.failed > 0
-            ? `�?{result.images.failed} 张图片下载失败）`
+            ? `（${result.images.failed} 张图片下载失败）`
             : "";
           toast.success(
             (t('urlImport.importSuccess', { title: result.title }) || `已导入：${result.title}`) + failedTip
@@ -1370,9 +1453,9 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       }
       case "export_md": {
         if (!targetNb) break;
-        // 收集根笔记本 + 所有子孙笔记本 id / name（递归�?
+        // 收集根笔记本 + 所有子孙笔记本 id / name（递归）
         // - ids：新后端正常路径使用（精确过滤）
-        // - names：旧后端降级路径使用�?export/notes 若无 notebookId 字段�?
+        // - names：旧后端降级路径使用（/export/notes 若无 notebookId 字段）
         const ids = new Set<string>();
         const names = new Set<string>();
         const collect = (id: string) => {
@@ -1385,8 +1468,8 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
           }
         };
         collect(targetNb.id);
-        // duration=0 �?导出�?提示常驻，完成后手动 dismiss�?
-        // 流式进度提示（converting 每条�?emit）太频繁不放�?toast，只在出错时弹�?
+        // duration=0 让"导出中"提示常驻，完成后手动 dismiss；
+        // 流式进度提示（converting 每条都 emit）太频繁不放到 toast，只在出错时弹。
         const toastId = toast.info(t('export.exportingNotebook', { name: targetNb.name }), 0);
         try {
           const ok = await exportNotebook(
@@ -1417,7 +1500,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     }
   };
 
-  // 重命名提�?
+  // 重命名提交
   const handleEditSubmit = async () => {
     if (!editingId || !editValue.trim()) {
       setEditingId(null);
@@ -1437,7 +1520,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     setEditingId(null);
   };
 
-  // 执行笔记本移动（右键菜单 �?移动�?.. 的结果）
+  // 执行笔记本移动（右键菜单 → 移动至... 的结果）
   const handleMoveNotebookConfirm = async (newParentId: string | null) => {
     if (!moveNbTarget) return;
     const sourceId = moveNbTarget.id;
@@ -1446,7 +1529,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       toast.error(t('sidebar.moveCannotSelf'));
       return;
     }
-    // 无变化直接关�?
+    // 无变化直接关闭
     const currentParent = moveNbTarget.parentId ?? null;
     if (currentParent === newParentId) {
       setMoveNbTarget(null);
@@ -1465,7 +1548,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     try {
       await api.moveNotebook(sourceId, { parentId: newParentId });
       if (newParentId) {
-        // 展开新父�?
+        // 展开新父级
         const parentNb = state.notebooks.find((n) => n.id === newParentId);
         if (parentNb && parentNb.isExpanded !== 1) {
           api.updateNotebook(newParentId, { isExpanded: 1 } as any).catch(console.error);
@@ -1479,7 +1562,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     setMoveNbTarget(null);
   };
 
-  // 删除笔记本（v14 起：软删�?�?笔记本及其子孙隐藏，下属笔记进回收站�?
+  // 删除笔记本（v14 起：软删除 — 笔记本及其子孙隐藏，下属笔记进回收站）
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     try {
@@ -1487,7 +1570,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     } catch (err) {
       console.error("[Sidebar] deleteNotebook failed:", err);
     }
-    // 递归收集被软删除笔记本及其所有子孙笔记本�?ID（前端乐观更新，不等下次拉取�?
+    // 递归收集被软删除笔记本及其所有子孙笔记本的 ID（前端乐观更新，不等下次拉取）
     const idsToRemove = new Set<string>();
     const collectChildren = (parentId: string) => {
       idsToRemove.add(parentId);
@@ -1503,9 +1586,9 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       actions.setSelectedNotebook(null);
       actions.setViewMode("all");
     }
-    // v14：触发笔记列表刷新——正在浏览回收站视图的用户能立刻看到刚被软删�?
-    // 笔记；其他视图刷新后也能正确反映"消失的笔�?。同时通知文件管理 / 数据
-    // 管理刷新空间统计�?
+    // v14：触发笔记列表刷新——正在浏览回收站视图的用户能立刻看到刚被软删的
+    // 笔记；其他视图刷新后也能正确反映"消失的笔记"。同时通知文件管理 / 数据
+    // 管理刷新空间统计。
     try { actions.refreshNotes(); } catch { /* ignore */ }
     try {
       window.dispatchEvent(
@@ -1527,14 +1610,14 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       setTrashCount(removable);
       setEmptyTrashOpen(true);
     } catch (err: any) {
-      console.error("获取回收站笔记失�?", err);
+      console.error("获取回收站笔记失败:", err);
       toast.error(err?.message || t('sidebar.emptyTrashFailed'));
     }
   };
 
-  // 允许其他视图（NoteList 回收站标题栏�?一键清�?按钮）通过自定义事�?
-  // 直接复用 Sidebar 已实现的清空逻辑（含 lock 检�?/ 体量统计 / VACUUM 提示），
-  // 避免�?NoteList 重复实现一�?80 行复杂逻辑�?
+  // 允许其他视图（NoteList 回收站标题栏的"一键清空"按钮）通过自定义事件
+  // 直接复用 Sidebar 已实现的清空逻辑（含 lock 检测 / 体量统计 / VACUUM 提示），
+  // 避免在 NoteList 重复实现一份 80 行复杂逻辑。
   useEffect(() => {
     const onOpenEmptyTrash = () => { void openEmptyTrashConfirm(); };
     window.addEventListener("nowen:open-empty-trash", onOpenEmptyTrash);
@@ -1551,14 +1634,14 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       } else {
         toast.success(t('sidebar.emptyTrashSuccess', { count: res.count }));
       }
-      // 后端已自�?WAL checkpoint + 超阈�?VACUUM；如果没 VACUUM 但体量较大，
-      // 友好提示用户可以手动压缩一次。阈值按"估算释放�?>= 10MB"判定�?
+      // 后端已自动 WAL checkpoint + 超阈值 VACUUM；如果没 VACUUM 但体量较大，
+      // 友好提示用户可以手动压缩一次。阈值按"估算释放量 >= 10MB"判定。
       if (!res.vacuumed && (res.freedBytesEstimate || 0) >= 10 * 1024 * 1024) {
         toast.info(
-          "占用较大但数据库未自动压缩。可在「数据管理」里点击「压缩数据库」进一步回收磁盘空间�?,
+          "占用较大但数据库未自动压缩。可在「数据管理」里点击「压缩数据库」进一步回收磁盘空间。",
         );
       }
-      // 通知其他视图（FileManager / DataManager）刷新空间占用统�?
+      // 通知其他视图（FileManager / DataManager）刷新空间占用统计
       try {
         window.dispatchEvent(new CustomEvent("nowen:storage-changed", { detail: { reason: "trash-emptied" } }));
       } catch { /* ignore */ }
@@ -1573,25 +1656,25 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       actions.refreshNotebooks();
       setEmptyTrashOpen(false);
     } catch (err: any) {
-      console.error("清空回收站失�?", err);
+      console.error("清空回收站失败:", err);
       toast.error(err?.message || t('sidebar.emptyTrashFailed'));
     } finally {
       setEmptyingTrash(false);
     }
   };
 
-  // Y4: navItems 按工作区功能开关过滤�?
+  // Y4: navItems 按工作区功能开关过滤。
   //   - features === null（个人空间或未加载到）→ 全开，行为与之前一致；
-  //   - 工作区启�?JSON：显�?false 的模块被隐藏；未列出 / true 默认开启�?
-  //   - "all"（所有笔记）�?favorites"�?trash" 永远显示——它们是笔记模块本身�?
-  //     关掉 notes 相当于关掉整个工作区，产品上�?owner 在开关面板体现�?
+  //   - 工作区启用 JSON：显式 false 的模块被隐藏；未列出 / true 默认开启。
+  //   - "all"（所有笔记）、"favorites"、"trash" 永远显示——它们是笔记模块本身，
+  //     关掉 notes 相当于关掉整个工作区，产品上由 owner 在开关面板体现。
   //
-  // v15 信息架构（方�?A）：扁平 8 �?�?3 个语义清晰的分组�?
-  //   - workspace（工作台）：所有笔�?+ 它的过滤视图（收�?/ 回收站）+ 横切资源（文件管理）�?
-  //                        高频主入口，紧贴顶部，无分组标题，视觉权重最强�?
-  //   - modules（内容模块）：说�?/ 待办 / 思维导图——独立的内容类型�?
-  //   - tools（工具）：AI 问答——功能性，�?内容"区分开�?
-  // 顺序在数组里就是渲染顺序；分组渲染时�?group 字段切片�?
+  // v15 信息架构（方案 A）：扁平 8 项 → 3 个语义清晰的分组：
+  //   - workspace（工作台）：所有笔记 + 它的过滤视图（收藏 / 回收站）+ 横切资源（文件管理）。
+  //                        高频主入口，紧贴顶部，无分组标题，视觉权重最强。
+  //   - modules（内容模块）：说说 / 待办 / 思维导图——独立的内容类型。
+  //   - tools（工具）：AI 问答——功能性，与"内容"区分开。
+  // 顺序在数组里就是渲染顺序；分组渲染时按 group 字段切片。
   const navItemsRaw: {
     icon: React.ReactNode;
     label: string;
@@ -1600,7 +1683,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     feature?: keyof WorkspaceFeatures;
     group: "workspace" | "modules" | "tools";
   }[] = [
-    // ─── 工作�?───
+    // ─── 工作台 ───
     { icon: <BookOpen size={16} />, label: t('sidebar.allNotes'), mode: "all", active: state.viewMode === "all", feature: "notes", group: "workspace" },
     { icon: <Star size={16} />, label: t('sidebar.favorites'), mode: "favorites", active: state.viewMode === "favorites", feature: "favorites", group: "workspace" },
     { icon: <FolderOpen size={16} />, label: t('sidebar.fileManager'), mode: "files", active: state.viewMode === "files", feature: "files", group: "workspace" },
@@ -1618,8 +1701,8 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     ? navItemsRaw.filter((it) => !it.feature || features[it.feature] !== false)
     : navItemsRaw;
 
-  // v16：桌面端折叠态由 App.tsx 控制（隐藏整�?Sidebar 但保�?NavRail）�?
-  // 移动端没有折叠概念（抽屉显隐�?mobileSidebarOpen 控制），所以这里无需任何分支�?
+  // v16：桌面端折叠态由 App.tsx 控制（隐藏整个 Sidebar 但保留 NavRail）。
+  // 移动端没有折叠概念（抽屉显隐由 mobileSidebarOpen 控制），所以这里无需任何分支。
 
 
 
@@ -1628,24 +1711,24 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       className="w-full h-full vibrancy-sidebar bg-app-sidebar border-r border-app-border flex flex-col shrink-0 transition-colors"
       style={{ width: undefined }}
     >
-      {/* Header（v15 紧凑化：py-3 �?py-2，给下方笔记�?标签腾出 ~8px�?
-          v16：桌面变体下折叠按钮已迁移到 NavRail，Header 仅保�?Title +（移动）关闭按钮
+      {/* Header（v15 紧凑化：py-3 → py-2，给下方笔记本/标签腾出 ~8px）
+          v16：桌面变体下折叠按钮已迁移到 NavRail，Header 仅保留 Title +（移动）关闭按钮
           v16 P3 后续：桌面变体右侧加 Rail 模式切换按钮——单按钮循环切换三档
-          icon �?label �?hidden �?icon …，tooltip 提示下一档名称�?
-          单按钮循环的好处：无需新增菜单组件、无需占用 Header 多余空间�?
-          代价：用户首次发现需要点 2 次才到目标态——属于可接受的学习成本�?
-          v16 P3 后续 (mobile 双层�?：移动变体的关闭按钮也迁�?NavRail 顶部�?
-          Header 这里只剩纯标题�?*/}
+          icon → label → hidden → icon …，tooltip 提示下一档名称。
+          单按钮循环的好处：无需新增菜单组件、无需占用 Header 多余空间；
+          代价：用户首次发现需要点 2 次才到目标态——属于可接受的学习成本。
+          v16 P3 后续 (mobile 双层化)：移动变体的关闭按钮也迁到 NavRail 顶部，
+          Header 这里只剩纯标题。 */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-app-border" style={{ paddingTop: 'calc(var(--safe-area-top) + 4px)' }}>
         <h1 className="text-sm font-semibold text-tx-primary tracking-wide">{siteConfig.title}</h1>
         <div className="flex items-center gap-1">
           {isDesktop && (() => {
             const next = nextRailMode(railMode);
-            // 当前态对应的图标（提�?现在是几�?），点击后切�?next�?
-            //   icon   �?Columns3�? 列：Rail+Sidebar+Editor，纯图标 Rail�?
-            //   label  �?�?Columns3 基础上加底部小条暗示"带文�?——lucide 没有正好的图标，
-            //           复用 Columns3 �?tooltip 不一样，足够区分（实测优于硬塞个不准的图标）
-            //   hidden �?Columns2�? 列：�?Sidebar+Editor�?
+            // 当前态对应的图标（提示"现在是几栏"），点击后切到 next：
+            //   icon   → Columns3（3 列：Rail+Sidebar+Editor，纯图标 Rail）
+            //   label  → 在 Columns3 基础上加底部小条暗示"带文字"——lucide 没有正好的图标，
+            //           复用 Columns3 但 tooltip 不一样，足够区分（实测优于硬塞个不准的图标）
+            //   hidden → Columns2（2 列：仅 Sidebar+Editor）
             const CurrentIcon = railMode === "hidden" ? Columns2 : Columns3;
             return (
               <Button
@@ -1662,8 +1745,8 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         </div>
       </div>
 
-      {/* Workspace Switcher + Search（v15：合并垂�?padding�?
-          原来 pt-2 + py-2 共占 ~16px 间隙，现在压�?~8px�?*/}
+      {/* Workspace Switcher + Search（v15：合并垂直 padding，
+          原来 pt-2 + py-2 共占 ~16px 间隙，现在压到 ~8px） */}
       <div className="px-3 pt-1.5 pb-1">
         <WorkspaceSwitcher />
       </div>
@@ -1676,9 +1759,9 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
             placeholder={t('sidebar.searchPlaceholder')}
             className="pl-8 h-8 text-xs bg-app-bg border-app-border"
             value={searchInput}
-            /* data-sidebar-search：Electron 原生"搜索"菜单 / Dock Quick Action �?
-             * 聚焦目标。见 App.tsx �?onOpenSearch。本应用没有全局搜索弹窗�?
-             * "搜索"语义就是聚焦此输入框�?*/
+            /* data-sidebar-search：Electron 原生"搜索"菜单 / Dock Quick Action 的
+             * 聚焦目标。见 App.tsx 的 onOpenSearch。本应用没有全局搜索弹窗，
+             * "搜索"语义就是聚焦此输入框。 */
             data-sidebar-search=""
             onChange={(e) => {
               setSearchInput(e.target.value);
@@ -1695,12 +1778,12 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       </div>
 
       {/* ===== Navigation =====
-          v16 P3 后续：移动端也已下沉�?NavRail variant="mobile"，主区不再渲染�?
-          桌面端早�?v16 主版本就迁出。本组件仅保�?navItemsRaw/navItems 定义
-          以便后续清理（短期内这段死代码无运行时副作用——React 不会渲染未引用的项）�?*/}
+          v16 P3 后续：移动端也已下沉到 NavRail variant="mobile"，主区不再渲染。
+          桌面端早在 v16 主版本就迁出。本组件仅保留 navItemsRaw/navItems 定义
+          以便后续清理（短期内这段死代码无运行时副作用——React 不会渲染未引用的项）。 */}
 
-      {/* Separator——已移除：移动端导航迁出后无需在主区上方加分隔�?
-          WorkspaceSwitcher + 搜索 与笔记本的视觉间距已经足够�?*/}
+      {/* Separator——已移除：移动端导航迁出后无需在主区上方加分隔；
+          WorkspaceSwitcher + 搜索 与笔记本的视觉间距已经足够。 */}
 
       {/* Notebooks */}
       <div className="px-3 flex items-center justify-between mb-1">
@@ -1771,7 +1854,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         )}
       </AnimatePresence>
 
-      {/* Tags —�?使用 shrink-0 + 内部 max-height + scroll，避免在小屏（如 1366x768）挤压上�?Notebooks 或与 Footer 交叠 */}
+      {/* Tags —— 使用 shrink-0 + 内部 max-height + scroll，避免在小屏（如 1366x768）挤压上方 Notebooks 或与 Footer 交叠 */}
       <div className="border-t border-app-border shrink-0">
         <button
           onClick={() => toggleTagsExpanded()}
@@ -1795,7 +1878,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
               transition={{ duration: 0.2 }}
               style={{ overflow: "hidden" }}
             >
-              {/* 限制标签区最大高度，超出可滚�?—�?避免�?Notebooks / Footer 重叠 */}
+              {/* 限制标签区最大高度，超出可滚动 —— 避免与 Notebooks / Footer 重叠 */}
               <div
                 className="px-2 pb-2 space-y-0.5 overflow-y-auto"
                 style={{ maxHeight: "min(35vh, 260px)" }}
@@ -1886,7 +1969,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
                           }}
                         />
                         <span className="flex-1 truncate text-left">{tag.name}</span>
-                        {/* 右侧尾部：固定宽度容器，内部用绝对定位叠放数字与删除按钮，避�?hover 时宽度变化引发抖�?*/}
+                        {/* 右侧尾部：固定宽度容器，内部用绝对定位叠放数字与删除按钮，避免 hover 时宽度变化引发抖动 */}
                         <span className="relative shrink-0 w-4 h-4 flex items-center justify-center">
                           {tag.noteCount !== undefined && tag.noteCount > 0 && (
                             <span className="absolute inset-0 flex items-center justify-center text-[10px] text-tx-tertiary tabular-nums [@media(hover:hover)]:group-hover/tag:opacity-0 transition-opacity">
@@ -1915,8 +1998,8 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         </AnimatePresence>
       </div>
 
-      {/* Footer：v16 桌面�?/ v16 P3 后续移动端，设置 + 登出 都迁�?NavRail�?
-          本组件不再渲染任�?Footer�?*/}
+      {/* Footer：v16 桌面端 / v16 P3 后续移动端，设置 + 登出 都迁到 NavRail。
+          本组件不再渲染任何 Footer。 */}
 
       {/* Settings Modal */}
       <AnimatePresence>
@@ -1934,7 +2017,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         header={state.notebooks.find((nb) => nb.id === menu.targetId)?.name}
       />
 
-      {/* 右键菜单触发的图标选择�?*/}
+      {/* 右键菜单触发的图标选择器 */}
       <AnimatePresence>
         {iconPickerId && (
           <EmojiIconPicker
@@ -2072,7 +2155,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         )}
       </AnimatePresence>
 
-      {/* 清空回收站确�?*/}
+      {/* 清空回收站确认 */}
       <AnimatePresence>
         {emptyTrashOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -2123,7 +2206,7 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         )}
       </AnimatePresence>
 
-      {/* 标签颜色选择浮层：右�?/ 长按触发 */}
+      {/* 标签颜色选择浮层：右键 / 长按触发 */}
       {tagColorPopover && (
         <TagColorPopover
           x={tagColorPopover.x}
