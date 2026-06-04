@@ -80,6 +80,12 @@ export function useNetworkStatus() {
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void handleOnline();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     // 定期探活
     const interval = setInterval(async () => {
@@ -101,6 +107,7 @@ export function useNetworkStatus() {
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       clearInterval(interval);
     };
   }, [probe, doFlush]);

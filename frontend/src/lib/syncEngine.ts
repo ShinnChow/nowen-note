@@ -33,7 +33,8 @@ import {
   deleteTag,
   isReady as localStoreReady,
 } from "@/lib/localStore";
-import { getQueue as getOfflineQueue } from "@/lib/offlineQueue";
+import { flushQueue, getQueue as getOfflineQueue } from "@/lib/offlineQueue";
+import { offlineQueueFetch } from "@/lib/offlineQueueFetch";
 import type { Note, User } from "@/types";
 
 // ─── 状态机 ────────────────────────────────────────────────────────────────────
@@ -85,6 +86,12 @@ export async function bootstrap(user: User): Promise<void> {
   setState("bootstrapping");
 
   try {
+    if (getOfflineQueue().length > 0) {
+      await flushQueue(offlineQueueFetch).catch((e) => {
+        console.warn("[syncEngine] flush offline queue before pull failed:", e);
+      });
+    }
+
     // 并行拉三类元数据；任一失败时单独捕获 —— 比如标签接口暂时挂了
     // 不应该拖累笔记本/笔记列表的缓存
     const [notebooksRes, notesRes, tagsRes] = await Promise.allSettled([

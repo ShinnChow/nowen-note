@@ -499,6 +499,7 @@ export default function EditorPane() {
         snap = editorHandleRef.current?.getSnapshot?.() ?? null;
       } catch { /* ignore */ }
       if (!snap || typeof snap.content !== "string") return;
+      if (snap.content === note.content) return;
       // 1) 草稿（同步、零网络依赖）
       try {
         saveDraft({
