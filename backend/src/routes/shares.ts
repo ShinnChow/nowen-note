@@ -5,6 +5,10 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { signShareAccessToken, verifyShareAccessToken } from "../lib/auth-security";
 import { resolvePublicOrigin, rewriteRelativeAttachmentUrls } from "../lib/shareUrlRewrite";
+import { resolveNotePermission, hasPermission } from "../middleware/acl";
+import { broadcastNoteUpdated, broadcastToUser } from "../services/realtime";
+import { yDestroyDoc } from "../services/yjs";
+import { syncReferences as syncAttachmentReferences } from "../lib/attachmentRefs";
 
 // H3: 使用密码学安全的随机源生成分享 token。
 //     原实现用 Math.random()，理论上可被预测；改用 crypto.randomBytes。
@@ -580,27 +584,82 @@ sharesRouter.post("/note/:noteId/versions/:versionId/restore", (c) => {
   const noteId = c.req.param("noteId");
   const versionId = c.req.param("versionId");
 
-  const note = db.prepare("SELECT * FROM notes WHERE id = ? AND userId = ?").get(noteId, userId) as any;
+  const { permission } = resolveNotePermission(noteId, userId);
+  if (!hasPermission(permission, "write")) {
+    return c.json({ error: "笔记不存在或无权操作" }, 404);
+  }
+
+  const note = db.prepare("SELECT * FROM notes WHERE id = ?").get(noteId) as any;
   if (!note) return c.json({ error: "笔记不存在或无权操作" }, 404);
   if (note.isLocked) return c.json({ error: "笔记已锁定" }, 403);
 
   const version = db.prepare("SELECT * FROM note_versions WHERE id = ? AND noteId = ?").get(versionId, noteId) as any;
   if (!version) return c.json({ error: "版本不存在" }, 404);
 
-  // 先保存当前版本
-  const currentVersionId = uuid();
-  db.prepare(`
-    INSERT INTO note_versions (id, noteId, userId, title, content, contentText, version, changeType, changeSummary)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'restore', ?)
-  `).run(currentVersionId, noteId, userId, note.title, note.content, note.contentText, note.version, `恢复前自动备份`);
+  const updated = db.transaction(() => {
+    const currentVersionId = uuid();
+    db.prepare(`
+      INSERT INTO note_versions (id, noteId, userId, title, content, contentText, version, changeType, changeSummary)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'restore', ?)
+    `).run(currentVersionId, noteId, userId, note.title, note.content, note.contentText, note.version, "恢复前自动备份");
 
-  // 恢复
-  db.prepare(`
-    UPDATE notes SET title = ?, content = ?, contentText = ?, version = version + 1, updatedAt = datetime('now') WHERE id = ?
-  `).run(version.title, version.content, version.contentText, noteId);
+    db.prepare(`
+      UPDATE notes
+      SET title = ?, content = ?, contentText = ?, version = version + 1, updatedAt = datetime('now')
+      WHERE id = ?
+    `).run(version.title, version.content, version.contentText, noteId);
 
-  const updated = db.prepare("SELECT * FROM notes WHERE id = ?").get(noteId) as any;
-  return c.json(updated);
+    syncAttachmentReferences(db, noteId, version.content);
+    db.prepare("DELETE FROM note_yupdates WHERE noteId = ?").run(noteId);
+    db.prepare("DELETE FROM note_ysnapshots WHERE noteId = ?").run(noteId);
+
+    return db.prepare(`
+      SELECT id, userId, notebookId, workspaceId, title, content, contentText, isPinned,
+        CASE WHEN EXISTS(SELECT 1 FROM favorites f WHERE f.noteId = notes.id AND f.userId = ?) THEN 1 ELSE 0 END AS isFavorite,
+        isLocked, isArchived, isTrashed, version, sortOrder, createdAt, updatedAt, trashedAt
+      FROM notes WHERE id = ?
+    `).get(userId, noteId) as any;
+  })();
+
+  try { yDestroyDoc(noteId); } catch (e) {
+    console.warn("[shares.restoreVersion] yDestroyDoc failed:", e);
+  }
+
+  const tags = db.prepare(`
+    SELECT t.* FROM tags t
+    JOIN note_tags nt ON t.id = nt.tagId
+    WHERE nt.noteId = ?
+  `).all(noteId);
+
+  try {
+    broadcastNoteUpdated(noteId, {
+      version: updated.version,
+      updatedAt: updated.updatedAt,
+      title: updated.title,
+      contentText: updated.contentText,
+      actorUserId: userId,
+    });
+    broadcastToUser(userId, {
+      type: "note:list-updated" as any,
+      note: {
+        id: updated.id,
+        title: updated.title,
+        contentText: updated.contentText,
+        updatedAt: updated.updatedAt,
+        version: updated.version,
+        isPinned: updated.isPinned,
+        isTrashed: updated.isTrashed,
+        notebookId: updated.notebookId,
+        workspaceId: updated.workspaceId,
+      },
+      actorUserId: userId,
+      actorConnectionId: null,
+    } as any);
+  } catch (e) {
+    console.warn("[shares.restoreVersion] broadcast failed:", e);
+  }
+
+  return c.json({ ...updated, tags });
 });
 
 // 清空某笔记的全部版本历史

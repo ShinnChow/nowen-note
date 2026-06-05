@@ -1685,8 +1685,13 @@ export const api = {
     request<{ versions: NoteVersion[]; total: number }>(`/shares/note/${noteId}/versions?limit=${limit}&offset=${offset}`),
   getNoteVersion: (noteId: string, versionId: string) =>
     request<NoteVersion>(`/shares/note/${noteId}/versions/${versionId}`),
-  restoreNoteVersion: (noteId: string, versionId: string) =>
-    request<Note>(`/shares/note/${noteId}/versions/${versionId}/restore`, { method: "POST" }),
+  restoreNoteVersion: (noteId: string, versionId: string) => {
+    const p = request<Note>(`/shares/note/${noteId}/versions/${versionId}/restore`, { method: "POST" });
+    p.then((note) => {
+      void import("@/lib/syncEngine").then((m) => m.cacheNoteContent(note)).catch(() => {});
+    }).catch(() => {});
+    return p;
+  },
   clearNoteVersions: (noteId: string) =>
     request<{ success: boolean; count: number }>(`/shares/note/${noteId}/versions`, { method: "DELETE" }),
 

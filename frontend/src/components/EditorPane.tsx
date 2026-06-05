@@ -467,11 +467,16 @@ export default function EditorPane() {
    * 防止"写到一半切走 → 500ms 内丢字"。
    */
   const lastActiveIdRef = useRef<string | null>(activeNote?.id ?? null);
+  const skipNextSwitchFlushForNoteIdRef = useRef<string | null>(null);
   useEffect(() => {
     const prevId = lastActiveIdRef.current;
     const nextId = activeNote?.id ?? null;
     if (prevId && prevId !== nextId) {
-      try { editorHandleRef.current?.flushSave(); } catch { /* ignore */ }
+      if (skipNextSwitchFlushForNoteIdRef.current === prevId) {
+        skipNextSwitchFlushForNoteIdRef.current = null;
+      } else {
+        try { editorHandleRef.current?.flushSave(); } catch { /* ignore */ }
+      }
     }
     lastActiveIdRef.current = nextId;
   }, [activeNote?.id]);
@@ -993,6 +998,11 @@ export default function EditorPane() {
   // 先清掉旧笔记的 debounce，导致切换前 500ms 内的编辑没有落库。
   useEffect(() => {
     const onBeforeNoteSwitch = () => {
+      const noteId = activeNoteRef.current?.id ?? null;
+      if (noteId && skipNextSwitchFlushForNoteIdRef.current === noteId) {
+        skipNextSwitchFlushForNoteIdRef.current = null;
+        return;
+      }
       try { editorHandleRef.current?.flushSave(); } catch { /* ignore */ }
     };
     window.addEventListener("nowen:before-note-switch", onBeforeNoteSwitch);
@@ -2497,8 +2507,23 @@ export default function EditorPane() {
           noteId={activeNote.id}
           noteTitle={activeNote.title}
           onRestore={(updated) => {
+            try { editorHandleRef.current?.discardPending?.(); } catch { /* ignore */ }
+            try { clearDraft(updated.id); } catch { /* ignore */ }
+            skipNextSwitchFlushForNoteIdRef.current = updated.id;
             actions.setActiveNote(updated);
-            actions.updateNoteInList({ id: updated.id, title: updated.title, contentText: updated.contentText, updatedAt: updated.updatedAt });
+            actions.updateNoteInList({
+              id: updated.id,
+              title: updated.title,
+              contentText: updated.contentText,
+              updatedAt: updated.updatedAt,
+              version: updated.version,
+              isPinned: updated.isPinned,
+              isTrashed: updated.isTrashed,
+              notebookId: updated.notebookId,
+              workspaceId: updated.workspaceId,
+            });
+            actions.setSyncStatus("saved");
+            actions.setLastSynced(new Date().toISOString());
           }}
           onClose={() => setShowVersionHistory(false)}
         />
