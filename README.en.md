@@ -134,6 +134,12 @@ If this project helps you, feel free to scan the QR code and buy the author a co
 
 > 最近 5 个版本的更新内容，完整历史见 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.1.17 - 2026-06-08
+
+### ♻️ 重构
+
+- 大规模代码精简和架构优化 (60f051b)
+
 ### v1.1.16 - 2026-06-05
 
 ### ✨ 新增
@@ -191,22 +197,5 @@ If this project helps you, feel free to scan the QR code and buy the author a co
 - restrict color-mix focus fallback to form elements only (f9e58ec)
 - Backspace at line start now correctly decreases indent (Office-like behavior) (aadc88a)
 - add CSS fallbacks for older Android WebViews (Xiaomi 8 black screen) (aa9a2fd)
-
-### v1.1.12 - 2026-06-01
-
-### 🐛 修复
-
-- resolve remaining TS null-check and changeIndent type errors (98fc8fd)
-- resolve all 13 TS7006/7022/7023/7031 implicit any errors (732420d)
-- clip row resize guide line to table bounds (a5a6c5c)
-- clip row resize guide line to editor bounds (45f9342)
-- table row height drag now follows mouse in real-time via transaction (1edae9c)
-- improve table row height resize UX - wider hit area and real-time visual feedback (539c56c)
-- Backspace at line start reduces indent level (437fb38)
-- table bubble merge button visibility + mini toolbar (ea6a088)
-
-### 📌 杂项
-
-- Update README.md (4b9a660)
 
 <!-- CHANGELOG:END -->
