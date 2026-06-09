@@ -249,7 +249,7 @@ function parseOpenAIStreamDelta(json: Record<string, unknown>): string {
 /**
  * 清理错误文本，移除可能的 API Key 片段。
  */
-function sanitizeError(text: string): string {
+export function sanitizeError(text: string): string {
   // 移除常见 API key 格式
   return text
     .replace(/sk-[a-zA-Z0-9_-]{20,}/g, "sk-****")

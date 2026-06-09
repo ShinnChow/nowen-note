@@ -12,7 +12,7 @@ import {
   reindexAllVectors,
 } from "../services/vec-store";
 import { getUserWorkspaceRole } from "../middleware/acl";
-import { callAIChat, callAIChatStream, extractTextFromChatCompletion } from "../services/ai-client";
+import { callAIChat, callAIChatStream, extractTextFromChatCompletion, sanitizeError } from "../services/ai-client";
 
 const ai = new Hono();
 
@@ -337,7 +337,7 @@ const ACTION_PROMPTS: Record<AIAction, string> = {
   custom: "",
   title: "请根据以下笔记内容，生成一个简洁准确的标题（10字以内），只返回标题文本，不要加引号或其他标点：",
   tags: "请根据以下笔记内容，推荐3-5个标签关键词。每个标签用逗号分隔，只返回标签文本，不要加#号：",
-  mermaid_mindmap: "请根据以下笔记内容，生成一个 Mermaid mindmap 思维导图。要求：只输出 Mermaid 源码，不要 Markdown 代码围栏，不要解释，第一行必须是 mindmap，节点不超过 50 个，层级不超过 4 层，不要编造原文没有的信息：",
+  mermaid_mindmap: "请根据以下笔记内容，生成一个 Mermaid mindmap 思维导图。要求：只输出 Mermaid 源码，不要 Markdown 代码围栏，不要解释，第一行必须是 mindmap，节点不超过 50 个，层级不超过 4 层，不要编造原文没有的信息。节点文本中不要使用括号()、方括号[]、花括号{}、冒号:、竖线|等特殊字符，这些字符会导致 Mermaid 解析失败，改用中文顿号、逗号或文字描述代替：",
   mermaid_flowchart: "请根据以下笔记内容，生成一个 Mermaid 流程图。要求：只输出 Mermaid 源码，不要 Markdown 代码围栏，不要解释，第一行必须是 flowchart TD，节点不超过 50 个，层级不超过 4 层，不要编造原文没有的信息：",
 };
 
@@ -563,7 +563,7 @@ ai.post("/ask", async (c) => {
       const qvec = await embedQuery(question);
       if (qvec) {
         // maxNotes 从 5 提到 8：附件 + 笔记混排时，让两类各自都能出现
-        const hits = knnSearch(qvec, userId, workspaceId, 30, 8);
+        const hits = knnSearch(qvec, userId, workspaceId, notebookIds ? 300 : 30, 8, notebookIds);
         if (hits.length > 0) {
           relatedNotes = hits.map((h) => ({
             id: h.noteId,
@@ -715,36 +715,10 @@ ai.post("/ask", async (c) => {
   messages.push({ role: "user", content: question });
 
   // 规范化 URL：去除末尾斜杠，避免拼接出双斜杠
-  const baseUrl = settings.ai_api_url.replace(/\/+$/, "");
-
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (settings.ai_api_key) {
-    headers["Authorization"] = `Bearer ${settings.ai_api_key}`;
-  }
-
+  // 使用 ai-client 统一入口，兼容多种 AI Provider
   try {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: settings.ai_model,
-        messages,
-        stream: true,
-        temperature: 0.7,
-        max_tokens: 2000,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      return c.json({ error: `AI 服务错误: ${res.status} ${err.slice(0, 200)}` }, 502);
-    }
-
-    // SSE streaming with references
     return streamSSE(c, async (stream) => {
       // 先发送参考笔记信息
-      // v8：附件命中时带上 kind='attachment' + attachmentId/Filename，
-      // 前端 AIChatPanel 据此给"引用"列表渲染 📎 图标并点击时跳转到附件下载。
       if (relatedNotes.length > 0) {
         await stream.writeSSE({
           data: JSON.stringify(relatedNotes.map(n => ({
@@ -756,56 +730,40 @@ ai.post("/ask", async (c) => {
           }))),
           event: "references",
         });
-        // 单独事件传 retrieval mode（前端可选监听；老前端会自动忽略未知 event 类型）
         await stream.writeSSE({
           data: JSON.stringify({ mode: retrieval }),
           event: "retrieval",
         });
       }
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
+      // 先尝试流式
+      let gotContent = false;
       try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || !trimmed.startsWith("data: ")) continue;
-            const data = trimmed.slice(6);
-            if (data === "[DONE]") {
-              await stream.writeSSE({ data: "[DONE]", event: "done" });
-              return;
-            }
-            try {
-              const json = JSON.parse(data);
-              const content = json.choices?.[0]?.delta?.content;
-              if (content) {
-                // SSE 协议中 `\n` 会被解析为字段分隔符，直接把带换行的 Markdown
-                // 放进 data 字段会丢失换行（或被错误拆成多条消息）。
-                // 用 JSON 包一层，换行在 JSON.stringify 时被转义为 \n，前端
-                // JSON.parse 后再取 .t 字段即可完整还原。
-                await stream.writeSSE({ data: JSON.stringify({ t: content }), event: "message" });
-              }
-            } catch {
-              // skip malformed JSON
-            }
-          }
+        const gen = callAIChatStream(settings, messages, { temperature: 0.7, max_tokens: 2000 });
+        for await (const chunk of gen) {
+          gotContent = true;
+          await stream.writeSSE({ data: JSON.stringify({ t: chunk }), event: "message" });
         }
-        await stream.writeSSE({ data: "[DONE]", event: "done" });
-      } catch (err) {
-        await stream.writeSSE({ data: "流式传输中断", event: "error" });
+      } catch {
+        // stream failed, fallback to non-stream
       }
+
+      // 如果流式没有内容，fallback 到 non-stream
+      if (!gotContent) {
+        try {
+          const text = await callAIChat(settings, messages, { temperature: 0.7, max_tokens: 2000 });
+          if (text) {
+            await stream.writeSSE({ data: JSON.stringify({ t: text }), event: "message" });
+          }
+        } catch (e: any) {
+          await stream.writeSSE({ data: sanitizeError(e), event: "error" });
+        }
+      }
+
+      await stream.writeSSE({ data: "[DONE]", event: "done" });
     });
   } catch (err: any) {
-    return c.json({ error: err.message || "AI 请求失败" }, 500);
+    return c.json({ error: sanitizeError(err) || "AI 请求失败" }, 500);
   }
 });
 
