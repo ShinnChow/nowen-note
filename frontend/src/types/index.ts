@@ -426,6 +426,7 @@ export interface MindMapListItem {
   /** Y4: 同 MindMap.workspaceId。 */
   workspaceId: string | null;
   title: string;
+  starred?: number;
   createdAt: string;
   updatedAt: string;
   /** 创建者用户名；仅 list 接口返回。 */

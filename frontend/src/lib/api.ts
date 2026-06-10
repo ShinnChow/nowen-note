@@ -1,4 +1,4 @@
-﻿import { Notebook, Note, NoteListItem, Tag, SearchResult, User, UserPublicInfo, Task, TaskStats, TaskFilter, CustomFont, MindMap, MindMapListItem, Diary, DiaryTimeline, DiaryStats, Share, ShareInfo, SharedNoteContent, NoteVersion, ShareComment, Workspace, WorkspaceAdminItem, WorkspaceMember, WorkspaceInvite, WorkspaceRole, WorkspaceFeatures, FileItem, FileDetail, FileListResponse, FileStats, FileSortKey, FileCategory, FileFilter, FileMyUploadsRef } from "@/types";
+import { Notebook, Note, NoteListItem, Tag, SearchResult, User, UserPublicInfo, Task, TaskStats, TaskFilter, CustomFont, MindMap, MindMapListItem, Diary, DiaryTimeline, DiaryStats, Share, ShareInfo, SharedNoteContent, NoteVersion, ShareComment, Workspace, WorkspaceAdminItem, WorkspaceMember, WorkspaceInvite, WorkspaceRole, WorkspaceFeatures, FileItem, FileDetail, FileListResponse, FileStats, FileSortKey, FileCategory, FileFilter, FileMyUploadsRef } from "@/types";
 import {
   shouldEnqueue as _shouldEnqueue,
   enqueue as _enqueue,
@@ -1465,6 +1465,7 @@ export const api = {
   updateMindMap: (id: string, data: { title?: string; data?: string }) =>
     request<MindMap>(`/mindmaps/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteMindMap: (id: string) => request(`/mindmaps/${id}`, { method: "DELETE" }),
+  toggleStarMindMap: (id: string) => request<MindMap>(`/mindmaps/${id}/star`, { method: "PATCH" }),
 
   // Diary (说说/动态)
   // Y2: 自动注入当前工作区。后端按 workspaceId 隔离数据：

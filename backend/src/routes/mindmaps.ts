@@ -43,6 +43,8 @@ function ensureTable() {
     CREATE INDEX IF NOT EXISTS idx_mindmaps_updated ON mindmaps(updatedAt DESC);
     CREATE INDEX IF NOT EXISTS idx_mindmaps_workspace ON mindmaps(workspaceId);
   `);
+  // ?????? starred ?
+  try { db.exec(`ALTER TABLE mindmaps ADD COLUMN starred INTEGER NOT NULL DEFAULT 0`); } catch {}
 }
 
 // 初始化表
@@ -54,6 +56,7 @@ interface MindmapRow {
   workspaceId: string | null;
   title: string;
   data: string;
+  starred: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,14 +94,14 @@ app.get("/", requireWorkspaceFeature("mindmaps"), (c) => {
   // 工作区下导图列表用来展示"谁建的"。LEFT JOIN 兜底用户被删除的极端窗口期。
   const sql =
     scope.scope === "workspace"
-      ? `SELECT m.id, m.userId, m.workspaceId, m.title, m.createdAt, m.updatedAt,
+      ? `SELECT m.id, m.userId, m.workspaceId, m.title, m.starred, m.createdAt, m.updatedAt,
                 u.username AS creatorName
          FROM mindmaps m LEFT JOIN users u ON u.id = m.userId
-         WHERE m.workspaceId = ? ORDER BY m.updatedAt DESC`
-      : `SELECT m.id, m.userId, m.workspaceId, m.title, m.createdAt, m.updatedAt,
+         WHERE m.workspaceId = ? ORDER BY m.starred DESC, m.updatedAt DESC`
+      : `SELECT m.id, m.userId, m.workspaceId, m.title, m.starred, m.createdAt, m.updatedAt,
                 u.username AS creatorName
          FROM mindmaps m LEFT JOIN users u ON u.id = m.userId
-         WHERE m.userId = ? AND m.workspaceId IS NULL ORDER BY m.updatedAt DESC`;
+         WHERE m.userId = ? AND m.workspaceId IS NULL ORDER BY m.starred DESC, m.updatedAt DESC`;
   const param = scope.scope === "workspace" ? scope.workspaceId : userId;
   const rows = db.prepare(sql).all(param);
   return c.json(rows);
@@ -211,6 +214,26 @@ app.delete("/:id", (c) => {
 
   db.prepare("DELETE FROM mindmaps WHERE id = ?").run(id);
   return c.json({ success: true });
+});
+
+// ---------- ??/???? ----------
+app.patch("/:id/star", async (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  const id = c.req.param("id");
+
+  const existing = db.prepare("SELECT * FROM mindmaps WHERE id = ?").get(id) as
+    | MindmapRow
+    | undefined;
+  if (!existing) return c.json({ error: "思维导图不存在" }, 404);
+  if (!canManageResource(existing.userId, existing.workspaceId, userId)) {
+    return c.json({ error: "无权修改此导图", code: "FORBIDDEN" }, 403);
+  }
+
+  const newStarred = existing.starred ? 0 : 1;
+  db.prepare("UPDATE mindmaps SET starred = ?, updatedAt = datetime('now') WHERE id = ?").run(newStarred, id);
+  const row = db.prepare("SELECT * FROM mindmaps WHERE id = ?").get(id);
+  return c.json(row);
 });
 
 export default app;

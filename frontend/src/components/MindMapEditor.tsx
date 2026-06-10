@@ -3,7 +3,7 @@ import {
   BrainCircuit, Plus, Trash2, Edit2,
   ZoomIn, ZoomOut, Maximize2, Minimize2, Scan,
   Loader2, Check, Map, Menu, PanelLeftClose, Image, FileImage, FileDown, MoreHorizontal,
-  User as UserIcon, Undo2, Redo2, PanelLeft, ChevronRight, ChevronDown, Link as LinkIcon, StickyNote, Palette, ExternalLink, FileText, ArrowDownToLine, Spline, Square, Pipette, Search as SearchIcon, ChevronUp
+  User as UserIcon, Undo2, Redo2, PanelLeft, ChevronRight, ChevronDown, Link as LinkIcon, StickyNote, Palette, ExternalLink, FileText, ArrowDownToLine, Spline, Square, Pipette, Search as SearchIcon, ChevronUp, Star
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, getCurrentWorkspace } from "@/lib/api";
@@ -595,13 +595,14 @@ function OutlinePanel({
   );
 }
 function MindMapListRow({
-  item, isActive, onSelect, onDelete, onContextMenu,
+  item, isActive, onSelect, onDelete, onContextMenu, onToggleStar,
 }: {
   item: MindMapListItem;
   isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  onToggleStar?: () => void;
 }) {
   const date = new Date(item.updatedAt + (item.updatedAt.endsWith("Z") ? "" : "Z"));
   const dateStr = date.toLocaleDateString();
@@ -668,6 +669,14 @@ function MindMapListRow({
           )}
         </div>
       </div>
+      {onToggleStar && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleStar(); }}
+          className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all flex-shrink-0"
+        >
+          <Star size={14} className={item.starred ? "fill-amber-400 text-amber-400" : "text-tx-tertiary hover:text-amber-400"} />
+        </button>
+      )}
       <button
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
         className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-tx-tertiary hover:text-accent-danger transition-all flex-shrink-0"
@@ -816,6 +825,16 @@ export default function MindMapCenter() {
   }, [loadMaps]);
 
   // 选择一个导图
+  // 收藏/取消收藏
+  const handleToggleStar = useCallback(async (mapId: string) => {
+    try {
+      const updated = await api.toggleStarMindMap(mapId);
+      setMaps((prev) => prev.map((m) => m.id === mapId ? { ...m, starred: (updated as any).starred } : m));
+    } catch (err) {
+      console.error("Failed to toggle star:", err);
+    }
+  }, []);
+
   const handleSelect = useCallback(async (id: string) => {
     try {
       const map = await api.getMindMap(id);
@@ -1872,6 +1891,7 @@ export default function MindMapCenter() {
                 onSelect={() => { handleSelect(m.id); if (isMobile) setSidebarOpen(false); }}
                 onDelete={() => handleDeleteMap(m.id)}
                 onContextMenu={(e) => handleListContextMenu(e, m)}
+                onToggleStar={() => handleToggleStar(m.id)}
               />
             ))
           )}
