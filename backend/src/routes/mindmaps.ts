@@ -16,6 +16,7 @@
  */
 import { Hono } from "hono";
 import { getDb } from "../db/schema";
+import { canManageResource } from "../middleware/acl";
 import { v4 as uuidv4 } from "uuid";
 import {
   canManageResource,
@@ -237,4 +238,29 @@ app.patch("/:id/star", async (c) => {
   return c.json(row);
 });
 
+// ---------- ???????? ----------
+app.patch("/:id/move", async (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  const id = c.req.param("id");
+  const body = await c.req.json<{ folderId: string | null }>();
+
+  const existing = db.prepare("SELECT * FROM mindmaps WHERE id = ?").get(id) as any;
+  if (!existing) return c.json({ error: "Mindmap not found" }, 404);
+  if (!canManageResource(existing.userId, existing.workspaceId, userId)) {
+    return c.json({ error: "???????", code: "FORBIDDEN" }, 403);
+  }
+
+  const folderId = body.folderId || null;
+  if (folderId) {
+    const folder = db.prepare("SELECT * FROM mindmap_folders WHERE id = ?").get(folderId) as any;
+    if (!folder) return c.json({ error: "??????" }, 404);
+  }
+
+  db.prepare("UPDATE mindmaps SET folderId = ?, updatedAt = datetime('now') WHERE id = ?").run(folderId, id);
+  const row = db.prepare("SELECT * FROM mindmaps WHERE id = ?").get(id);
+  return c.json(row);
+});
+
 export default app;
+
