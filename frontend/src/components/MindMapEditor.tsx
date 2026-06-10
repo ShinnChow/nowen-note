@@ -686,8 +686,6 @@ export default function MindMapCenter() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
-  useEffect(() => { setSelectedNodeIds([]); }, [activeMap?.id]);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -723,7 +721,6 @@ export default function MindMapCenter() {
       setActiveMap(null);
       setMapData(null);
       setSelectedNodeId(null);
-    setSelectedNodeIds([]);
       setEditingNodeId(null);
       loadMaps();
     };
@@ -749,7 +746,6 @@ export default function MindMapCenter() {
         setMapData({ root: { id: "root", text: map.title, children: [] } });
       }
       setSelectedNodeId(null);
-    setSelectedNodeIds([]);
       setEditingNodeId(null);
       setZoom(1);
       setPan({ x: 60, y: 0 });
@@ -943,7 +939,6 @@ export default function MindMapCenter() {
     const newData = { ...mapData, root: newRoot };
     setMapData(newData);
     setSelectedNodeId(null);
-    setSelectedNodeIds([]);
     pushHistory(newData);
     triggerSave(newData);
   }, [mapData, removeNode, triggerSave]);
@@ -1707,50 +1702,6 @@ export default function MindMapCenter() {
       <div className="flex-1 flex flex-col overflow-hidden bg-app-bg transition-colors" ref={containerRef}>
         {activeMap && mapData ? (
           <>
-                {/* Floating toolbar: HTML absolute overlay */}
-                {(() => {
-                  if (!selectedNodeId || editingNodeId === selectedNodeId) return null;
-                  const node = layoutNodes.find(n => n.id === selectedNodeId);
-                  if (!node) return null;
-                  return (
-                    <FloatingToolbar
-                      position={(() => {
-                        const svg = svgRef.current;
-                        const container = containerRef.current;
-                        if (!svg || !container) return { x: 0, y: 0 };
-                        const point = svg.createSVGPoint();
-                        point.x = node.x + node.width / 2;
-                        point.y = node.y + node.height + 4;
-                        const ctm = svg.getScreenCTM();
-                        if (!ctm) return { x: 0, y: 0 };
-                        const screen = point.matrixTransform(ctm);
-                        const rect = container.getBoundingClientRect();
-                        let x = screen.x - rect.left;
-                        let y = screen.y - rect.top;
-                        const toolbarWidth = 320;
-                        const toolbarHeight = 36;
-                        const pad = 8;
-                        x = Math.max(pad, Math.min(x, rect.width - toolbarWidth - pad));
-                        y = Math.max(pad, Math.min(y, rect.height - toolbarHeight - pad));
-                        return { x, y };
-                      })()}
-                      isRoot={node.depth === 0} isMobile={isMobile}
-                      onAddChild={() => handleAddChild(node.id)}
-                      onAddSibling={() => handleAddSibling(node.id)}
-                      onEdit={() => { setEditingNodeId(node.id); const n = findNode(mapData!.root, node.id); setEditValue(n?.text || ""); }}
-                      onDelete={() => handleDeleteNode(node.id)}
-                      onAddMarker={handleAddMarker}
-                      onSetLink={handleSetLink}
-                      onSetNote={handleSetNote}
-                      onSetColor={handleSetColor}
-                      currentStyle={findNode(mapData!.root, selectedNodeId)?.style}
-                      onApplyTheme={handleApplyTheme}
-                      onStartRelation={() => { setDrawingRelation(true); setRelationStart(selectedNodeId); toast.success(t("mindMap.relationStart")); }}
-                      onCreateBoundary={handleCreateBoundary}
-                      t={t}
-                    />
-                  );
-                })()}
             {/* Toolbar */}
             <div className="px-2 sm:px-4 py-2 border-b border-app-border flex items-center justify-between bg-app-surface/50 gap-1">
               <div className="flex items-center gap-2 min-w-0">
@@ -1915,7 +1866,7 @@ export default function MindMapCenter() {
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
-                onClick={(e) => { if (!e.ctrlKey && !e.metaKey) setSelectedNodeIds([]); setSelectedNodeId(null); setEditingNodeId(null); }}
+                onClick={() => { setSelectedNodeId(null); setEditingNodeId(null); }}
               >
                 <svg
                   ref={svgRef}
@@ -1990,14 +1941,14 @@ export default function MindMapCenter() {
                 })}
 
                 {/* Nodes */}
-                {((() => { const ids = selectedNodeIds.length > 0 ? selectedNodeIds : (selectedNodeId ? [selectedNodeId] : []); return ids.length > 0 ? [...layoutNodes.filter(n => !ids.includes(n.id)), ...layoutNodes.filter(n => ids.includes(n.id))] : layoutNodes; })()).map((n) => (
+                {(selectedNodeId ? [...layoutNodes.filter(n => n.id !== selectedNodeId), layoutNodes.find(n => n.id === selectedNodeId)!] : layoutNodes).map((n) => (
                   <NodeBox
                     key={n.id}
                     node={n}
-                    isSelected={selectedNodeIds.length > 0 ? selectedNodeIds.includes(n.id) : selectedNodeId === n.id}
+                    isSelected={selectedNodeId === n.id}
                     isEditing={editingNodeId === n.id}
                     editValue={editValue}
-                    onSelect={(e?: React.MouseEvent) => { if (drawingRelation) { handleRelationClick(n.id); return; } if (e && (e.ctrlKey || e.metaKey)) { setSelectedNodeIds((ids) => ids.includes(n.id) ? ids.filter((id) => id !== n.id) : [...ids, n.id]); setSelectedNodeId(n.id); } else { setSelectedNodeIds([n.id]); setSelectedNodeId(n.id); }}}
+                    onSelect={() => { if (drawingRelation) { handleRelationClick(n.id); } else { setSelectedNodeId(n.id); }}}
                     onDoubleClick={() => {
                       setEditingNodeId(n.id);
                       setEditValue(n.text);
@@ -2012,6 +1963,51 @@ export default function MindMapCenter() {
                   />
                 ))}
               </svg>
+
+                {/* Floating toolbar: HTML absolute overlay */}
+                {(() => {
+                  if (!selectedNodeId || editingNodeId === selectedNodeId) return null;
+                  const node = layoutNodes.find(n => n.id === selectedNodeId);
+                  if (!node) return null;
+                  return (
+                    <FloatingToolbar
+                      position={(() => {
+                        const svg = svgRef.current;
+                        const container = canvasRef.current;
+                        if (!svg || !container) return { x: 0, y: 0 };
+                        const point = svg.createSVGPoint();
+                        point.x = node.x + node.width / 2;
+                        point.y = node.y + node.height + 4;
+                        const ctm = svg.getScreenCTM();
+                        if (!ctm) return { x: 0, y: 0 };
+                        const screen = point.matrixTransform(ctm);
+                        const rect = container.getBoundingClientRect();
+                        let x = screen.x - rect.left;
+                        let y = screen.y - rect.top;
+                        const toolbarWidth = 320;
+                        const toolbarHeight = 36;
+                        const pad = 8;
+                        x = Math.max(pad, Math.min(x, rect.width - toolbarWidth - pad));
+                        y = Math.max(pad, Math.min(y, rect.height - toolbarHeight - pad));
+                        return { x, y };
+                      })()}
+                      isRoot={node.depth === 0} isMobile={isMobile}
+                      onAddChild={() => handleAddChild(node.id)}
+                      onAddSibling={() => handleAddSibling(node.id)}
+                      onEdit={() => { setEditingNodeId(node.id); const n = findNode(mapData!.root, node.id); setEditValue(n?.text || ""); }}
+                      onDelete={() => handleDeleteNode(node.id)}
+                      onAddMarker={handleAddMarker}
+                      onSetLink={handleSetLink}
+                      onSetNote={handleSetNote}
+                      onSetColor={handleSetColor}
+                      currentStyle={findNode(mapData!.root, selectedNodeId)?.style}
+                      onApplyTheme={handleApplyTheme}
+                      onStartRelation={() => { setDrawingRelation(true); setRelationStart(selectedNodeId); toast.success(t("mindMap.relationStart")); }}
+                      onCreateBoundary={handleCreateBoundary}
+                      t={t}
+                    />
+                  );
+                })()}
 
               {/* MiniMap 小地图 */}
               {showMiniMap && layoutNodes.length > 0 && (
@@ -2092,7 +2088,6 @@ export default function MindMapCenter() {
                 </div>
               )}
             </div>
-
             </div>
             </div>
             {!isMobile && (
