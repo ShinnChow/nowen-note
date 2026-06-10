@@ -612,7 +612,7 @@ function OutlinePanel({
   );
 }
 function MindMapListRow({
-  item, isActive, onSelect, onDelete, onContextMenu, onToggleStar,
+  item, isActive, onSelect, onDelete, onContextMenu, onToggleStar, onDragStart, onDragEnd, isDropTarget,
 }: {
   item: MindMapListItem;
   isActive: boolean;
@@ -620,6 +620,9 @@ function MindMapListRow({
   onDelete: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onToggleStar?: () => void;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
+  isDropTarget?: boolean;
 }) {
   const date = new Date(item.updatedAt + (item.updatedAt.endsWith("Z") ? "" : "Z"));
   const dateStr = date.toLocaleDateString();
@@ -635,10 +638,15 @@ function MindMapListRow({
         "group flex items-center gap-3 px-3 py-2.5 rounded-md transition-all cursor-pointer border-l-2",
         isActive
           ? "border-l-indigo-500 bg-indigo-50/40 dark:bg-indigo-500/10"
+          : isDropTarget
+          ? "border-l-emerald-500 bg-emerald-50/40 dark:bg-emerald-500/10"
           : "border-l-transparent hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
       )}
       onClick={onSelect}
       onContextMenu={onContextMenu}
+      draggable={!!onDragStart}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onTouchStart={(e) => {
         longPressTimer.current = setTimeout(() => {
           // 长按触发右键菜单（移动端导出入口）
@@ -747,6 +755,8 @@ export default function MindMapCenter() {
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [clipboard, setClipboard] = useState<{ node: MindMapNode; isCut: boolean } | null>(null);
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
+  const [dragMapId, setDragMapId] = useState<string | null>(null);
+  const [dropFolderId, setDropFolderId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   useEffect(() => { setSelectedNodeIds([]); setClipboard(null); setFocusedNodeId(null); }, [activeMap?.id]);
@@ -1996,9 +2006,12 @@ export default function MindMapCenter() {
               return (
                 <div key={folder.id}>
                   <div
-                    className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-sm"
+                    className={cn("group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-sm", dropFolderId === folder.id && "ring-2 ring-emerald-400/60 bg-emerald-50/40 dark:bg-emerald-500/10")}
                     style={{ paddingLeft: depth * 16 + 8 }}
                     onClick={() => setExpandedFolders(prev => { const next = new Set(prev); if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id); return next; })}
+                    onDragOver={(e) => { if (dragMapId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropFolderId(folder.id); } }}
+                    onDragLeave={() => { if (dropFolderId === folder.id) setDropFolderId(null); }}
+                    onDrop={(e) => { e.preventDefault(); if (dragMapId) { api.moveMindMap(dragMapId, folder.id).then(() => { loadMaps(); loadFolders(); }); setDragMapId(null); setDropFolderId(null); } }}
                   >
                     <ChevronRight size={12} className={cn("text-tx-tertiary transition-transform flex-shrink-0", isExpanded && "rotate-90")} />
                     <FolderIcon size={14} className={cn("flex-shrink-0", isExpanded ? "text-amber-500" : "text-tx-tertiary")} />
@@ -2011,7 +2024,7 @@ export default function MindMapCenter() {
                       {children.map(f => renderFolder(f, depth + 1))}
                       {folderMaps.map(m => (
                         <div key={m.id} style={{ paddingLeft: (depth + 1) * 16 + 8 }}>
-                          <MindMapListRow item={m} isActive={activeMap?.id === m.id} onSelect={() => { handleSelect(m.id); if (isMobile) setSidebarOpen(false); }} onDelete={() => handleDeleteMap(m.id)} onContextMenu={(e) => handleListContextMenu(e, m)} onToggleStar={() => handleToggleStar(m.id)} />
+                          <MindMapListRow item={m} isActive={activeMap?.id === m.id} onSelect={() => { handleSelect(m.id); if (isMobile) setSidebarOpen(false); }} onDelete={() => handleDeleteMap(m.id)} onContextMenu={(e) => handleListContextMenu(e, m)} onToggleStar={() => handleToggleStar(m.id)} onDragStart={(e) => { e.stopPropagation(); setDragMapId(m.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => { setDragMapId(null); setDropFolderId(null); }} isDropTarget={false} />
                         </div>
                       ))}
                     </>
@@ -2040,14 +2053,16 @@ export default function MindMapCenter() {
                 {topFolders.map(f => renderFolder(f, 0))}
                 {uncategorized.length > 0 && (
                   <div>
+                    <div className={cn("rounded-md transition-colors", dropFolderId === "__uncategorized__" && "ring-2 ring-emerald-400/60 bg-emerald-50/40 dark:bg-emerald-500/10 p-1")} onDragOver={(e) => { if (dragMapId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropFolderId("__uncategorized__"); } }} onDragLeave={() => { if (dropFolderId === "__uncategorized__") setDropFolderId(null); }} onDrop={(e) => { e.preventDefault(); if (dragMapId) { api.moveMindMap(dragMapId, null).then(() => { loadMaps(); loadFolders(); }); setDragMapId(null); setDropFolderId(null); } }}>
                     {!q && topFolders.length > 0 && (
                       <div className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-[10px] text-tx-tertiary uppercase tracking-wider">
                         {t("mindMap.uncategorized")}
                       </div>
                     )}
                     {uncategorized.map(m => (
-                      <MindMapListRow key={m.id} item={m} isActive={activeMap?.id === m.id} onSelect={() => { handleSelect(m.id); if (isMobile) setSidebarOpen(false); }} onDelete={() => handleDeleteMap(m.id)} onContextMenu={(e) => handleListContextMenu(e, m)} onToggleStar={() => handleToggleStar(m.id)} />
+                      <MindMapListRow key={m.id} item={m} isActive={activeMap?.id === m.id} onSelect={() => { handleSelect(m.id); if (isMobile) setSidebarOpen(false); }} onDelete={() => handleDeleteMap(m.id)} onContextMenu={(e) => handleListContextMenu(e, m)} onToggleStar={() => handleToggleStar(m.id)} onDragStart={(e) => { e.stopPropagation(); setDragMapId(m.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => { setDragMapId(null); setDropFolderId(null); }} isDropTarget={false} />
                     ))}
+                    </div>
                   </div>
                 )}
                 <div className="pt-2">
