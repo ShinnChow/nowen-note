@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+﻿import React, { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 export interface ContextMenuItem {
@@ -85,16 +85,16 @@ export default function ContextMenu({
         zIndex: 100,
         animation: "contextMenuIn 0.12s ease-out",
       }}
-      className="w-48 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl dark:shadow-2xl dark:shadow-black/50 py-1 select-none"
+      className="w-48 backdrop-blur-xl bg-white/90 dark:bg-zinc-900/90 rounded-[12px] shadow-lg shadow-black/[0.08] dark:shadow-black/30 border border-black/[0.06] dark:border-white/[0.08] py-1 select-none"
     >
       {header && (
-        <div className="px-3 py-1.5 text-[11px] font-medium text-tx-tertiary border-b border-zinc-100 dark:border-zinc-800 mb-0.5 truncate">
+        <div className="px-3 py-1.5 text-[11px] font-medium text-tx-tertiary border-b border-black/[0.06] dark:border-white/[0.08] mb-0.5 truncate">
           {header}
         </div>
       )}
       {items.map((item) =>
         item.separator ? (
-          <div key={item.id} className="h-px bg-zinc-200 dark:bg-zinc-800 my-1 mx-2" />
+          <div key={item.id} className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1 mx-2" />
         ) : (
           <button
             key={item.id}
@@ -105,11 +105,11 @@ export default function ContextMenu({
               if (!item.disabled) onAction(item.id);
             }}
             className={cn(
-              "w-full flex items-center gap-2 px-3 py-1.5 text-sm transition-colors",
+              "w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors duration-150 ease-out",
               item.disabled && "opacity-40 cursor-not-allowed",
               item.danger
-                ? "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-                : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-tx-primary"
+                ? "text-red-600 dark:text-red-400 hover:bg-red-50/60 dark:hover:bg-red-900/20"
+                : "text-zinc-700 dark:text-zinc-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:text-tx-primary"
             )}
           >
             {item.icon && <span className="w-4 h-4 flex items-center justify-center">{item.icon}</span>}

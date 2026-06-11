@@ -13,6 +13,27 @@ import { toast } from "@/lib/toast";
 import { useMindMapHistory } from "@/hooks/useMindMapHistory";
 import { buildXmindContent, buildZip, downloadBlob } from "@/lib/mindmapExport";
 import { markdownToMindMapData, mindMapDataToMarkdown } from "@/lib/mindmapTransform";
+/* ===== macOS-style Mindmap Theme Tokens ===== */
+const MT = {
+  canvasBg: "var(--mm-canvas-bg, #f5f5f7)",
+  canvasDot: "var(--mm-canvas-dot, rgba(0,0,0,0.06))",
+  toolbarBtn: "p-1.5 rounded-md hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-tx-secondary transition-colors duration-150 ease-out w-8 h-8 flex items-center justify-center",
+  toolbarBtnActive: "bg-black/[0.06] dark:bg-white/[0.08] text-accent-primary",
+  toolbarBtnDisabled: "opacity-30 pointer-events-none",
+  nodeShadow: "var(--mm-node-shadow, 0 1px 3px rgba(0,0,0,0.06))",
+  nodeShadowHover: "var(--mm-node-shadow-hover, 0 2px 8px rgba(0,0,0,0.10))",
+  nodeRadius: "12px",
+  nodeSelectedRing: "ring-2 ring-blue-400/40 dark:ring-blue-500/30 ring-offset-1 dark:ring-offset-zinc-900",
+  rootBg: "linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)",
+  rootText: "#ffffff",
+  rootShadow: "0 2px 12px rgba(99,102,241,0.25)",
+  edgeStroke: "var(--mm-edge-stroke, rgba(148,163,184,0.5))",
+  edgeWidth: 1.5,
+  menuCls: "backdrop-blur-xl rounded-[12px] shadow-lg shadow-black/[0.08] dark:shadow-black/30 border border-black/[0.06] dark:border-white/[0.08] py-1",
+  menuHover: "hover:bg-black/[0.04] dark:hover:bg-white/[0.06]",
+  menuDivider: "h-px bg-black/[0.06] dark:bg-white/[0.08] my-1",
+} as const;
+
 
 /* ===== 布局算法：计算树节点的 x,y 位置 ===== */
 interface LayoutNode {
@@ -260,9 +281,9 @@ function Edge({ from, to }: { from: LayoutNode; to: LayoutNode }) {
     <path
       d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`}
       fill="none"
-      stroke="rgb(203,213,225)"
-      strokeWidth={2}
-      className="dark:stroke-zinc-600"
+      stroke={MT.edgeStroke}
+      strokeWidth={MT.edgeWidth}
+      className=""
     />
   );
 }
@@ -313,13 +334,14 @@ function NodeBox({
       <foreignObject x={node.x} y={node.y} width={node.width} height={node.height}>
         <div
           className={cn(
-            "flex items-center h-full px-3 rounded-lg cursor-pointer select-none transition-shadow text-sm font-medium whitespace-nowrap overflow-hidden",
-            isSelected && "ring-2 ring-indigo-400/60 ring-offset-1 dark:ring-offset-zinc-900 shadow-sm", isSearchMatch && "ring-2 ring-amber-400/70", isSearchActive && "ring-2 ring-amber-500 shadow-lg shadow-amber-500/20", isDragTarget && "ring-2 ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20"
+            "flex items-center h-full px-3 rounded-[12px] cursor-pointer select-none transition-all duration-150 ease-out text-sm font-medium whitespace-nowrap overflow-hidden",
+            isSelected && (MT.nodeSelectedRing + " shadow-sm"), isSearchMatch && "ring-2 ring-amber-400/70", isSearchActive && "ring-2 ring-amber-500 shadow-lg shadow-amber-500/20", isDragTarget && "ring-2 ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20"
           )}
           style={{
-            background: nodeData?.style?.bg || color.bg,
-            color: nodeData?.style?.color || color.text,
-            border: `1.5px solid ${nodeData?.style?.border || color.border}`,
+            background: isRoot ? (nodeData?.style?.bg || MT.rootBg) : (nodeData?.style?.bg || color.bg),
+            color: isRoot ? (nodeData?.style?.color || MT.rootText) : (nodeData?.style?.color || color.text),
+            border: `1px solid ${nodeData?.style?.border || color.border}`,
+            boxShadow: isRoot ? MT.rootShadow : MT.nodeShadow,
             fontSize: isRoot ? 14 : 13,
             fontWeight: isRoot ? 700 : 500,
           }}
@@ -384,7 +406,7 @@ function NodeBox({
           height={20}
         >
           <div
-            className="w-5 h-5 rounded-full bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 flex items-center justify-center cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            className="w-5 h-5 rounded-full bg-white dark:bg-zinc-800 border border-black/[0.08] dark:border-white/[0.08] flex items-center justify-center cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
             onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
           >
             {node.collapsed ? (
@@ -442,54 +464,54 @@ function FloatingToolbar({
   }, [showMore]);
 
   return (
-    <div className="absolute z-40 flex items-center gap-1"
+    <div className="absolute z-40 flex items-center gap-1.5"
       style={{ left: position.x, top: position.y, transform: "translateX(-50%)" }}>
-      <button className={cn("flex items-center gap-1 rounded-md bg-indigo-500 text-white hover:bg-indigo-600 transition-colors shadow-md", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
+      <button className={cn("flex items-center gap-1 rounded-full bg-accent-primary/90 text-white hover:bg-accent-primary transition-colors duration-150 ease-out shadow-sm", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
         onClick={(e) => { e.stopPropagation(); onAddChild(); }}>
         <Plus size={isMobile ? 14 : 10} />
         <span className="hidden sm:inline">{t("mindMap.addChild")}</span>
       </button>
       {!isRoot && (
-        <button className={cn("flex items-center gap-1 rounded-md bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors shadow-md", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
+        <button className={cn("flex items-center gap-1 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-tx-secondary hover:bg-black/[0.08] dark:hover:bg-white/[0.10] transition-colors duration-150 ease-out shadow-sm", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
           onClick={(e) => { e.stopPropagation(); onAddSibling(); }}>
           <MoreHorizontal size={isMobile ? 14 : 10} />
           <span className="hidden sm:inline">{t("mindMap.addSibling")}</span>
         </button>
       )}
-      <button className={cn("flex items-center gap-1 rounded-md bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors shadow-md", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
+      <button className={cn("flex items-center gap-1 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-tx-secondary hover:bg-black/[0.08] dark:hover:bg-white/[0.10] transition-colors duration-150 ease-out shadow-sm", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
         onClick={(e) => { e.stopPropagation(); onEdit(); }}>
         <Edit2 size={isMobile ? 14 : 10} />
         <span className="hidden sm:inline">{t("mindMap.editNode")}</span>
       </button>
       <div className="relative" ref={moreRef}>
-        <button className={cn("rounded-md bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors shadow-md", isMobile ? "p-2" : "p-1")}
+        <button className={cn("rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-tx-secondary hover:bg-black/[0.08] dark:hover:bg-white/[0.10] transition-colors duration-150 ease-out shadow-sm", isMobile ? "p-2" : "p-1")}
           onClick={(e) => { e.stopPropagation(); setShowMore(!showMore); }}>
           <MoreHorizontal size={isMobile ? 14 : 10} />
         </button>
         {showMore && (
-          <div className="absolute top-full mt-1 right-0 min-w-[180px] py-1 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 z-50 max-h-[300px] overflow-auto">
+          <div className="absolute top-full mt-1.5 right-0 min-w-[180px] backdrop-blur-xl bg-white/90 dark:bg-zinc-900/90 rounded-[12px] shadow-lg shadow-black/[0.08] dark:shadow-black/30 border border-black/[0.06] dark:border-white/[0.08] py-1 z-50 max-h-[300px] overflow-auto">
             <div className="px-3 py-1 text-[10px] text-tx-tertiary uppercase tracking-wider">{t("mindMap.markers")}</div>
             {[{ key: "done", label: "\u2705 Done" }, { key: "todo", label: "\u2611 Todo" }, { key: "priority-high", label: "\u26a0 High" }, { key: "warning", label: "\u26a0 Warning" }, { key: "idea", label: "\u2b50 Idea" }, { key: "pin", label: "\u1f4cc Pin" }].map((m) => (
-              <button key={m.key} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              <button key={m.key} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
                 onClick={(e) => { e.stopPropagation(); onAddMarker(m.key); setShowMore(false); }}>
                 {m.label}
               </button>
             ))}
-            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+            <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
             <div className="px-3 py-1 text-[10px] text-tx-tertiary uppercase tracking-wider">{t("mindMap.nodeColors")}</div>
             <div className="flex flex-wrap gap-1 px-3 py-1">
               {currentStyle?.bg && (
-                <button className="w-6 h-6 rounded-full border-2 border-zinc-400 flex items-center justify-center text-[10px]"
+                <button className="w-6 h-6 rounded-full border-2 border-black/20 dark:border-white/20 flex items-center justify-center text-[10px]"
                   onClick={(e) => { e.stopPropagation(); onSetColor(undefined); setShowMore(false); }} title={t("mindMap.clearColor")}>\u2715</button>
               )}
               {NODE_COLORS.map((nc) => (
-                <button key={nc.bg} className="w-6 h-6 rounded-full border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform"
+                <button key={nc.bg} className="w-6 h-6 rounded-full border border-black/10 dark:border-white/10 hover:scale-110 transition-transform duration-150 ease-out"
                   style={{ background: nc.bg }} title={nc.bg}
                   onClick={(e) => { e.stopPropagation(); onSetColor({ bg: nc.bg, color: nc.color, border: nc.bg }); setShowMore(false); }} />
               ))}
             </div>
-            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
               onClick={(e) => {
                 e.stopPropagation();
                 const link = window.prompt(t("mindMap.enterLink"), "https://");
@@ -498,7 +520,7 @@ function FloatingToolbar({
               }}>
               <LinkIcon size={14} className="text-blue-500" /> {t("mindMap.setLink")}
             </button>
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
               onClick={(e) => {
                 e.stopPropagation();
                 const note = window.prompt(t("mindMap.enterNote"), "");
@@ -507,40 +529,40 @@ function FloatingToolbar({
               }}>
               <StickyNote size={14} className="text-amber-500" /> {t("mindMap.setNote")}
             </button>
-            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+            <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
             <div className="px-3 py-1 text-[10px] text-tx-tertiary uppercase tracking-wider">{t("mindMap.themes")}</div>
             {THEME_TEMPLATES.map((theme, idx) => (
-              <button key={theme.name} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              <button key={theme.name} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
                 onClick={(e) => { e.stopPropagation(); onApplyTheme(idx); setShowMore(false); }}>
                 <span className="flex gap-0.5">{theme.colors.map((c, ci) => <span key={ci} className="w-3 h-3 rounded-full" style={{ background: c.bg }} />)}</span>
                 {theme.name}
               </button>
             ))}
-            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+            <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
             {onFocusNode && (
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
               onClick={(e) => { e.stopPropagation(); onFocusNode(); setShowMore(false); }}>
               <Scan size={14} className="text-emerald-500" /> {t("mindMap.focusNode")}
             </button>
             )}
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
               onClick={(e) => { e.stopPropagation(); onCopy(); setShowMore(false); }}>
               <span className="text-[14px]">⎘</span> {t("mindMap.copyNode")} <span className="ml-auto text-[10px] text-tx-tertiary">Ctrl+C</span>
             </button>
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
               onClick={(e) => { e.stopPropagation(); onCut(); setShowMore(false); }}>
               <span className="text-[14px]">✂</span> {t("mindMap.cutNode")} <span className="ml-auto text-[10px] text-tx-tertiary">Ctrl+X</span>
             </button>
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
               onClick={(e) => { e.stopPropagation(); onPaste(); setShowMore(false); }}>
               <span className="text-[14px]">⧉</span> {t("mindMap.pasteNode")} <span className="ml-auto text-[10px] text-tx-tertiary">Ctrl+V</span>
             </button>
-            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
               onClick={(e) => { e.stopPropagation(); onStartRelation(); setShowMore(false); }}>
               <Spline size={14} className="text-amber-500" /> {t("mindMap.addRelation")}
             </button>
-            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+            <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
               onClick={(e) => { e.stopPropagation(); onCreateBoundary(); setShowMore(false); }}>
               <Square size={14} className="text-cyan-500" /> {t("mindMap.addBoundary")}
             </button>
@@ -637,10 +659,10 @@ function MindMapListRow({
       className={cn(
         "group flex items-center gap-3 px-3 py-2.5 rounded-md transition-all cursor-pointer border-l-2",
         isActive
-          ? "border-l-indigo-500 bg-indigo-50/40 dark:bg-indigo-500/10"
+          ? "border-l-blue-500 bg-blue-50/50 dark:bg-blue-500/10"
           : isDropTarget
-          ? "border-l-emerald-500 bg-emerald-50/40 dark:bg-emerald-500/10"
-          : "border-l-transparent hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+          ? "border-l-emerald-500 bg-emerald-50/50 dark:bg-emerald-500/10"
+          : "border-l-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
       )}
       onClick={onSelect}
       onContextMenu={onContextMenu}
@@ -1935,14 +1957,14 @@ export default function MindMapCenter() {
       {!isFullscreen && (/* Left: Map List Panel */
       <div
         className={cn(
-          "border-r border-app-border bg-app-surface flex flex-col transition-all duration-200",
+          "border-r border-app-border/60 bg-app-surface flex flex-col transition-all duration-150 ease-out",
           isMobile
             ? "fixed inset-y-0 left-0 z-40 w-[280px] shadow-2xl"
             : "w-[260px] min-w-[260px] shrink-0",
           isMobile && !sidebarOpen && "-translate-x-full"
         )}
       >
-        <div className="px-4 py-4 border-b border-app-border">
+        <div className="px-4 py-4 border-b border-app-border/40">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BrainCircuit size={18} className="text-indigo-500" />
@@ -1951,7 +1973,7 @@ export default function MindMapCenter() {
             <div className="flex items-center gap-1">
               <button
                 onClick={handleCreate}
-                className="p-1.5 rounded-md hover:bg-app-hover transition-colors text-tx-secondary hover:text-indigo-500"
+                className="p-1.5 rounded-md hover:bg-app-hover transition-colors duration-150 ease-out text-tx-secondary hover:text-indigo-500"
                 title={t("mindMap.create")}
               >
                 <Plus size={16} />
@@ -1971,7 +1993,7 @@ export default function MindMapCenter() {
           </div>
         </div>
         <div className="px-3 pb-2">
-          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-app-bg border border-app-border">
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-app-bg border border-app-border shadow-sm">
             <SearchIcon size={13} className="text-tx-tertiary flex-shrink-0" />
             <input
               type="text"
@@ -2135,16 +2157,16 @@ export default function MindMapCenter() {
       )}
 
       {/* Center: Mind Map Canvas */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-app-bg transition-colors" ref={containerRef}>
+      <div className="flex-1 flex flex-col overflow-hidden transition-colors duration-150 ease-out" ref={containerRef} style={{ background: MT.canvasBg }}>
         {activeMap && mapData ? (
           <>
             {/* Toolbar */}
-            <div className="px-2 sm:px-4 py-2 border-b border-app-border flex items-center justify-between bg-app-surface/50 gap-1">
+            <div className="px-2 sm:px-4 py-2 border-b border-app-border/40 flex items-center justify-between bg-app-surface/30 gap-1">
               <div className="flex items-center gap-2 min-w-0">
                 {focusedNodeId && (
                   <button
                     onClick={() => setFocusedNodeId(null)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex-shrink-0"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors duration-150 ease-out flex-shrink-0"
                   >
                     <Scan size={12} />
                     {t("mindMap.showAll")}
@@ -2176,16 +2198,16 @@ export default function MindMapCenter() {
               <div className="flex items-center gap-1">
                 {/* Edit: Undo / Redo */}
                 <button onClick={handleUndo} disabled={!canUndo}
-                  className={cn("p-1.5 rounded-md transition-colors", canUndo ? "hover:bg-app-hover text-tx-secondary" : "text-tx-tertiary/40 cursor-not-allowed")}
+                  className={cn(MT.toolbarBtn, canUndo ? "" : MT.toolbarBtnDisabled)}
                   title={t("mindMap.undo")}><Undo2 size={16} /></button>
                 {/* Redo */}
                 <button onClick={handleRedo} disabled={!canRedo}
-                  className={cn("p-1.5 rounded-md transition-colors", canRedo ? "hover:bg-app-hover text-tx-secondary" : "text-tx-tertiary/40 cursor-not-allowed")}
+                  className={cn(MT.toolbarBtn, canRedo ? "" : MT.toolbarBtnDisabled)}
                   title={t("mindMap.redo")}><Redo2 size={16} /></button>
                 <div className="w-px h-4 bg-app-border mx-0.5" />
                 {/* View: Outline / Layout / Zoom / Fullscreen / MiniMap */}
                 <button onClick={() => setShowOutline((v) => !v)}
-                  className={cn("p-1.5 rounded-md transition-colors", showOutline ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-500" : "hover:bg-app-hover text-tx-secondary")}
+                  className={cn(MT.toolbarBtn, showOutline ? MT.toolbarBtnActive : "")}
                   title={t("mindMap.outline")}><PanelLeft size={16} /></button>
                 <button
                   onClick={() => {
@@ -2197,8 +2219,7 @@ export default function MindMapCenter() {
                       triggerSave(newData);
                     }
                   }}
-                  className={cn("p-1.5 rounded-md transition-colors",
-                    layoutMode === "left-right" ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-500" : "hover:bg-app-hover text-tx-secondary")}
+                  className={cn(MT.toolbarBtn, layoutMode === "left-right" ? MT.toolbarBtnActive : "")}
                   title={layoutMode === "right" ? t("mindMap.layoutRight") : t("mindMap.layoutBoth")}
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -2210,17 +2231,17 @@ export default function MindMapCenter() {
                 <div className="w-px h-4 bg-app-border mx-0.5" />
                 <button
                   onClick={handleZoomOut}
-                  className="p-1.5 rounded-md hover:bg-app-hover text-tx-secondary transition-colors"
+                  className={MT.toolbarBtn}
                   title={t("mindMap.zoomOut")}
                 >
                   <ZoomOut size={16} />
                 </button>
-                <span className="text-xs text-tx-tertiary w-12 text-center tabular-nums hidden sm:inline-block">
+                <span className="text-xs text-tx-tertiary w-12 text-center tabular-nums hidden sm:inline-block font-medium">
                   {Math.round(zoom * 100)}%
                 </span>
                 <button
                   onClick={handleZoomIn}
-                  className="p-1.5 rounded-md hover:bg-app-hover text-tx-secondary transition-colors"
+                  className={MT.toolbarBtn}
                   title={t("mindMap.zoomIn")}
                 >
                   <ZoomIn size={16} />
@@ -2235,7 +2256,7 @@ export default function MindMapCenter() {
                 <div className="w-px h-4 bg-app-border mx-0.5" />
                 <button
                   onClick={() => setIsFullscreen(v => !v)}
-                  className="p-1.5 rounded-md hover:bg-app-hover text-tx-secondary transition-colors"
+                  className={MT.toolbarBtn}
                   title={isFullscreen ? t("mindMap.exitFullscreen") : t("mindMap.fullscreen")}
                 >
                   {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -2257,28 +2278,28 @@ export default function MindMapCenter() {
                 )}
                 <button
                   onClick={handleExportMarkdown}
-                  className="p-1.5 rounded-md hover:bg-app-hover text-tx-secondary transition-colors"
+                  className={MT.toolbarBtn}
                   title={t("mindMap.exportMarkdown")}
                 >
                   <FileText size={16} />
                 </button>
                 <button
                   onClick={handleImportMarkdown}
-                  className="p-1.5 rounded-md hover:bg-app-hover text-tx-secondary transition-colors"
+                  className={MT.toolbarBtn}
                   title={t("mindMap.importMarkdown")}
                 >
                   <ArrowDownToLine size={16} />
                 </button>
                 <button
                   onClick={() => { setShowSearch(v => !v); setTimeout(() => searchInputRef.current?.focus(), 50); }}
-                  className={cn("p-1.5 rounded-md transition-colors", showSearch ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-500" : "hover:bg-app-hover text-tx-secondary")}
+                  className={cn(MT.toolbarBtn, showSearch ? MT.toolbarBtnActive : "")}
                 >
                   <SearchIcon size={16} />
                 </button>
               </div>
             </div>
             {showSearch && (
-              <div className="px-2 sm:px-4 py-1.5 border-b border-app-border bg-app-surface/30 flex items-center gap-2">
+              <div className="px-2 sm:px-4 py-1.5 border-b border-app-border/40 bg-app-surface/20 flex items-center gap-2">
                 <SearchIcon size={14} className="text-tx-tertiary flex-shrink-0" />
                 <input
                   ref={searchInputRef}
@@ -2306,7 +2327,7 @@ export default function MindMapCenter() {
 
             <div className="flex-1 flex overflow-hidden">
               {showOutline && (
-                <div className="w-[240px] min-w-[200px] border-r border-app-border bg-app-surface/50 shrink-0 overflow-hidden">
+                <div className="w-[240px] min-w-[200px] border-r border-app-border/40 bg-app-surface/30 shrink-0 overflow-hidden">
                   <OutlinePanel
                     mapData={mapData!}
                     selectedNodeId={selectedNodeId}
@@ -2330,6 +2351,8 @@ export default function MindMapCenter() {
                 ref={canvasRef}
                 className="absolute inset-0"
                 style={{
+                  backgroundImage: `radial-gradient(circle, var(--mm-canvas-dot, rgba(0,0,0,0.06)) 1px, transparent 1px)`,
+                  backgroundSize: "20px 20px",
                   transform: `translate(${pan.x}px, ${pan.y}px)`,
                   userSelect: "none",
                   touchAction: "none",
@@ -2500,7 +2523,7 @@ export default function MindMapCenter() {
               {/* MiniMap 小地图 */}
               {showMiniMap && layoutNodes.length > 0 && (
                 <div
-                  className="absolute right-2 bottom-2 sm:right-3 sm:bottom-3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden"
+                  className="absolute right-2 bottom-2 sm:right-3 sm:bottom-3 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md border border-black/[0.08] dark:border-white/[0.1] rounded-[10px] shadow-lg shadow-black/[0.06] overflow-hidden"
                   style={{ width: isMobile ? 140 : 180, height: isMobile ? 90 : 120 }}
                 >
                   <svg
@@ -2533,9 +2556,9 @@ export default function MindMapCenter() {
                         <line
                           key={`mini-e-${i}`}
                           x1={x1} y1={y1} x2={x2} y2={y2}
-                          stroke="rgb(203,213,225)"
-                          strokeWidth={3}
-                          className="dark:stroke-zinc-600"
+                          stroke={MT.edgeStroke}
+                          strokeWidth={2}
+                          className=""
                         />
                       );
                     })}
@@ -2565,9 +2588,9 @@ export default function MindMapCenter() {
                         <rect
                           x={vpX} y={vpY}
                           width={vpW} height={vpH}
-                          fill="rgba(99,102,241,0.08)"
-                          stroke="rgb(99,102,241)"
-                          strokeWidth={4}
+                          fill="rgba(99,102,241,0.06)"
+                          stroke="rgba(99,102,241,0.6)"
+                          strokeWidth={2}
                           rx={3}
                         />
                       );
@@ -2579,7 +2602,7 @@ export default function MindMapCenter() {
             </div>
             </div>
             {!isMobile && (
-            <div className="px-4 py-1.5 border-t border-app-border bg-app-surface/30 flex items-center gap-4 text-[11px] text-tx-tertiary">
+            <div className="px-4 py-1.5 border-t border-app-border/40 bg-app-surface/20 flex items-center gap-4 text-[11px] text-tx-tertiary">
               <span><kbd className="px-1 py-0.5 rounded border border-app-border bg-app-bg text-[10px]">Tab</kbd> {t("mindMap.shortcutAdd")}</span>
               <span><kbd className="px-1 py-0.5 rounded border border-app-border bg-app-bg text-[10px]">Enter</kbd> {t("mindMap.shortcutEdit")}</span>
               <span><kbd className="px-1 py-0.5 rounded border border-app-border bg-app-bg text-[10px]">Del</kbd> {t("mindMap.shortcutDelete")}</span>
@@ -2631,7 +2654,7 @@ export default function MindMapCenter() {
                 <Edit2 size={15} className="text-indigo-500" />
                 {t("mindMap.renameFolder")}
               </button>
-              <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+              <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
               <button
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
                 onClick={() => {
@@ -2721,7 +2744,7 @@ function MindMapContextMenuOverlay({
         <FileImage size={15} className="text-emerald-500" />
         {t("mindMap.downloadSVG")}
       </button>
-      <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+      <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
       <button
         className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
         onClick={onDownloadXmind}

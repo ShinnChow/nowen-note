@@ -2454,3 +2454,37 @@ html[data-electron="darwin"][data-fullscreen="1"] main::before {
 
 
 
+
+/* ===== Mindmap tokens ===== */
+:root {
+  --mm-canvas-bg: #f5f5f7;
+  --mm-canvas-dot: rgba(0,0,0,0.06);
+  --mm-panel-bg: var(--color-surface);
+  --mm-panel-border: var(--color-border);
+  --mm-node-bg: #ffffff;
+  --mm-node-border: rgba(0,0,0,0.08);
+  --mm-node-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  --mm-node-shadow-hover: 0 2px 8px rgba(0,0,0,0.10);
+  --mm-node-text: #374151;
+  --mm-edge-stroke: rgba(148,163,184,0.5);
+  --mm-edge-active: #6366f1;
+  --mm-menu-bg: rgba(255,255,255,0.88);
+  --mm-menu-bg-dark: rgba(30,30,30,0.88);
+  --mm-menu-border: rgba(0,0,0,0.06);
+}
+.dark {
+  --mm-canvas-bg: #161b22;
+  --mm-canvas-dot: rgba(255,255,255,0.04);
+  --mm-panel-bg: var(--color-surface);
+  --mm-panel-border: var(--color-border);
+  --mm-node-bg: #1c2333;
+  --mm-node-border: rgba(255,255,255,0.08);
+  --mm-node-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  --mm-node-shadow-hover: 0 2px 8px rgba(0,0,0,0.3);
+  --mm-node-text: #c9d1d9;
+  --mm-edge-stroke: rgba(148,163,184,0.35);
+  --mm-edge-active: #818cf8;
+  --mm-menu-bg: rgba(30,30,30,0.88);
+  --mm-menu-bg-dark: rgba(30,30,30,0.88);
+  --mm-menu-border: rgba(255,255,255,0.08);
+}
