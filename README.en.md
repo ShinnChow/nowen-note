@@ -134,6 +134,75 @@ If this project helps you, feel free to scan the QR code and buy the author a co
 
 > 最近 5 个版本的更新内容，完整历史见 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.1.19 - 2026-06-11
+
+### ✨ 新增
+
+- **前端**: 思维导图标记和主题名称支持多语言 i18n (8f46744)
+- add notebook-first collaboration with hidden workspace UX (e6875a1)
+- **mindmap**: 侧边栏搜索框旁增加收藏筛选按钮 (df89085)
+- **mindmap**: 新建文件夹按钮移到列表顶部 (ccc6425)
+- **mindmap**: 文件夹右键菜单 - 重命名/删除 (37313a7)
+- **backend**: 新增导图移动到文件夹的 PATCH /:id/move 路由 (770b062)
+- **mindmap**: 支持拖拽导图到文件夹 (4213873)
+- **mindmap**: 导图模板功能 - 新建导图时可选择预设模板 (09f7f17)
+- **mindmap**: 文件夹树前端 UI (1adf85a)
+- **mindmap**: 文件夹树后端 + 数据模型 (124562f)
+- **mindmap**: 节点聚焦模式 (9c0ed1a)
+- **mindmap**: 拖拽节点调整结构 (044cb67)
+- **mindmap**: 收藏导图功能 (f1868bd)
+- **mindmap**: 节点复制/剪切/粘贴 (a272d4f)
+- **mindmap**: Ctrl+滚轮鼠标位置缩放 + 节点搜索 + 列表搜索 (7ffe9eb)
+- **mindmap**: 支持 Ctrl+Click 多选节点 (0f0f462)
+- **mindmap**: 思维导图模块 5 阶段增强 (e8f3c66)
+- **mindmap**: 新增全屏编辑模式 (db3ae8b)
+- **mindmap**: 新增添加同级节点 + 快捷键 + 选中节点置顶渲染 (5348b85)
+- **mindmap**: 新增 mindmapTransform.ts 独立解析器 (8255b65)
+- **editor**: MermaidView 工具栏增强 + MindMapEditor 事件监听 + 编辑器 appendMarkdown (03e7782)
+- **ai**: AIChatPanel 支持笔记本级 RAG 作用域 (9a3a4a3)
+- **ai**: EditorPane 新增 AI 总结、AI Mermaid、保存为思维导图 (8effbf2)
+- **ai**: 前端 API 扩展 + i18n + NoteEditorHandle 类型增强 (54a7b26)
+- **ai**: 后端 AI 路由改造 + 笔记本级 AI 端点 (f81d0b8)
+- **ai**: 新增 AI Client 适配层，统一 stream/non-stream 调用 (c1e182d)
+
+### 🐛 修复
+
+- **前端**: NoteList 补回 confirm 导入，修复 tsc -b 构建错误 (182c698)
+- **前端**: 修复6个TypeScript编译错误 — import缺失、path字段缺失、函数未导出 (76721f1)
+- **前端**: 补回缺失的 diagnoseConnection 导出函数，修复 vite build 失败 (bb765a6)
+- **Electron**: setupWindow 和 waitForRemoteReady 支持反代路径前缀 (142c990)
+- **前端+后端**: 服务器地址支持反代路径、修复Windows频闪、新增连接诊断 (4442716)
+- **前端**: 浮动操作条按钮添加细微边框增强轮廓感 (7cb9e70)
+- **前端**: 思维导图标记菜单改用带颜色SVG图标，与节点显示一致 (1014ca0)
+- **前端**: 浮动操作条按钮增强可见性 — 加深背景色、加粗文字、加大点击区域 (98fbff7)
+- **backend**: 修复 mindmaps 相关路由 TypeScript 编译错误 (174f668)
+- **mobile**: 修复移动端回收站一键清空按钮无响应 (1f2fb74)
+- **mindmap**: 文件夹数量跟随收藏/搜索筛选动态更新 (380d594)
+- **i18n**: 修复文件夹右键菜单中文翻译乱码 (e38650f)
+- **i18n**: 修复导图模板中文翻译乱码 (42b1d73)
+- **backend**: requireWorkspaceFeature 中间件正确放行 personal 空间请求 (a0c4947)
+- **backend**: 修复 personal workspaceId 传入时文件夹和导图 API 返回 403 的问题 (164b8d8)
+- **mindmap**: Ctrl+滚轮缩放改为原生事件，阻止浏览器页面缩放 (fe67b0f)
+- **mindmap**: 修复 FloatingToolbar 定位偏移 (9f4ccc3)
+- **mindmap**: 修复数据风险 + UI 扁平化 + 代码拆分 (a789add)
+- **mindmap**: 适应视图图标改为 Scan，与全屏 Maximize2 区分 (d988ec1)
+- **i18n**: 补全思维导图多语言文案 (ffc33cd)
+- **ai**: 标题生成字数限制从10改为20，避免AI输出被截断 (8dfcb05)
+- **mindmap**: 保存为思维导图后可靠跳转 + 使用独立解析器 (caff2d6)
+- **ai**: 修复 RAG 向量召回未传 notebookIds + /ask 复用 ai-client (9061916)
+- **build**: 修复 vite 构建循环 chunk 错误 (9d81de3)
+
+### ♻️ 重构
+
+- **前端**: 思维导图样式收尾 — indigo→blue统一、transition补齐、菜单背景token化、模板弹窗圆角与阴影优化 (e0db228)
+- **前端**: 思维导图悬浮状态与创建按钮样式统一收敛 (ef81bea)
+- **前端**: 思维导图菜单与激活态样式继续收敛 (dec1717)
+- **前端**: 思维导图模块 macOS 风格样式重构 (87a48b3)
+
+### 📝 文档
+
+- 添加完整官网教程体系（47篇教程 + 索引 + 规划） (210f537)
+
 ### v1.1.18 - 2026-06-09
 
 ### ✨ 新增
@@ -180,30 +249,5 @@ If this project helps you, feel free to scan the QR code and buy the author a co
 
 - 优化同步引擎和网络状态检测 (a2e6fbd)
 - 修复macOS Electron侧边栏拖拽区域CSS (07545f2)
-
-### v1.1.14 - 2026-06-03
-
-### ✨ 新增
-
-- 侧边栏重构、右键菜单优化及多语言支持增强 (3dadbcc)
-- 笔记内联到笔记本树，移除独立笔记列表列 (406d599)
-
-### 🐛 修复
-
-- 修复标题聚焦边框问题，使用 node 写入避免 PowerShell UTF-8 BOM 损坏 (94e2061)
-- 移除标题输入框聚焦时的粗边框 (b2154b5)
-- 修复 JSX style 模板字符串中缺失的反引号 (1da66ed)
-- 从原始文件重新应用笔记内联功能，修复 UTF-8 编码损坏 (9a8ed99)
-- 修复递归 NotebookItem 调用中 /> 位置错误和缺失 notes prop (bedd28f)
-- 恢复被 Set-Content UTF8 编码破坏的 emoji 字符 (a6b9296)
-- 修复字号/颜色弹窗点击外部关闭逻辑，优化自定义颜色交互 (cc4bd64)
-
-### 🔧 其他
-
-- 提交剩余改动 (157e2e8)
-
-### 📌 杂项
-
-- 优化用户体验和编辑器功能 (f671a3d)
 
 <!-- CHANGELOG:END -->
