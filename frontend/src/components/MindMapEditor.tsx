@@ -602,7 +602,7 @@ function OutlinePanel({
     return (
       <div key={node.id}>
         <div className={cn("flex items-center gap-1 px-2 py-1 rounded cursor-pointer text-sm transition-colors group",
-          isSelected && "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300",
+          isSelected && "bg-blue-50/70 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300",
           !isSelected && "hover:bg-zinc-100 dark:hover:bg-zinc-700/50 text-tx-primary"
         )} style={{ paddingLeft: depth * 20 + 8 }}
           onClick={() => onSelectNode(node.id)} onDoubleClick={() => onEdit(node.id, node.text)}>
@@ -2266,7 +2266,7 @@ export default function MindMapCenter() {
                   className={cn(
                     "p-1.5 rounded-md transition-colors",
                     showMiniMap
-                      ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-500"
+                      ? "bg-blue-50/70 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300"
                       : "hover:bg-app-hover text-tx-secondary"
                   )}
                   title={t("mindMap.miniMap")}
@@ -2643,12 +2643,12 @@ export default function MindMapCenter() {
         return (
           <div className="fixed inset-0 z-50" onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }}>
             <div
-              className="fixed z-50 min-w-[160px] py-1 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800"
+              className={`fixed z-50 min-w-[160px] py-1 ${MT.menuCls} bg-white/90 dark:bg-zinc-900/90`}
               style={{ left: Math.min(folderContextMenu.x, window.innerWidth - 180), top: Math.min(folderContextMenu.y, window.innerHeight - 120) }}
               onClick={(e) => e.stopPropagation()}
             >
               <button
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-primary ${MT.menuHover} transition-colors duration-150 ease-out`}
                 onClick={() => { setRenamingFolderId(folderContextMenu.folderId); setRenamingFolderName(folderContextMenu.folderName); close(); }}
               >
                 <Edit2 size={15} className="text-indigo-500" />
@@ -2656,7 +2656,7 @@ export default function MindMapCenter() {
               </button>
               <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
               <button
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 ${MT.menuHover} transition-colors duration-150 ease-out`}
                 onClick={() => {
                   if (confirm(t("mindMap.confirmDeleteFolder"))) {
                     api.deleteMindMapFolder(folderContextMenu.folderId).then(() => { loadFolders(); loadMaps(); });
@@ -2726,19 +2726,19 @@ function MindMapContextMenuOverlay({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[180px] py-1 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 animate-in fade-in zoom-in-95 duration-100"
+      className={`fixed z-50 min-w-[180px] py-1 ${MT.menuCls} bg-white/90 dark:bg-zinc-900/90 animate-in fade-in zoom-in-95 duration-100`}
       style={{ left: pos.x, top: pos.y }}
       onClick={(e) => e.stopPropagation()}
     >
       <button
-        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+        className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-primary ${MT.menuHover} transition-colors duration-150 ease-out`}
         onClick={onDownloadPNG}
       >
         <Image size={15} className="text-indigo-500" />
         {t("mindMap.downloadPNG")}
       </button>
       <button
-        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+        className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-primary ${MT.menuHover} transition-colors duration-150 ease-out`}
         onClick={onDownloadSVG}
       >
         <FileImage size={15} className="text-emerald-500" />
@@ -2746,7 +2746,7 @@ function MindMapContextMenuOverlay({
       </button>
       <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
       <button
-        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+        className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-primary ${MT.menuHover} transition-colors duration-150 ease-out`}
         onClick={onDownloadXmind}
       >
         <FileDown size={15} className="text-orange-500" />
