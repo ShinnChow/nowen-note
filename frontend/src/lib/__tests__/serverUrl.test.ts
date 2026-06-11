@@ -190,10 +190,15 @@ describe("parseServerUrl (legacy)", () => {
 
 describe("buildServerUrl (legacy)", () => {
   it("拼接三段为 URL", () => {
-    expect(buildServerUrl({ protocol: "https", host: "fnos.net", port: "3001" })).toBe("https://fnos.net:3001");
+    expect(buildServerUrl({ protocol: "https", host: "fnos.net", port: "3001", path: "" })).toBe("https://fnos.net:3001");
   });
 
   it("无端口时不拼", () => {
-    expect(buildServerUrl({ protocol: "http", host: "192.168.1.10", port: "" })).toBe("http://192.168.1.10");
+    expect(buildServerUrl({ protocol: "http", host: "192.168.1.10", port: "", path: "" })).toBe("http://192.168.1.10");
+  });
+
+  it("带 path 前缀", () => {
+    expect(buildServerUrl({ protocol: "https", host: "fnos.net", port: "", path: "/user:3001" })).toBe("https://fnos.net/user:3001");
   });
 });
+

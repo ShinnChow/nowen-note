@@ -13,6 +13,8 @@ import {
   readNote as _readNote,
 } from "@/lib/offlineRead";
 
+import { normalizeServerBaseUrl as _normalizeBase } from "@/lib/serverUrl";
+
 // 服务器地址管理
 const SERVER_URL_KEY = "nowen-server-url";
 
@@ -43,14 +45,11 @@ export function clearCurrentWorkspace() {
  * 的情况，导致 `${server}/api` 拼出 "localhost:5173/api" 这种跑到前端静态服务器
  * 的路径，接口返回 index.html，前端再 JSON.parse 就炸 `<!DOCTYPE`。
  */
+/**
+ * 判定存储的 serverUrl 是否合法（通过 normalizeServerBaseUrl 归一化后非空即合法）。
+ */
 function isValidServerUrl(url: string): boolean {
-  if (!url) return false;
-  try {
-    const u = new URL(url);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
+  return _normalizeBase(url) !== "";
 }
 
 function readServerUrlFromQuery(): string {
@@ -58,8 +57,7 @@ function readServerUrlFromQuery(): string {
   try {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get("serverUrl") || params.get("nowen-server-url") || "";
-    if (!raw || !isValidServerUrl(raw)) return "";
-    return raw.replace(/\/+$/, "");
+    return _normalizeBase(raw);
   } catch {
     return "";
   }
@@ -89,33 +87,62 @@ function shouldPreferInjectedServerUrl(stored: string, injected: string): boolea
   return false;
 }
 
+/**
+ * 纯读：返回当前生效的 serverBaseUrl。
+ * 不写 localStorage，无副作用。
+ */
 export function getServerUrl(): string {
   const injected = readServerUrlFromQuery();
   const stored = localStorage.getItem(SERVER_URL_KEY) || "";
-  let raw = shouldPreferInjectedServerUrl(stored, injected) ? injected : stored;
-  if (!raw) return "";
-  if (!isValidServerUrl(raw)) {
-    // 自愈：清掉坏值，避免无限触发 `<!DOCTYPE` 报错
-    // eslint-disable-next-line no-console
-    console.warn("[api] invalid server url in localStorage, clearing:", raw);
-    try { localStorage.removeItem(SERVER_URL_KEY); } catch { /* ignore */ }
-    raw = injected;
-    if (!raw || !isValidServerUrl(raw)) return "";
-  }
-  const normalized = raw.replace(/\/+$/, "");
-  if (normalized !== stored) {
-    try { localStorage.setItem(SERVER_URL_KEY, normalized); } catch { /* ignore */ }
-  }
-  return normalized;
+  const raw = shouldPreferInjectedServerUrl(stored, injected) ? injected : stored;
+  return _normalizeBase(raw);
 }
 
+/**
+ * 用户主动保存服务器地址（登录页 / 设置页调用）。
+ */
 export function setServerUrl(url: string) {
-  const normalized = url.replace(/\/+$/, "");
-  localStorage.setItem(SERVER_URL_KEY, normalized);
+  const normalized = _normalizeBase(url);
+  if (!normalized) return;
+  try { localStorage.setItem(SERVER_URL_KEY, normalized); } catch { /* ignore */ }
 }
 
+/**
+ * 清除服务器地址。
+ */
 export function clearServerUrl() {
-  localStorage.removeItem(SERVER_URL_KEY);
+  try { localStorage.removeItem(SERVER_URL_KEY); } catch { /* ignore */ }
+}
+
+/**
+ * 应用启动时调用一次，处理：
+ *   1. Electron query serverUrl → 迁移到 localStorage
+ *   2. 清理非法 stored 值（"null" / "file://" / 空串 / 非 http/https）
+ *   3. 归一化 stored 值（去末尾 /、剥离 API 子路径）
+ *
+ * 调用时机：App.tsx 最顶层 useEffect，仅执行一次。
+ */
+export function initializeServerUrlFromRuntime(): void {
+  const injected = readServerUrlFromQuery();
+  const stored = localStorage.getItem(SERVER_URL_KEY) || "";
+
+  // 1. 清理非法 stored 值
+  if (stored && !isValidServerUrl(stored)) {
+    console.warn("[api] clearing invalid stored serverUrl:", stored);
+    try { localStorage.removeItem(SERVER_URL_KEY); } catch { /* ignore */ }
+  }
+
+  // 2. 如果注入值更优先，迁移到 localStorage
+  if (injected && shouldPreferInjectedServerUrl(stored, injected)) {
+    try { localStorage.setItem(SERVER_URL_KEY, injected); } catch { /* ignore */ }
+    return;
+  }
+
+  // 3. 归一化 stored 值（去末尾 /、剥离 API 子路径等）
+  const storedNorm = _normalizeBase(stored);
+  if (stored && storedNorm !== stored) {
+    try { localStorage.setItem(SERVER_URL_KEY, storedNorm); } catch { /* ignore */ }
+  }
 }
 
 export function getBaseUrl(): string {

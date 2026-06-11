@@ -124,8 +124,12 @@ export function buildServerUrl(parts: ServerAddressParts): string {
   const host = normalizeHost(parts.host);
   if (!host) return "";
   const port = normalizePort(parts.port);
-  const base = `${parts.protocol}://${host}`;
-  return port ? `${base}:${port}` : base;
+  let base = `${parts.protocol}://${host}`;
+  if (port) base += `:${port}`;
+  // 保留反代路径前缀
+  const p = (parts.path || "").replace(/\/+$/, "");
+  if (p) base += p;
+  return base;
 }
 
 /**
@@ -135,7 +139,7 @@ export function buildServerUrl(parts: ServerAddressParts): string {
  * 如需保留 path，请改用 normalizeServerBaseUrl()。
  */
 export function parseServerUrl(input: string | null | undefined): ServerAddressParts {
-  const fallback: ServerAddressParts = { protocol: "http", host: "", port: "" };
+  const fallback: ServerAddressParts = { protocol: "http", host: "", port: "", path: "" };
   if (!input) return fallback;
 
   const raw = input.trim();
