@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import {
   Calendar, ListTodo,
@@ -288,6 +288,7 @@ export default function TaskCenter() {
       setStats(s);
       refreshCounts();
     } catch { loadTasks(); }
+  };
 
   // === Calendar drag: move task to new date ===
   const handleMoveTaskDate = async (taskId: string, targetDateKey: string) => {
@@ -304,7 +305,6 @@ export default function TaskCenter() {
       setStats(s);
       refreshCounts();
     } catch { loadTasks(); }
-  };
   };
 
   // === Create project ===
@@ -696,6 +696,7 @@ export default function TaskCenter() {
           <TaskCalendarView
             tasks={displayTasks}
             onSelect={(task) => setSelectedTaskId(task.id)}
+            onMoveTaskDate={handleMoveTaskDate}
           />
         ) : (
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 md:px-6 py-3">
