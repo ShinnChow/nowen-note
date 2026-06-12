@@ -135,6 +135,19 @@ export default function TaskCenter() {
     }
   };
 
+
+  // 创建子任务
+  const handleCreateChild = async (title: string, parentId: string): Promise<void> => {
+    try {
+      const task = await api.createTask({ title, parentId });
+      setTasks((prev) => [task, ...prev]);
+      const s = await api.getTaskStats();
+      setStats(s);
+    } catch (err) {
+      console.error("Failed to create subtask:", err);
+    }
+  };
+
   const handleUpdate = async (id: string, data: Partial<Task>) => {
     try {
       const updated = await api.updateTask(id, data);
@@ -160,10 +173,17 @@ export default function TaskCenter() {
   const handleDelete = async (id: string) => {
     // 收集要删除的 id 列表（父任务 + 所有后代），乐观更新一次性移除
     const idsToRemove = getDescendantIds(id, tasks);
+    // 有子任务时弹出确认
+    if (idsToRemove.length > 1) {
+      const ok = window.confirm(
+        t('tasks.confirmDeleteWithChildren', { count: idsToRemove.length - 1 })
+      );
+      if (!ok) return;
+    }
     setTasks((prev) => prev.filter((t) => !idsToRemove.includes(t.id)));
     if (selectedTaskId && idsToRemove.includes(selectedTaskId)) setSelectedTaskId(null);
     try {
-      await api.deleteTask(id); // 后端 ON DELETE CASCADE 会同步删子任务
+      await api.deleteTask(id);
       const s = await api.getTaskStats();
       setStats(s);
     } catch {
@@ -319,6 +339,7 @@ export default function TaskCenter() {
                       onSelect={(task) => setSelectedTaskId(task.id)}
                       onDelete={handleDelete}
                       onToggleExpand={toggleExpand}
+                      onCreateChild={handleCreateChild}
                     />
                   ))
                 ) : (
@@ -330,6 +351,9 @@ export default function TaskCenter() {
                       onToggle={handleToggle}
                       onSelect={(task) => setSelectedTaskId(task.id)}
                       onDelete={handleDelete}
+                      allTasks={tasks}
+                      onCreateChild={handleCreateChild}
+                      onSelectTask={(taskId) => setSelectedTaskId(taskId)}
                     />
                   ))
                 )}
@@ -349,6 +373,9 @@ export default function TaskCenter() {
             onClose={() => setSelectedTaskId(null)}
             onUpdate={handleUpdate}
             onDelete={handleDelete}
+            allTasks={tasks}
+            onToggle={handleToggle}
+            onSelectTask={(taskId) => setSelectedTaskId(taskId)}
           />
         )}
       </AnimatePresence>

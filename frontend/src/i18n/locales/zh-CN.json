@@ -247,6 +247,10 @@
     "lockedBanner": "此笔记已锁定，点击工具栏的锁图标解锁后编辑",
     "hideOutline": "隐藏大纲",
     "showOutline": "显示大纲",
+    "shareNote": "分享笔记",
+    "versionHistory": "版本历史",
+    "noteComments": "笔记标注",
+    "attachments": "附件",
     "aiGenerateTitle": "AI 生成标题",
     "aiTitleApplied": "已应用 AI 生成的标题",
     "aiTitleFailed": "AI 生成标题失败",
@@ -409,7 +413,10 @@
     "imageSize75": "75%",
     "imageSize100": "100%",
     "imageSizeOriginal": "原始",
-    "imageSizeOriginalTitle": "原始尺寸（移除自定义宽度）"
+    "imageSizeOriginalTitle": "原始尺寸（移除自定义宽度）",
+    "copySelectionText": "已复制选中文本",
+    "copySelectionFail": "复制失败，请使用系统复制",
+    "selectAllText": "全选"
   },
   "searchReplace": {
     "toolbarTitle": "查找替换 (Ctrl+F)",
@@ -1088,6 +1095,11 @@
     "openLink": "打开链接",
     "expand": "展开",
     "collapse": "折叠",
+    "addChild": "\u6DFB\u52A0\u5B50\u4EFB\u52A1",
+    "addChildPlaceholder": "\u8F93\u5165\u5B50\u4EFB\u52A1\u6807\u9898\uFF0C\u6309 Enter \u786E\u8BA4...",
+    "confirmDeleteWithChildren": "\u6B64\u4EFB\u52A1\u530B\u6709 {{count}} \u4E2A\u5B50\u4EFB\u52A1\uFF0C\u5220\u9664\u540E\u4E0D\u53EF\u6062\u590D\u3002\u786E\u8BA4\u5220\u9664\uFF1F",
+    "subtasks": "\u5B50\u4EFB\u52A1",
+    "noSubtasks": "\u6682\u65E0\u5B50\u4EFB\u52A1",
     "overview": {
       "totalProgress": "总体进度",
       "pending": "{{count}} 待完成",

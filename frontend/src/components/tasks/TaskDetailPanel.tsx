@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Flag, Trash2, X, Bell } from "lucide-react";
+import { Flag, Trash2, X, Bell, CheckCircle2, Circle } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
 import { useTranslation } from "react-i18next";
@@ -15,10 +15,14 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
   task: Task;
   /** 可选：树形节点（用于计算进度），过滤模式下不传 */
   treeNode?: TaskTreeNode | null;
+  /** 所有任务（用于展示子任务列表） */
+  allTasks?: Task[];
   onClose: () => void;
   onUpdate: (id: string, data: Partial<Task>) => void;
   onDelete: (id: string) => void;
-}>(({ task, treeNode, onClose, onUpdate, onDelete }, ref) => {
+  onToggle?: (id: string) => void;
+  onSelectTask?: (taskId: string) => void;
+}>(({ task, treeNode, allTasks, onClose, onUpdate, onDelete, onToggle, onSelectTask }, ref) => {
   const { t, i18n } = useTranslation();
   const dateLocale = i18n.language === "zh-CN" ? zhCN : enUS;
   const [title, setTitle] = useState(task.title);
@@ -44,8 +48,12 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
 
   const hasRichTokens = parseTaskTitle(task.title).some((tok) => tok.kind !== "text");
 
-  // 进度信息：从 tree node 计算（如有）
   const progressInfo = treeNode ? calculateTaskProgress(treeNode) : null;
+
+  // 直接子任务
+  const children = allTasks
+    ? allTasks.filter((t) => t.parentId === task.id)
+    : [];
 
   return (
     <motion.div
@@ -56,9 +64,7 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
       transition={{ type: "spring", damping: 25, stiffness: 300 }}
       className={cn(
         "h-full border-l border-app-border bg-app-surface flex flex-col shrink-0",
-        // 移动端：全屏覆盖
         "fixed inset-0 z-30 w-full border-l-0",
-        // 桌面端：侧边面板
         "md:static md:z-auto md:w-[340px] md:min-w-[340px] md:border-l"
       )}
     >
@@ -138,7 +144,7 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
           </span>
         </div>
 
-        {/* === 进度详情卡片（新增） === */}
+        {/* === 进度详情卡片 === */}
         <div className="rounded-lg border border-app-border bg-app-elevated/50 p-4 space-y-3">
           <div className="flex items-center gap-2">
             <span className="text-xs text-tx-tertiary uppercase tracking-wider font-medium">
@@ -148,7 +154,6 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
 
           {progressInfo ? (
             <>
-              {/* 进度百分比 + 进度条 */}
               <div className="flex items-center gap-3">
                 <span className="text-2xl font-bold text-accent-primary">
                   {progressInfo.progress}%
@@ -160,7 +165,6 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
                   />
                 </div>
               </div>
-              {/* 子任务统计 */}
               <div className="text-xs text-tx-secondary">
                 {t('tasks.progress.childrenStats', {
                   completed: progressInfo.completedChildren,
@@ -176,13 +180,59 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
             </div>
           )}
 
-          {/* 截止日期（如有） */}
           {task.dueDate && (
             <div className="text-xs text-tx-tertiary">
-              {t('tasks.progress.dueLabel')}: {format(parseISO(task.dueDate), "yyyy年M月d日", { locale: dateLocale })}
+              {t('tasks.progress.dueLabel')}: {format(parseISO(task.dueDate), "yyyy\u5E74M\u6708d\u65E5", { locale: dateLocale })}
             </div>
           )}
         </div>
+
+        {/* === 子任务列表 === */}
+        {children.length > 0 && (
+          <div className="rounded-lg border border-app-border bg-app-elevated/50 p-4 space-y-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-tx-tertiary uppercase tracking-wider font-medium">
+                {t('tasks.subtasks')}
+              </span>
+              <span className="text-[10px] text-tx-tertiary">
+                {children.filter((c) => c.isCompleted === 1).length}/{children.length}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {children.map((child) => {
+                const childPri = PRIORITY_CONFIG[child.priority] || PRIORITY_CONFIG[2];
+                return (
+                  <div
+                    key={child.id}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-app-hover transition-colors cursor-pointer"
+                    onClick={() => onSelectTask?.(child.id)}
+                  >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle?.(child.id);
+                      }}
+                      className="flex-shrink-0"
+                    >
+                      {child.isCompleted === 1 ? (
+                        <CheckCircle2 size={14} className="text-indigo-500" />
+                      ) : (
+                        <Circle size={14} className="text-tx-tertiary" />
+                      )}
+                    </button>
+                    <span className={cn(
+                      "flex-1 min-w-0 text-xs truncate",
+                      child.isCompleted === 1 ? "line-through text-tx-tertiary" : "text-tx-primary"
+                    )}>
+                      {child.title.length > 30 ? child.title.slice(0, 30) + "..." : child.title}
+                    </span>
+                    <Flag size={10} className={childPri.flagClass} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* === 提醒设置占位区（Coming Soon） === */}
         <div className="rounded-lg border border-app-border bg-app-elevated/30 p-4 opacity-60">
