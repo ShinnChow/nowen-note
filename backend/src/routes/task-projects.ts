@@ -27,17 +27,26 @@ taskProjects.get("/", (c) => {
   const rows = scope.workspaceId
     ? db.prepare(
         "SELECT p.*, (SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id) AS taskCount, " +
-        "(SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id AND t.isCompleted = 1) AS completedCount " +
+        "(SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id AND t.isCompleted = 1) AS completedCount, " +
+        "CASE WHEN (SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id) > 0 " +
+        "THEN ROUND((SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id AND t.isCompleted = 1) * 100.0 / " +
+        "(SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id)) ELSE 0 END AS progress " +
         "FROM task_projects p WHERE p.workspaceId = ? ORDER BY p.sortOrder ASC, p.createdAt ASC"
       ).all(scope.workspaceId)
     : db.prepare(
         "SELECT p.*, (SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id) AS taskCount, " +
-        "(SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id AND t.isCompleted = 1) AS completedCount " +
+        "(SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id AND t.isCompleted = 1) AS completedCount, " +
+        "CASE WHEN (SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id) > 0 " +
+        "THEN ROUND((SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id AND t.isCompleted = 1) * 100.0 / " +
+        "(SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id)) ELSE 0 END AS progress " +
         "FROM task_projects p WHERE p.userId = ? AND p.workspaceId IS NULL ORDER BY p.sortOrder ASC, p.createdAt ASC"
       ).all(userId);
 
   return c.json(rows);
 });
+
+// Role level helper for workspace permission checks
+const ROLE_RANK: Record<string, number> = { viewer: 1, commenter: 2, editor: 3, admin: 4, owner: 5 };
 
 // Create project
 taskProjects.post("/", async (c) => {
@@ -46,6 +55,14 @@ taskProjects.post("/", async (c) => {
   const body = await c.req.json();
   const scope = resolveScope(c, userId);
   if (scope.error) return c.json({ error: scope.error }, 403);
+
+  // Fix 4: viewer/commenter cannot create projects in workspace
+  if (scope.workspaceId) {
+    const role = getUserWorkspaceRole(scope.workspaceId, userId) as string | null;
+    if (!role || (ROLE_RANK[role] ?? 0) < ROLE_RANK["editor"]) {
+      return c.json({ error: "Insufficient permissions to create project", code: "FORBIDDEN" }, 403);
+    }
+  }
 
   const id = crypto.randomUUID();
   const name = body.name || "Untitled";
@@ -87,7 +104,10 @@ taskProjects.put("/:id", async (c) => {
 
   const updated = db.prepare(
     "SELECT p.*, (SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id) AS taskCount, " +
-    "(SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id AND t.isCompleted = 1) AS completedCount " +
+    "(SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id AND t.isCompleted = 1) AS completedCount, " +
+    "CASE WHEN (SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id) > 0 " +
+    "THEN ROUND((SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id AND t.isCompleted = 1) * 100.0 / " +
+    "(SELECT COUNT(*) FROM tasks t WHERE t.projectId = p.id)) ELSE 0 END AS progress " +
     "FROM task_projects p WHERE p.id = ?"
   ).get(id);
   return c.json(updated);
@@ -122,9 +142,20 @@ taskProjects.put("/reorder/batch", async (c) => {
     return c.json({ error: "items required" }, 400);
   }
 
+  const safeItems = items.slice(0, 100);
+
+  // Fix 3: validate permissions for every project
+  for (const item of safeItems) {
+    const project = db.prepare("SELECT userId, workspaceId FROM task_projects WHERE id = ?").get(item.id) as any;
+    if (!project) return c.json({ error: `Project ${item.id} not found`, code: "NOT_FOUND" }, 404);
+    if (!canManageResource(project.userId, project.workspaceId, userId)) {
+      return c.json({ error: "No permission to reorder project " + item.id, code: "FORBIDDEN" }, 403);
+    }
+  }
+
   const stmt = db.prepare("UPDATE task_projects SET sortOrder = ?, updatedAt = datetime('now') WHERE id = ?");
   const tx = db.transaction(() => {
-    for (const item of items.slice(0, 100)) {
+    for (const item of safeItems) {
       stmt.run(item.sortOrder, item.id);
     }
   });

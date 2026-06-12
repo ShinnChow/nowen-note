@@ -223,10 +223,27 @@ tasks.post("/", requireWorkspaceFeature("tasks"), async (c) => {
     effectiveWorkspaceId = parent.workspaceId;
   }
 
+  const projectId = body.projectId || null;
+  const status = body.status || "todo";
+
+  // Validate projectId belongs to same scope
+  if (projectId) {
+    const project = db.prepare("SELECT userId, workspaceId FROM task_projects WHERE id = ?").get(projectId) as any;
+    if (!project) return c.json({ error: "Project not found", code: "PROJECT_NOT_FOUND" }, 400);
+    if (effectiveWorkspaceId && project.workspaceId !== effectiveWorkspaceId) {
+      return c.json({ error: "Project scope mismatch", code: "PROJECT_SCOPE_MISMATCH" }, 400);
+    }
+    if (!effectiveWorkspaceId && (project.userId !== userId || project.workspaceId !== null)) {
+      return c.json({ error: "Project scope mismatch", code: "PROJECT_SCOPE_MISMATCH" }, 400);
+    }
+  }
+
+  const effectiveIsCompleted = status === "done" ? 1 : 0;
+
   db.prepare(`
-    INSERT INTO tasks (id, userId, workspaceId, title, isCompleted, priority, dueDate, dueAt, noteId, parentId)
-    VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
-  `).run(id, userId, effectiveWorkspaceId, title.trim(), priority, dueDate, dueAt, noteId, parentId);
+    INSERT INTO tasks (id, userId, workspaceId, title, isCompleted, priority, dueDate, dueAt, noteId, parentId, projectId, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, userId, effectiveWorkspaceId, title.trim(), effectiveIsCompleted, priority, dueDate, dueAt, noteId, parentId, projectId, status);
 
   const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
   return c.json(task, 201);
@@ -250,7 +267,6 @@ tasks.put("/:id", (c) => {
     }
 
     const title = body.title ?? existing.title;
-    const isCompleted = body.isCompleted ?? existing.isCompleted;
     const priority = body.priority ?? existing.priority;
     const dueDate = body.dueDate !== undefined ? body.dueDate : existing.dueDate;
     const dueAt = body.dueAt !== undefined ? body.dueAt : existing.dueAt;
@@ -258,7 +274,34 @@ tasks.put("/:id", (c) => {
     const parentId = body.parentId !== undefined ? body.parentId : existing.parentId;
     const sortOrder = body.sortOrder ?? existing.sortOrder;
     const projectId = body.projectId !== undefined ? body.projectId : existing.projectId;
-    const status = body.status ?? existing.status;
+
+    // Fix 5: status / isCompleted bidirectional sync
+    const VALID_STATUSES = ["todo", "doing", "blocked", "done"];
+    let status = body.status ?? existing.status;
+    let isCompleted = body.isCompleted ?? existing.isCompleted;
+
+    if (body.status !== undefined) {
+      // status takes precedence
+      if (!VALID_STATUSES.includes(status)) {
+        return c.json({ error: "Invalid status", code: "INVALID_STATUS" }, 400);
+      }
+      isCompleted = status === "done" ? 1 : 0;
+    } else if (body.isCompleted !== undefined) {
+      // isCompleted takes precedence
+      status = isCompleted ? "done" : (existing.status === "done" ? "todo" : existing.status);
+    }
+
+    // Fix 2: validate projectId scope
+    if (body.projectId !== undefined && projectId !== null && projectId !== existing.projectId) {
+      const project = db.prepare("SELECT userId, workspaceId FROM task_projects WHERE id = ?").get(projectId) as any;
+      if (!project) return c.json({ error: "Project not found", code: "PROJECT_NOT_FOUND" }, 400);
+      if (existing.workspaceId && project.workspaceId !== existing.workspaceId) {
+        return c.json({ error: "Project scope mismatch", code: "PROJECT_SCOPE_MISMATCH" }, 400);
+      }
+      if (!existing.workspaceId && (project.userId !== existing.userId || project.workspaceId !== null)) {
+        return c.json({ error: "Project scope mismatch", code: "PROJECT_SCOPE_MISMATCH" }, 400);
+      }
+    }
 
     // 重新挂接父任务时再次校验同域约束
 

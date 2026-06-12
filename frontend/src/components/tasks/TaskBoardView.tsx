@@ -116,8 +116,8 @@ export function TaskBoardView({
 
                     {/* Meta row */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      {task.dueDate && (
-                        <DateBadge dateStr={task.dueDate} dueAt={task.dueAt} />
+                      {(task.dueDate || task.dueAt) && (
+                        <DateBadge dateStr={task.dueDate || (task.dueAt ? task.dueAt.split("T")[0] : null)} dueAt={task.dueAt} />
                       )}
                       {childInfo && childInfo.total > 0 && (
                         <span className="text-[10px] text-tx-tertiary">

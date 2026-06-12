@@ -428,6 +428,8 @@ export interface TaskProject {
   taskCount?: number;
   /** populated by backend via subquery */
   completedCount?: number;
+  /** progress percentage 0-100, computed by backend */
+  progress?: number;
 }
 
 export interface CustomFont {

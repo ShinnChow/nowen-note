@@ -156,7 +156,7 @@ export default function TaskCenter() {
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
   useEffect(() => {
-    const onWs = () => { setSelectedTaskId(null); loadTasks(); };
+    const onWs = () => { setSelectedTaskId(null); setSelectedProjectId(null); setSearchQuery(""); setSelectedIds(new Set()); setSelectMode(false); loadTasks(); };
     window.addEventListener("nowen:workspace-changed", onWs);
     return () => window.removeEventListener("nowen:workspace-changed", onWs);
   }, [loadTasks]);
@@ -190,12 +190,15 @@ export default function TaskCenter() {
   // === CRUD Handlers ===
   const handleToggle = async (id: string) => {
     setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, isCompleted: t.isCompleted ? 0 : 1 } : t))
+      prev.map((t) => (t.id === id ? { ...t, isCompleted: t.isCompleted ? 0 : 1, status: t.isCompleted ? "todo" : "done" } : t))
     );
     try {
-      await api.toggleTask(id);
+      const updated = await api.toggleTask(id);
+      // Use backend response for accurate state
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updated } : t)));
       const s = await api.getTaskStats();
       setStats(s);
+      refreshCounts();
     } catch { loadTasks(); }
   };
 
@@ -203,7 +206,7 @@ export default function TaskCenter() {
     if (!newTitle.trim()) return false;
     const titleToCreate = newTitle.trim();
     try {
-      const task = await api.createTask({ title: titleToCreate });
+      const task = await api.createTask({ title: titleToCreate, projectId: selectedProjectId || undefined });
       setTasks((prev) => [task, ...prev]);
       setNewTitle("");
       inputRef.current?.focus();
@@ -214,6 +217,7 @@ export default function TaskCenter() {
       }
       const s = await api.getTaskStats();
       setStats(s);
+      refreshCounts();
       return true;
     } catch (err) {
       console.error("Failed to create task:", err);
@@ -223,10 +227,14 @@ export default function TaskCenter() {
 
   const handleCreateChild = async (title: string, parentId: string): Promise<void> => {
     try {
-      const task = await api.createTask({ title, parentId });
+      // Inherit projectId from parent, or use selectedProjectId
+      const parentTask = tasks.find((t) => t.id === parentId);
+      const childProjectId = parentTask?.projectId || selectedProjectId || undefined;
+      const task = await api.createTask({ title, parentId, projectId: childProjectId });
       setTasks((prev) => [task, ...prev]);
       const s = await api.getTaskStats();
       setStats(s);
+      refreshCounts();
     } catch (err) {
       console.error("Failed to create child task:", err);
     }
@@ -246,6 +254,7 @@ export default function TaskCenter() {
       await api.deleteTask(id);
       const s = await api.getTaskStats();
       setStats(s);
+      refreshCounts();
     } catch { loadTasks(); }
   };
 
@@ -255,6 +264,7 @@ export default function TaskCenter() {
       await api.updateTask(id, data);
       const s = await api.getTaskStats();
       setStats(s);
+      refreshCounts();
     } catch { loadTasks(); }
   };
 
@@ -266,6 +276,7 @@ export default function TaskCenter() {
       await api.updateTask(id, { status, isCompleted: newIsCompleted });
       const s = await api.getTaskStats();
       setStats(s);
+      refreshCounts();
     } catch { loadTasks(); }
   };
 
@@ -299,6 +310,7 @@ export default function TaskCenter() {
       await api.batchTasks(ids, "complete");
       const s = await api.getTaskStats();
       setStats(s);
+      refreshCounts();
     } catch { loadTasks(); }
   };
 
@@ -317,6 +329,7 @@ export default function TaskCenter() {
       await api.batchTasks(ids, "delete");
       const s = await api.getTaskStats();
       setStats(s);
+      refreshCounts();
     } catch { loadTasks(); }
   };
 
