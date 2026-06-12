@@ -64,6 +64,7 @@ export default function TaskCenter() {
     createProject,
     deleteProject,
     refreshCounts,
+    reload,
   } = useTaskProjects();
 
   // Phase 4: view mode (list / board)
@@ -156,7 +157,7 @@ export default function TaskCenter() {
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
   useEffect(() => {
-    const onWs = () => { setSelectedTaskId(null); setSelectedProjectId(null); setSearchQuery(""); setSelectedIds(new Set()); setSelectMode(false); loadTasks(); };
+    const onWs = () => { setSelectedTaskId(null); setSelectedProjectId(null); setSearchQuery(""); setSelectedIds(new Set()); setSelectMode(false); reload(); loadTasks(); };
     window.addEventListener("nowen:workspace-changed", onWs);
     return () => window.removeEventListener("nowen:workspace-changed", onWs);
   }, [loadTasks]);
@@ -303,7 +304,7 @@ export default function TaskCenter() {
   const handleBatchComplete = async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    setTasks((prev) => prev.map((t) => ids.includes(t.id) ? { ...t, isCompleted: 1 } : t));
+    setTasks((prev) => prev.map((t) => ids.includes(t.id) ? { ...t, isCompleted: 1, status: "done" as const } : t));
     setSelectMode(false);
     setSelectedIds(new Set());
     try {
@@ -317,12 +318,19 @@ export default function TaskCenter() {
   const handleBatchDelete = async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    const totalDescendants = ids.reduce((acc, id) => acc + getDescendantIds(id, tasks).length, 0);
-    if (totalDescendants > ids.length) {
-      const ok = window.confirm(t("tasks.confirmDeleteWithChildren", { count: totalDescendants - ids.length }));
+    // Collect all descendants
+    const idsToRemove = new Set<string>();
+    for (const id of ids) {
+      for (const did of getDescendantIds(id, tasks)) {
+        idsToRemove.add(did);
+      }
+    }
+    if (idsToRemove.size > ids.length) {
+      const ok = window.confirm(t("tasks.confirmDeleteWithChildren", { count: idsToRemove.size - ids.length }));
       if (!ok) return;
     }
-    setTasks((prev) => prev.filter((t) => !selectedIds.has(t.id)));
+    setTasks((prev) => prev.filter((t) => !idsToRemove.has(t.id)));
+    if (selectedTaskId && idsToRemove.has(selectedTaskId)) setSelectedTaskId(null);
     setSelectMode(false);
     setSelectedIds(new Set());
     try {

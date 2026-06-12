@@ -225,6 +225,10 @@ tasks.post("/", requireWorkspaceFeature("tasks"), async (c) => {
 
   const projectId = body.projectId || null;
   const status = body.status || "todo";
+  const VALID_STATUSES = ["todo", "doing", "blocked", "done"];
+  if (!VALID_STATUSES.includes(status)) {
+    return c.json({ error: "Invalid status, must be one of: todo, doing, blocked, done", code: "INVALID_STATUS" }, 400);
+  }
 
   // Validate projectId belongs to same scope
   if (projectId) {
@@ -432,7 +436,7 @@ tasks.post("/batch", async (c) => {
 
   const ph = allowedIds.map(() => "?").join(",");
   if (action === "complete") {
-    db.prepare("UPDATE tasks SET isCompleted = 1, updatedAt = datetime(\"now\") WHERE id IN (" + ph + ")")
+    db.prepare("UPDATE tasks SET isCompleted = 1, status = 'done', updatedAt = datetime(\"now\") WHERE id IN (" + ph + ")")
       .run(...allowedIds);
   } else {
     db.prepare("DELETE FROM tasks WHERE id IN (" + ph + ")").run(...allowedIds);

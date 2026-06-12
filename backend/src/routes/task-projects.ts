@@ -75,7 +75,7 @@ taskProjects.post("/", async (c) => {
   ).run(id, userId, scope.workspaceId, name, icon, color, sortOrder);
 
   const project = db.prepare(
-    "SELECT p.*, 0 AS taskCount, 0 AS completedCount FROM task_projects p WHERE p.id = ?"
+    "SELECT p.*, 0 AS taskCount, 0 AS completedCount, 0 AS progress FROM task_projects p WHERE p.id = ?"
   ).get(id);
   return c.json(project, 201);
 });
