@@ -216,7 +216,7 @@ tasks.post("/", requireWorkspaceFeature("tasks"), async (c) => {
 
   db.prepare(`
     INSERT INTO tasks (id, userId, workspaceId, title, isCompleted, priority, dueDate, dueAt, noteId, parentId)
-    VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
   `).run(id, userId, effectiveWorkspaceId, title.trim(), priority, dueDate, dueAt, noteId, parentId);
 
   const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
