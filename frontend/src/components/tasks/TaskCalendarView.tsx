@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+﻿import React, { useState, useMemo, useCallback, useRef } from "react";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays,
   format, isSameMonth, isSameDay, isToday, addMonths, subMonths,
@@ -12,7 +12,7 @@ import { isTaskDateOverdue } from "./DateBadge";
 import { TitleView } from "./taskTitleTokens";
 
 /** Get the effective date key for a task (dueAt > dueDate) */
-function getTaskDateKey(task: Task): string | null {
+export function getTaskDateKey(task: Task): string | null {
   if (task.dueAt) return task.dueAt.split("T")[0];
   if (task.dueDate) return task.dueDate;
   return null;
@@ -37,17 +37,38 @@ function groupTasksByDate(tasks: Task[]): Map<string, Task[]> {
   return map;
 }
 
+/** Compute the update fields when moving a task to a target date. Returns null if no-op. */
+export function moveTaskToDate(task: Task, targetDateKey: string): Partial<Task> | null {
+  const currentKey = getTaskDateKey(task);
+  if (currentKey === targetDateKey) return null;
+
+  const patch: Partial<Task> = {};
+  if (task.dueAt) {
+    const timePart = task.dueAt.split("T")[1] || "00:00:00";
+    patch.dueAt = `${targetDateKey}T${timePart}`;
+    patch.dueDate = targetDateKey;
+  } else {
+    patch.dueDate = targetDateKey;
+  }
+  return patch;
+}
+
 export function TaskCalendarView({
   tasks,
   onSelect,
+  onMoveTaskDate,
 }: {
   tasks: Task[];
   onSelect: (task: Task) => void;
+  onMoveTaskDate?: (taskId: string, targetDateKey: string) => void;
 }) {
   const { t, i18n } = useTranslation();
   const dateLocale = i18n.language === "zh-CN" ? zhCN : enUS;
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const dragTaskRef = useRef<string | null>(null);
 
   const taskMap = useMemo(() => groupTasksByDate(tasks), [tasks]);
 
@@ -88,6 +109,39 @@ export function TaskCalendarView({
   }, []);
 
   const MAX_VISIBLE = 2;
+
+  // --- Drag handlers ---
+  const handleDragStart = useCallback((e: React.DragEvent, taskId: string) => {
+    dragTaskRef.current = taskId;
+    setDraggingTaskId(taskId);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", taskId);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    dragTaskRef.current = null;
+    setDraggingTaskId(null);
+    setDragOverDate(null);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, dateKey: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverDate(dateKey);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverDate(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetDateKey: string) => {
+    e.preventDefault();
+    setDragOverDate(null);
+    setDraggingTaskId(null);
+    const taskId = e.dataTransfer.getData("text/plain") || dragTaskRef.current;
+    if (!taskId || !onMoveTaskDate) return;
+    onMoveTaskDate(taskId, targetDateKey);
+  }, [onMoveTaskDate]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -132,17 +186,22 @@ export function TaskCalendarView({
               const selected = selectedDate ? isSameDay(day, selectedDate) : false;
               const visibleTasks = dayTasks.slice(0, MAX_VISIBLE);
               const overflow = dayTasks.length - MAX_VISIBLE;
+              const isDragTarget = dragOverDate === dateKey;
 
               return (
                 <div
                   key={idx}
                   onClick={() => setSelectedDate(day)}
+                  onDragOver={(e) => handleDragOver(e, dateKey)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, dateKey)}
                   className={cn(
                     "flex flex-col border-b border-r border-app-border/50 p-1 md:p-1.5 min-h-[60px] md:min-h-[80px] cursor-pointer transition-colors",
                     !inMonth && "opacity-30",
                     today && "bg-accent-primary/5",
                     selected && "bg-accent-primary/10 ring-1 ring-inset ring-accent-primary/30",
-                    !selected && "hover:bg-app-hover/50"
+                    !selected && !isDragTarget && "hover:bg-app-hover/50",
+                    isDragTarget && "bg-accent-primary/15 ring-2 ring-inset ring-accent-primary/40"
                   )}
                 >
                   <span className={cn(
@@ -160,8 +219,12 @@ export function TaskCalendarView({
                         <div
                           key={task.id}
                           onClick={(e) => { e.stopPropagation(); onSelect(task); }}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, task.id)}
+                          onDragEnd={handleDragEnd}
                           className={cn(
                             "text-[9px] md:text-[10px] leading-tight px-1 py-0.5 rounded truncate cursor-pointer transition-colors",
+                            draggingTaskId === task.id && "opacity-40",
                             task.isCompleted
                               ? "line-through text-tx-tertiary bg-app-elevated/50"
                               : overdue
@@ -195,15 +258,19 @@ export function TaskCalendarView({
             </div>
             <div className="flex-1 p-3 space-y-1.5">
               {selectedDateTasks.length === 0 ? (
-                <div className="text-center text-xs text-tx-tertiary py-8">{t("tasks.calendarEmpty") || "这天没有任务"}</div>
+                <div className="text-center text-xs text-tx-tertiary py-8">{t("tasks.calendarEmpty") || "\u8FD9\u5929\u6CA1\u6709\u4EFB\u52A1"}</div>
               ) : selectedDateTasks.map((task) => {
                 const overdue = isCalendarTaskOverdue(task);
                 return (
                   <div
                     key={task.id}
                     onClick={() => onSelect(task)}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, task.id)}
+                    onDragEnd={handleDragEnd}
                     className={cn(
                       "px-3 py-2 rounded-lg border cursor-pointer transition-all hover:shadow-sm",
+                      draggingTaskId === task.id && "opacity-40",
                       task.isCompleted
                         ? "border-app-border/50 bg-app-elevated/30 opacity-60"
                         : overdue
@@ -241,7 +308,7 @@ export function TaskCalendarView({
           </div>
           <div className="p-2 space-y-1">
             {selectedDateTasks.length === 0 ? (
-              <div className="text-center text-xs text-tx-tertiary py-4">{t("tasks.calendarEmpty") || "这天没有任务"}</div>
+              <div className="text-center text-xs text-tx-tertiary py-4">{t("tasks.calendarEmpty") || "\u8FD9\u5929\u6CA1\u6709\u4EFB\u52A1"}</div>
             ) : selectedDateTasks.map((task) => {
               const overdue = isCalendarTaskOverdue(task);
               return (

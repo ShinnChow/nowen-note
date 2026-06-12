@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import {
   Calendar, ListTodo,
@@ -30,7 +30,7 @@ import { FlatTaskRow } from "./tasks/FlatTaskRow";
 import { useReminderNotifier } from "./tasks/useReminderNotifier";
 import { useTaskProjects } from "./tasks/useTaskProjects";
 import { TaskBoardView } from "./tasks/TaskBoardView";
-import { TaskCalendarView } from "./tasks/TaskCalendarView";
+import { TaskCalendarView, moveTaskToDate } from "./tasks/TaskCalendarView";
 import { MobileProjectTrigger, MobileProjectPicker } from "./tasks/MobileProjectPicker";
 
 /* ===== Main Component ===== */
@@ -288,6 +288,23 @@ export default function TaskCenter() {
       setStats(s);
       refreshCounts();
     } catch { loadTasks(); }
+
+  // === Calendar drag: move task to new date ===
+  const handleMoveTaskDate = async (taskId: string, targetDateKey: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const patch = moveTaskToDate(task, targetDateKey);
+    if (!patch) return; // same date, no-op
+
+    // Optimistic update
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
+    try {
+      await api.updateTask(taskId, patch);
+      const s = await api.getTaskStats();
+      setStats(s);
+      refreshCounts();
+    } catch { loadTasks(); }
+  };
   };
 
   // === Create project ===
@@ -851,3 +868,5 @@ export default function TaskCenter() {
     </div>
   );
 }
+
+
