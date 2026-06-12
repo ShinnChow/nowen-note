@@ -1337,7 +1337,11 @@ export const MIGRATIONS: Migration[] = [
     up: (db) => {
       // dueAt: 精确到分钟的截止时间，ISO 8601 格式（如 2026-06-12T18:00）
       // 兼容旧 dueDate（纯日期）：老任务只有 dueDate，新任务优先使用 dueAt
-      db.prepare(`SELECT dueAt FROM tasks LIMIT 1`).get() || db.exec(`ALTER TABLE tasks ADD COLUMN dueAt TEXT`);
+      // 安全添加列：先查 pragma，不存在才 ALTER
+      const cols = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
+      if (!cols.some((c) => c.name === "dueAt")) {
+        db.exec("ALTER TABLE tasks ADD COLUMN dueAt TEXT");
+      }
       db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_dueAt ON tasks(dueAt);`);
     },
   },
