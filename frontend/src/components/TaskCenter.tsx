@@ -5,7 +5,7 @@ import {
   CalendarDays, AlertTriangle, CheckCheck, Inbox,
   Search, X as XIcon, GripVertical,
   CheckSquare, Trash2, Square,
-  LayoutGrid, LayoutList, FolderOpen, Plus, ChevronRight,
+  LayoutGrid, LayoutList, Calendar as CalendarIcon, FolderOpen, Plus, ChevronRight,
   MoreHorizontal, Trash2 as TrashIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -30,6 +30,7 @@ import { FlatTaskRow } from "./tasks/FlatTaskRow";
 import { useReminderNotifier } from "./tasks/useReminderNotifier";
 import { useTaskProjects } from "./tasks/useTaskProjects";
 import { TaskBoardView } from "./tasks/TaskBoardView";
+import { TaskCalendarView } from "./tasks/TaskCalendarView";
 import { MobileProjectTrigger, MobileProjectPicker } from "./tasks/MobileProjectPicker";
 
 /* ===== Main Component ===== */
@@ -71,7 +72,7 @@ export default function TaskCenter() {
   } = useTaskProjects();
 
   // Phase 4: view mode (list / board)
-  type ViewMode = "list" | "board";
+  type ViewMode = "list" | "board" | "calendar";
   const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   // Phase 4: new project dialog
@@ -552,13 +553,13 @@ export default function TaskCenter() {
             onClick={() => setMobileProjectOpen(true)}
             t={t}
           />
-          {/* Mobile view toggle */}
+          {/* Mobile view toggle (cycle: list -> board -> calendar -> list) */}
           <button
-            onClick={() => setViewMode(viewMode === "list" ? "board" : "list")}
+            onClick={() => setViewMode(viewMode === "list" ? "board" : viewMode === "board" ? "calendar" : "list")}
             className="flex items-center gap-1 px-2 py-1.5 rounded-full text-xs shrink-0 text-tx-secondary bg-app-hover/50 active:bg-app-active"
-            title={viewMode === "list" ? t("tasks.boardView") : t("tasks.listView")}
+            title={viewMode === "list" ? t("tasks.boardView") : viewMode === "board" ? (t("tasks.calendarView") || "Calendar") : t("tasks.listView")}
           >
-            {viewMode === "list" ? <LayoutGrid size={12} /> : <LayoutList size={12} />}
+            {viewMode === "list" ? <LayoutGrid size={12} /> : viewMode === "board" ? <CalendarIcon size={12} /> : <LayoutList size={12} />}
           </button>
         </div>
 
@@ -592,6 +593,13 @@ export default function TaskCenter() {
                 title={t("tasks.boardView")}
               >
                 <LayoutGrid size={14} />
+              </button>
+              <button
+                onClick={() => setViewMode("calendar")}
+                className={cn("p-1.5 transition-colors", viewMode === "calendar" ? "bg-accent-primary/10 text-accent-primary" : "text-tx-tertiary hover:text-tx-secondary")}
+                title={t("tasks.calendarView") || "Calendar"}
+              >
+                <CalendarIcon size={14} />
               </button>
             </div>
           </div>
@@ -660,12 +668,17 @@ export default function TaskCenter() {
           />
         </div>
 
-        {/* Task List or Board View */}
+        {/* Task List / Board / Calendar View */}
         {viewMode === "board" && !isLoading && displayTasks.length > 0 ? (
           <TaskBoardView
             tasks={displayTasks}
             onSelect={(task) => setSelectedTaskId(task.id)}
             onStatusChange={handleStatusChange}
+          />
+        ) : viewMode === "calendar" && !isLoading ? (
+          <TaskCalendarView
+            tasks={displayTasks}
+            onSelect={(task) => setSelectedTaskId(task.id)}
           />
         ) : (
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 md:px-6 py-3">

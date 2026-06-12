@@ -1161,7 +1161,8 @@
     "moveToProject": "移动到项目",
     "projectColor": "颜色",
     "save": "保存",
-    "dropHere": "拖到这里"
+    "dropHere": "拖到这里",
+    "calendarView": "日历视图"
   },
   "tags": {
     "addTagPlaceholder": "添加标签...",

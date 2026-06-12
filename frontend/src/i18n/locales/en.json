@@ -1149,7 +1149,8 @@
     "moveToProject": "Move to project",
     "projectColor": "Color",
     "save": "Save",
-    "dropHere": "Drop here"
+    "dropHere": "Drop here",
+    "calendarView": "Calendar"
   },
   "tags": {
     "addTagPlaceholder": "Add tag...",
