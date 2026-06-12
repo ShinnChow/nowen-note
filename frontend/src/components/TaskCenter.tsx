@@ -302,6 +302,7 @@ export default function TaskCenter() {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
     try {
       await api.updateTask(taskId, patch);
+      await loadTasks();
       const s = await api.getTaskStats();
       setStats(s);
       refreshCounts();
