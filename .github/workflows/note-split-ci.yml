@@ -13,6 +13,7 @@ on:
       - "backend/src/runtime/note-split-tiptap.ts"
       - "backend/src/runtime/block-link-redirect.ts"
       - "backend/src/runtime/task-stats-hardening.ts"
+      - "backend/src/services/yjs.ts"
       - "backend/tests/note-split.test.ts"
       - "backend/tests/note-split-title.test.ts"
       - "backend/tests/tiptap-note-split.test.ts"
@@ -42,6 +43,7 @@ on:
       - "backend/src/runtime/note-split-tiptap.ts"
       - "backend/src/runtime/block-link-redirect.ts"
       - "backend/src/runtime/task-stats-hardening.ts"
+      - "backend/src/services/yjs.ts"
       - "backend/tests/note-split.test.ts"
       - "backend/tests/note-split-title.test.ts"
       - "backend/tests/tiptap-note-split.test.ts"
@@ -62,78 +64,10 @@ on:
       - ".github/workflows/note-split-ci.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch_yjs:
-    if: github.event_name == 'pull_request' && github.head_ref == 'feat/issue-370-p0c-p1-knowledge-tree'
-    runs-on: ubuntu-latest
-    outputs:
-      changed: ${{ steps.patch.outputs.changed }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feat/issue-370-p0c-p1-knowledge-tree
-          fetch-depth: 0
-      - id: patch
-        name: Avoid no-op Yjs version bumps
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("backend/src/services/yjs.ts")
-          text = path.read_text(encoding="utf-8")
-          old = '''export function yFlush(noteId: string) {
-            const room = rooms.get(noteId);
-            if (!room) return;
-            if (room.persistTimer) {
-              clearTimeout(room.persistTimer);
-              room.persistTimer = null;
-            }
-            try { persistToNotesTable(room); } catch {}
-            try {
-'''
-          new = '''export function yFlush(noteId: string) {
-            const room = rooms.get(noteId);
-            if (!room) return;
-            const hadPendingPersist = Boolean(room.persistTimer);
-            if (room.persistTimer) {
-              clearTimeout(room.persistTimer);
-              room.persistTimer = null;
-            }
-            // A room created only for server-side content replacement has no pending debounce.
-            // Persisting it again would increment notes.version without a user edit and break
-            // optimistic operations such as immediate note-split undo.
-            if (hadPendingPersist) {
-              try { persistToNotesTable(room); } catch {}
-            }
-            try {
-'''
-          if old in text:
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
-              print("changed=true")
-          elif "const hadPendingPersist = Boolean(room.persistTimer);" in text:
-              print("changed=false")
-          else:
-              raise SystemExit("target yFlush snippet not found")
-          PY
-          if git diff --quiet -- backend/src/services/yjs.ts; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Commit patch
-        if: steps.patch.outputs.changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/src/services/yjs.ts
-          git commit -m "fix(yjs): avoid no-op version bump during flush"
-          git push origin HEAD:feat/issue-370-p0c-p1-knowledge-tree
-
   frontend:
-    needs: patch_yjs
-    if: always() && (needs.patch_yjs.result == 'skipped' || needs.patch_yjs.outputs.changed != 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -158,18 +92,8 @@ jobs:
         run: npx tsc -b
 
   backend:
-    needs: patch_yjs
-    if: always() && (needs.patch_yjs.result == 'skipped' || needs.patch_yjs.outputs.changed != 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    outputs:
-      combined_status: ${{ steps.split_tests.outputs.combined_status }}
-      note_split_status: ${{ steps.split_tests.outputs.note_split_status }}
-      note_split_title_status: ${{ steps.split_tests.outputs.note_split_title_status }}
-      tiptap_note_split_status: ${{ steps.split_tests.outputs.tiptap_note_split_status }}
-      tiptap_note_split_empty_status: ${{ steps.split_tests.outputs.tiptap_note_split_empty_status }}
-      block_link_redirect_status: ${{ steps.split_tests.outputs.block_link_redirect_status }}
-      note_split_tail_b64: ${{ steps.split_tests.outputs.note_split_tail_b64 }}
     defaults:
       run:
         working-directory: backend
@@ -181,76 +105,16 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
-      - name: Prepare diagnostic logs
-        run: mkdir -p .ci
-      - id: split_tests
-        name: Split planner, transaction, and redirect tests
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          test_files=(
-            tests/note-split.test.ts
-            tests/note-split-title.test.ts
-            tests/tiptap-note-split.test.ts
-            tests/tiptap-note-split-empty.test.ts
-            tests/block-link-redirect.test.ts
-          )
-          timeout 120s node --import tsx --import ./tests/setup-db-isolation.ts --import ./tests/setup-db-cleanup.ts --test "${test_files[@]}" > .ci/combined.log 2>&1
-          combined_status=$?
-          echo "combined_status=${combined_status}" >> "$GITHUB_OUTPUT"
-
-          keys=(
-            note_split_status
-            note_split_title_status
-            tiptap_note_split_status
-            tiptap_note_split_empty_status
-            block_link_redirect_status
-          )
-          if [ "${combined_status}" -ne 0 ]; then
-            pids=()
-            for index in "${!test_files[@]}"; do
-              test_file="${test_files[$index]}"
-              key="${keys[$index]}"
-              (
-                timeout 60s node --import tsx --import ./tests/setup-db-isolation.ts --import ./tests/setup-db-cleanup.ts --test "${test_file}" > ".ci/${key}.log" 2>&1
-                echo "$?" > ".ci/${key}.status"
-              ) &
-              pids+=("$!")
-            done
-            for pid in "${pids[@]}"; do wait "${pid}"; done
-            for key in "${keys[@]}"; do
-              value=$(cat ".ci/${key}.status" 2>/dev/null || echo missing)
-              echo "${key}=${value}" >> "$GITHUB_OUTPUT"
-            done
-            note_split_tail_b64=$(tail -n 80 .ci/note_split_status.log 2>/dev/null | base64 -w0 || true)
-            echo "note_split_tail_b64=${note_split_tail_b64}" >> "$GITHUB_OUTPUT"
-          else
-            for key in "${keys[@]}"; do echo "${key}=not_run" >> "$GITHUB_OUTPUT"; done
-            echo "note_split_tail_b64=" >> "$GITHUB_OUTPUT"
-          fi
-          exit "${combined_status}"
+      - name: Split planner, transaction, and redirect tests
+        run: >-
+          node --import tsx
+          --import ./tests/setup-db-isolation.ts
+          --import ./tests/setup-db-cleanup.ts
+          --test
+          tests/note-split.test.ts
+          tests/note-split-title.test.ts
+          tests/tiptap-note-split.test.ts
+          tests/tiptap-note-split-empty.test.ts
+          tests/block-link-redirect.test.ts
       - name: Backend typecheck
-        if: steps.split_tests.outcome == 'success'
         run: npm run build:tsc
-      - name: Enforce backend result
-        if: steps.split_tests.outcome == 'failure'
-        run: exit 1
-
-  diagnostics:
-    if: always() && needs.backend.outputs.combined_status != '0'
-    needs: backend
-    runs-on: ubuntu-latest
-    steps:
-      - name: Print backend diagnostic status
-        env:
-          NOTE_SPLIT_TAIL_B64: ${{ needs.backend.outputs.note_split_tail_b64 }}
-        run: |
-          echo "combined_status=${{ needs.backend.outputs.combined_status }}"
-          echo "note_split_status=${{ needs.backend.outputs.note_split_status }}"
-          echo "note_split_title_status=${{ needs.backend.outputs.note_split_title_status }}"
-          echo "tiptap_note_split_status=${{ needs.backend.outputs.tiptap_note_split_status }}"
-          echo "tiptap_note_split_empty_status=${{ needs.backend.outputs.tiptap_note_split_empty_status }}"
-          echo "block_link_redirect_status=${{ needs.backend.outputs.block_link_redirect_status }}"
-          echo "===== note_split_status tail ====="
-          printf '%s' "$NOTE_SPLIT_TAIL_B64" | base64 -d || true
