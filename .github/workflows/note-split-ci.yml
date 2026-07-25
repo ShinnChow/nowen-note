@@ -130,11 +130,11 @@ jobs:
           fi
           exit "${combined_status}"
       - name: Upload backend diagnostics
-        if: always()
+        if: steps.split_tests.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: note-split-backend-${{ github.run_attempt }}
-          path: backend/.ci
+          path: .ci
           if-no-files-found: error
           retention-days: 3
       - name: Backend typecheck
