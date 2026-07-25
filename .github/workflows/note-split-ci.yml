@@ -125,8 +125,8 @@ jobs:
             tests/tiptap-note-split-empty.test.ts
             tests/block-link-redirect.test.ts
           )
-          timeout 120s node --import tsx --import ./tests/setup-db-isolation.ts --import ./tests/setup-db-cleanup.ts --test "${test_files[@]}" 2>&1 | tee .ci/combined.log
-          combined_status=${PIPESTATUS[0]}
+          timeout 120s node --import tsx --import ./tests/setup-db-isolation.ts --import ./tests/setup-db-cleanup.ts --test "${test_files[@]}" > .ci/combined.log 2>&1
+          combined_status=$?
           echo "combined_status=${combined_status}" >> "$GITHUB_OUTPUT"
 
           keys=(
@@ -151,6 +151,10 @@ jobs:
             for key in "${keys[@]}"; do
               value=$(cat ".ci/${key}.status" 2>/dev/null || echo missing)
               echo "${key}=${value}" >> "$GITHUB_OUTPUT"
+              if [ "${value}" != "0" ]; then
+                echo "===== ${key} tail ====="
+                tail -n 160 ".ci/${key}.log" 2>/dev/null || true
+              fi
             done
           else
             for key in "${keys[@]}"; do echo "${key}=not_run" >> "$GITHUB_OUTPUT"; done
