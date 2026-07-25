@@ -1,3 +1,4 @@
+import { getShortcutOverride } from "./shortcutOverrides";
 import { MOD, SHORTCUT_CATEGORY_LABELS, SHORTCUT_COMMANDS } from "./shortcuts/commands";
 import type {
   ShortcutChord,
@@ -79,7 +80,7 @@ export function formatPortableShortcutChord(chord: ShortcutChord): string {
   return chord.map(portableToken).join(" + ");
 }
 
-function getCommandChords(
+function getRawCommandChords(
   command: ShortcutCommand,
   platform: ShortcutPlatform,
   surface: ShortcutSurface,
@@ -88,6 +89,28 @@ function getCommandChords(
   const surfaceOverride = command.surfaceKeys?.[surface]?.[platform];
   if (surfaceOverride !== undefined) return surfaceOverride;
   return command.defaultKeys[platform] ?? [];
+}
+
+function getCommandChords(
+  command: ShortcutCommand,
+  platform: ShortcutPlatform,
+  surface: ShortcutSurface,
+): readonly ShortcutChord[] {
+  if (!command.availableIn.includes(surface)) return [];
+  if (command.customizable) {
+    const override = getShortcutOverride(command.id, platform);
+    if (override !== undefined) return override;
+  }
+  return getRawCommandChords(command, platform, surface);
+}
+
+export function getDefaultShortcutChords(
+  commandId: string,
+  platform: ShortcutPlatform = detectShortcutPlatform(),
+  surface: ShortcutSurface = detectShortcutSurface(),
+): readonly ShortcutChord[] {
+  const command = getShortcutCommand(commandId);
+  return command ? getRawCommandChords(command, platform, surface) : [];
 }
 
 export function getShortcutChords(
@@ -177,6 +200,61 @@ function scopesOverlap(a: ShortcutScope, b: ShortcutScope): boolean {
   if (a === b) return true;
   if (a === "input-safe" || b === "input-safe") return true;
   return a === "global" || b === "global";
+}
+
+export function validateShortcutChord(
+  chord: ShortcutChord,
+  _platform: ShortcutPlatform,
+  _surface: ShortcutSurface,
+  _commandId?: string,
+): string | null {
+  const primary = chord.find((token) => !MODIFIER_TOKENS.includes(token));
+  if (!primary) return "组合键缺少主按键";
+  if (!chord.includes(MOD) && !chord.includes("Alt")) {
+    return "快捷键必须包含 Ctrl/Cmd 或 Alt，避免影响普通输入和 IME";
+  }
+  if (primary === "F5" || primary === "F12") return "该按键由浏览器或开发者工具保留";
+  if (chord.includes("Alt") && primary === "F4") return "Alt+F4 为系统关闭窗口快捷键";
+  if (chord.includes(MOD) && ["A", "C", "V", "X", "Z"].includes(primary)) {
+    return "复制、粘贴、剪切、全选和撤销等平台基础快捷键不可覆盖";
+  }
+  if (chord.includes(MOD) && chord.includes("Shift") && ["I", "J", "C"].includes(primary)) {
+    return "该组合键通常由浏览器开发者工具保留";
+  }
+  if (chord.includes(MOD) && ["R", "W", "Q"].includes(primary)) {
+    return "刷新、关闭标签页或退出应用的系统快捷键不可覆盖";
+  }
+  return null;
+}
+
+export interface ShortcutCandidateConflict {
+  surface: ShortcutSurface;
+  commandId: string;
+  customizable: boolean;
+}
+
+export function findShortcutConflictsForCandidate(
+  commandId: string,
+  chord: ShortcutChord,
+  platform: ShortcutPlatform = detectShortcutPlatform(),
+): ShortcutCandidateConflict[] {
+  const source = getShortcutCommand(commandId);
+  if (!source) return [];
+  const candidateKey = normalizedChordKey(chord, platform);
+  const conflicts: ShortcutCandidateConflict[] = [];
+  for (const surface of ["web", "desktop"] as const) {
+    if (!source.availableIn.includes(surface)) continue;
+    for (const command of SHORTCUT_COMMANDS) {
+      if (command.id === commandId || !command.availableIn.includes(surface)) continue;
+      if (!scopesOverlap(source.scope, command.scope)) continue;
+      const matches = getCommandChords(command, platform, surface)
+        .some((existing) => normalizedChordKey(existing, platform) === candidateKey);
+      if (matches) conflicts.push({ surface, commandId: command.id, customizable: !!command.customizable });
+    }
+  }
+  return conflicts.filter((conflict, index, rows) => rows.findIndex((row) => (
+    row.surface === conflict.surface && row.commandId === conflict.commandId
+  )) === index);
 }
 
 export function findShortcutConflicts(

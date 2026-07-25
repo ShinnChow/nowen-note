@@ -17,6 +17,8 @@ export interface ShortcutCommand {
   >;
   availableIn: readonly ShortcutSurface[];
   tooltipAliases?: readonly string[];
+  /** Only commands whose complete runtime path is registry-backed may be edited. */
+  customizable?: boolean;
 }
 
 export interface ShortcutConflict {
