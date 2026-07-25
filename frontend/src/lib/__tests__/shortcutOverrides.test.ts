@@ -12,13 +12,16 @@ import {
 } from "@/lib/shortcutOverrides";
 import {
   SHORTCUT_COMMANDS,
+  detectShortcutPlatform,
   findShortcutConflictsForCandidate,
   getShortcutChords,
   validateShortcutChord,
 } from "@/lib/shortcutRegistry";
+import { enhanceShortcutTooltips } from "@/lib/shortcutTooltipBridge";
 
 beforeEach(() => {
   localStorage.clear();
+  document.body.innerHTML = "";
 });
 
 describe("shortcutOverrides", () => {
@@ -100,5 +103,19 @@ describe("shortcutOverrides", () => {
 
     const conflicts = findShortcutConflictsForCandidate("italic", ["Mod", "B"], "windows");
     expect(conflicts.some((conflict) => conflict.commandId === "bold")).toBe(true);
+  });
+
+  it("removes stale tooltip hints after a binding is cleared", () => {
+    const button = document.createElement("button");
+    button.title = "加粗";
+    document.body.appendChild(button);
+
+    enhanceShortcutTooltips(document);
+    expect(button.title).toContain("B");
+
+    setShortcutOverride("bold", detectShortcutPlatform(), []);
+    enhanceShortcutTooltips(document);
+    expect(button.title).toBe("加粗");
+    expect(button.dataset.shortcutEnhancedTitle).toBeUndefined();
   });
 });
