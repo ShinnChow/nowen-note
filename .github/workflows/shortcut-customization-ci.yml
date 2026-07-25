@@ -36,4 +36,4 @@ jobs:
         run: npx vitest run --reporter=basic src/lib/__tests__/shortcutRegistry.test.ts src/lib/__tests__/shortcutOverrides.test.ts
       - name: Frontend typecheck
         working-directory: source/frontend
-        run: npm run typecheck
+        run: npx tsc -b
