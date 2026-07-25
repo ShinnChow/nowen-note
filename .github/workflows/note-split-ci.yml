@@ -61,7 +61,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   frontend:
@@ -91,6 +90,13 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      combined_status: ${{ steps.split_tests.outputs.combined_status }}
+      note_split_status: ${{ steps.split_tests.outputs.note_split_status }}
+      note_split_title_status: ${{ steps.split_tests.outputs.note_split_title_status }}
+      tiptap_note_split_status: ${{ steps.split_tests.outputs.tiptap_note_split_status }}
+      tiptap_note_split_empty_status: ${{ steps.split_tests.outputs.tiptap_note_split_empty_status }}
+      block_link_redirect_status: ${{ steps.split_tests.outputs.block_link_redirect_status }}
     defaults:
       run:
         working-directory: backend
@@ -117,57 +123,54 @@ jobs:
             tests/tiptap-note-split-empty.test.ts
             tests/block-link-redirect.test.ts
           )
-          timeout 180s node --import tsx --import ./tests/setup-db-isolation.ts --test "${test_files[@]}" 2>&1 | tee .ci/combined.log
+          timeout 120s node --import tsx --import ./tests/setup-db-isolation.ts --test "${test_files[@]}" 2>&1 | tee .ci/combined.log
           combined_status=${PIPESTATUS[0]}
-          echo "combined_status=${combined_status}" | tee .ci/status.txt
+          echo "combined_status=${combined_status}" >> "$GITHUB_OUTPUT"
+
+          keys=(
+            note_split_status
+            note_split_title_status
+            tiptap_note_split_status
+            tiptap_note_split_empty_status
+            block_link_redirect_status
+          )
           if [ "${combined_status}" -ne 0 ]; then
-            for test_file in "${test_files[@]}"; do
-              log_name=".ci/$(basename "${test_file}" .ts).log"
-              echo "===== ${test_file} =====" | tee -a .ci/status.txt
-              timeout 90s node --import tsx --import ./tests/setup-db-isolation.ts --test "${test_file}" 2>&1 | tee "${log_name}"
-              file_status=${PIPESTATUS[0]}
-              echo "${test_file}=${file_status}" | tee -a .ci/status.txt
+            pids=()
+            for index in "${!test_files[@]}"; do
+              test_file="${test_files[$index]}"
+              key="${keys[$index]}"
+              (
+                timeout 60s node --import tsx --import ./tests/setup-db-isolation.ts --test "${test_file}" > ".ci/${key}.log" 2>&1
+                echo "$?" > ".ci/${key}.status"
+              ) &
+              pids+=("$!")
             done
+            for pid in "${pids[@]}"; do wait "${pid}"; done
+            for key in "${keys[@]}"; do
+              value=$(cat ".ci/${key}.status" 2>/dev/null || echo missing)
+              echo "${key}=${value}" >> "$GITHUB_OUTPUT"
+            done
+          else
+            for key in "${keys[@]}"; do echo "${key}=not_run" >> "$GITHUB_OUTPUT"; done
           fi
           exit "${combined_status}"
-      - name: Publish backend diagnostics
-        if: steps.split_tests.outcome == 'failure' && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const marker = '<!-- note-split-backend-diagnostics -->';
-            const read = (path) => {
-              try { return fs.readFileSync(path, 'utf8'); } catch { return '(missing)'; }
-            };
-            const status = read('backend/.ci/status.txt');
-            const combined = read('backend/.ci/combined.log').slice(-9000);
-            const body = `${marker}\n## Note Split Backend 诊断\n\nCommit：\`${context.sha}\`\n\n\`\`\`text\n${status}\n\n--- combined tail ---\n${combined}\n\`\`\``;
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              per_page: 100,
-            });
-            const existing = comments.find((comment) => comment.body?.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
       - name: Backend typecheck
         if: steps.split_tests.outcome == 'success'
         run: npm run build:tsc
       - name: Enforce backend result
         if: steps.split_tests.outcome == 'failure'
         run: exit 1
+
+  diagnostics:
+    if: always() && needs.backend.outputs.combined_status != '0'
+    needs: backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print backend diagnostic status
+        run: |
+          echo "combined_status=${{ needs.backend.outputs.combined_status }}"
+          echo "note_split_status=${{ needs.backend.outputs.note_split_status }}"
+          echo "note_split_title_status=${{ needs.backend.outputs.note_split_title_status }}"
+          echo "tiptap_note_split_status=${{ needs.backend.outputs.tiptap_note_split_status }}"
+          echo "tiptap_note_split_empty_status=${{ needs.backend.outputs.tiptap_note_split_empty_status }}"
+          echo "block_link_redirect_status=${{ needs.backend.outputs.block_link_redirect_status }}"
