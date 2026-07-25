@@ -3,10 +3,22 @@ import re
 
 commands_path = Path('frontend/src/lib/shortcuts/commands.ts')
 commands = commands_path.read_text(encoding='utf-8')
+
+heading_old = '''  category: "rich-text",
+  scope: "editor",
+  defaultKeys: allPlatforms([MOD, "Alt", String(level)]),'''
+heading_new = '''  category: "rich-text",
+  scope: "editor",
+  customizable: true,
+  defaultKeys: allPlatforms([MOD, "Alt", String(level)]),'''
+if heading_old in commands:
+    commands = commands.replace(heading_old, heading_new, 1)
+elif heading_new not in commands:
+    raise SystemExit('generated heading command block not found')
+
 customizable = [
     'new-note', 'command-palette', 'shortcut-help', 'toggle-note-list',
     'paragraph', 'bold', 'italic', 'underline', 'strikethrough', 'inline-code',
-    'heading-1', 'heading-2', 'heading-3', 'heading-4', 'heading-5', 'heading-6',
 ]
 for command_id in customizable:
     pattern = re.compile(rf'(id: "{re.escape(command_id)}",[\s\S]*?\n(?P<indent>\s*)scope: "[^"]+",)')
