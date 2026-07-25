@@ -18,20 +18,22 @@ on:
 jobs:
   frontend:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-        with:
-          show-progress: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci --silent
+      - name: Check out PR merge commit
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git init -q source
+          cd source
+          git remote add origin https://github.com/${{ github.repository }}.git
+          git fetch -q --depth 1 origin pull/${PR_NUMBER}/merge
+          git checkout -q FETCH_HEAD
+      - name: Install frontend dependencies
+        working-directory: source/frontend
+        run: npm ci --silent
       - name: Shortcut registry and override tests
+        working-directory: source/frontend
         run: npx vitest run --reporter=basic src/lib/__tests__/shortcutRegistry.test.ts src/lib/__tests__/shortcutOverrides.test.ts
       - name: Frontend typecheck
+        working-directory: source/frontend
         run: npm run typecheck --silent
