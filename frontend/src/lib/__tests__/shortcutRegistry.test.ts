@@ -99,6 +99,7 @@ describe("shortcutRegistry", () => {
     const div = document.createElement("div");
     const editor = document.createElement("div");
     editor.contentEditable = "true";
+    editor.className = "ProseMirror";
     expect(isShortcutAllowedInTarget("command-palette", input)).toBe(false);
     expect(isShortcutAllowedInTarget("command-palette", div)).toBe(true);
     expect(isShortcutAllowedInTarget("bold", input)).toBe(false);
