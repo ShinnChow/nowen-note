@@ -30,6 +30,10 @@ describe("shortcutOverrides", () => {
 
     expect(getShortcutOverride("bold", "windows")).toEqual([["Mod", "Shift", "B"]]);
     expect(getShortcutOverride("bold", "macos")).toBeUndefined();
+    expect(JSON.parse(exportShortcutOverrides())).toEqual({
+      version: 1,
+      platforms: { windows: { bold: [["Mod", "Shift", "B"]] } },
+    });
     expect(listener).toHaveBeenCalledTimes(1);
     window.removeEventListener(SHORTCUT_OVERRIDES_CHANGED_EVENT, listener);
   });
