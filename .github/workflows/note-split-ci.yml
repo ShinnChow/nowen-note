@@ -18,6 +18,7 @@ on:
       - "backend/tests/tiptap-note-split.test.ts"
       - "backend/tests/tiptap-note-split-empty.test.ts"
       - "backend/tests/block-link-redirect.test.ts"
+      - "backend/tests/setup-db-cleanup.ts"
       - "frontend/vite.config.ts"
       - "frontend/src/lib/noteSplit.ts"
       - "frontend/src/lib/tiptapNoteSplit.ts"
@@ -46,6 +47,7 @@ on:
       - "backend/tests/tiptap-note-split.test.ts"
       - "backend/tests/tiptap-note-split-empty.test.ts"
       - "backend/tests/block-link-redirect.test.ts"
+      - "backend/tests/setup-db-cleanup.ts"
       - "frontend/vite.config.ts"
       - "frontend/src/lib/noteSplit.ts"
       - "frontend/src/lib/tiptapNoteSplit.ts"
@@ -123,7 +125,7 @@ jobs:
             tests/tiptap-note-split-empty.test.ts
             tests/block-link-redirect.test.ts
           )
-          timeout 120s node --import tsx --import ./tests/setup-db-isolation.ts --test "${test_files[@]}" 2>&1 | tee .ci/combined.log
+          timeout 120s node --import tsx --import ./tests/setup-db-isolation.ts --import ./tests/setup-db-cleanup.ts --test "${test_files[@]}" 2>&1 | tee .ci/combined.log
           combined_status=${PIPESTATUS[0]}
           echo "combined_status=${combined_status}" >> "$GITHUB_OUTPUT"
 
@@ -140,7 +142,7 @@ jobs:
               test_file="${test_files[$index]}"
               key="${keys[$index]}"
               (
-                timeout 60s node --import tsx --import ./tests/setup-db-isolation.ts --test "${test_file}" > ".ci/${key}.log" 2>&1
+                timeout 60s node --import tsx --import ./tests/setup-db-isolation.ts --import ./tests/setup-db-cleanup.ts --test "${test_file}" > ".ci/${key}.log" 2>&1
                 echo "$?" > ".ci/${key}.status"
               ) &
               pids+=("$!")
