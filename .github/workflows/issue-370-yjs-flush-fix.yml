@@ -6,6 +6,9 @@ on:
       - feat/issue-370-p0c-p1-knowledge-tree
     paths:
       - ".github/workflows/issue-370-yjs-flush-fix.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/issue-370-yjs-flush-fix.yml"
 
 permissions:
   contents: write
