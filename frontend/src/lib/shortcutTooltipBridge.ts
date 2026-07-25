@@ -4,6 +4,7 @@ import {
   detectShortcutSurface,
   resolveShortcutCommandIdByTooltipLabel,
 } from "./shortcutRegistry";
+import { SHORTCUT_OVERRIDES_CHANGED_EVENT } from "./shortcutOverrides";
 
 function readTooltipBase(element: HTMLElement): string {
   const title = element.getAttribute("title")?.trim();
@@ -50,8 +51,10 @@ export function installShortcutTooltipBridge(): () => void {
     attributes: true,
     attributeFilter: ["title", "aria-label"],
   });
+  window.addEventListener(SHORTCUT_OVERRIDES_CHANGED_EVENT, schedule);
   return () => {
     observer.disconnect();
+    window.removeEventListener(SHORTCUT_OVERRIDES_CHANGED_EVENT, schedule);
     if (raf != null) window.cancelAnimationFrame(raf);
   };
 }

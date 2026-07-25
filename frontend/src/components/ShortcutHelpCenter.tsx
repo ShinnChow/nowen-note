@@ -12,6 +12,7 @@ import {
   type ShortcutCategory,
 } from "@/lib/shortcutRegistry";
 import { installShortcutTooltipBridge } from "@/lib/shortcutTooltipBridge";
+import { SHORTCUT_OVERRIDES_CHANGED_EVENT } from "@/lib/shortcutOverrides";
 
 export const OPEN_SHORTCUT_HELP_EVENT = "nowen:open-shortcut-help";
 
@@ -22,11 +23,18 @@ const CATEGORY_ORDER: readonly ShortcutCategory[] = [
 export default function ShortcutHelpCenter() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [shortcutRevision, setShortcutRevision] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const platform = detectShortcutPlatform();
   const surface = detectShortcutSurface();
 
   useEffect(() => installShortcutTooltipBridge(), []);
+
+  useEffect(() => {
+    const refresh = () => setShortcutRevision((value) => value + 1);
+    window.addEventListener(SHORTCUT_OVERRIDES_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(SHORTCUT_OVERRIDES_CHANGED_EVENT, refresh);
+  }, []);
 
   useEffect(() => {
     const openHelp = () => setOpen(true);
@@ -64,7 +72,7 @@ export default function ShortcutHelpCenter() {
         SHORTCUT_CATEGORY_LABELS[command.category],
         ...(command.secondaryCategories ?? []).map((category) => SHORTCUT_CATEGORY_LABELS[category]),
       ].join(" ").toLowerCase().includes(needle));
-  }, [platform, query, surface]);
+  }, [platform, query, shortcutRevision, surface]);
 
   const groups = useMemo(() => CATEGORY_ORDER
     .map((category) => ({
@@ -74,7 +82,7 @@ export default function ShortcutHelpCenter() {
       )),
     }))
     .filter((group) => group.commands.length > 0), [commands]);
-  const conflicts = useMemo(() => findShortcutConflicts(), []);
+  const conflicts = useMemo(() => findShortcutConflicts(), [shortcutRevision]);
 
   const modal = open && typeof document !== "undefined" ? createPortal(
     <div
