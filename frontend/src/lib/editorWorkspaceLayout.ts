@@ -1,8 +1,16 @@
+import {
+  detectShortcutSurface,
+  formatPortableShortcutForCommand,
+  shortcutMatchesEvent,
+  type ShortcutPlatform,
+} from "@/lib/shortcutRegistry";
+
 export type EditorWorkspaceMode = "manage" | "focus" | "split" | "fullscreen";
 export type EditorSplitDirection = "right" | "down";
 
-export const EDITOR_LAYOUT_TOGGLE_SHORTCUT_LABEL = "Ctrl/Cmd + Shift + B";
+export const EDITOR_LAYOUT_TOGGLE_SHORTCUT_LABEL = formatPortableShortcutForCommand("toggle-note-list");
 const SPLIT_RATIO_STORAGE_PREFIX = "nowen.editorSplit.ratio";
+const SHORTCUT_PLATFORMS: readonly ShortcutPlatform[] = ["macos", "windows", "linux"];
 
 export interface ShortcutLikeEvent {
   key: string;
@@ -17,13 +25,24 @@ export interface StorageLike {
   setItem(key: string, value: string): void;
 }
 
+/**
+ * This compatibility helper is intentionally host-platform agnostic.
+ * Unit tests, Electron IPC shims, and synthetic events may represent either
+ * Ctrl or Meta regardless of the machine running the code. The actual chord
+ * still comes exclusively from the shared shortcut registry.
+ */
 export function isEditorLayoutToggleShortcut(event: ShortcutLikeEvent): boolean {
-  return (
-    (event.metaKey || event.ctrlKey) === true &&
-    event.shiftKey === true &&
-    event.altKey !== true &&
-    event.key.toLowerCase() === "b"
-  );
+  const normalizedEvent = {
+    key: event.key,
+    metaKey: event.metaKey === true,
+    ctrlKey: event.ctrlKey === true,
+    shiftKey: event.shiftKey === true,
+    altKey: event.altKey === true,
+  };
+  const surface = detectShortcutSurface();
+  return SHORTCUT_PLATFORMS.some((platform) => (
+    shortcutMatchesEvent("toggle-note-list", normalizedEvent, platform, surface)
+  ));
 }
 
 export function resolveEditorWorkspaceMode(input: {
