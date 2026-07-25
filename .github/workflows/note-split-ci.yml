@@ -111,6 +111,7 @@ jobs:
           --import ./tests/setup-db-isolation.ts
           --import ./tests/setup-db-cleanup.ts
           --test
+          --test-force-exit
           tests/note-split.test.ts
           tests/note-split-title.test.ts
           tests/tiptap-note-split.test.ts
