@@ -106,20 +106,35 @@ jobs:
       - id: split_tests
         name: Split planner, transaction, and redirect tests
         continue-on-error: true
+        shell: bash
         run: |
-          set -o pipefail
-          node --import tsx --import ./tests/setup-db-isolation.ts --test \
-            tests/note-split.test.ts \
-            tests/note-split-title.test.ts \
-            tests/tiptap-note-split.test.ts \
-            tests/tiptap-note-split-empty.test.ts \
-            tests/block-link-redirect.test.ts 2>&1 | tee .ci/note-split.log
+          set +e
+          test_files=(
+            tests/note-split.test.ts
+            tests/note-split-title.test.ts
+            tests/tiptap-note-split.test.ts
+            tests/tiptap-note-split-empty.test.ts
+            tests/block-link-redirect.test.ts
+          )
+          timeout 180s node --import tsx --import ./tests/setup-db-isolation.ts --test "${test_files[@]}" 2>&1 | tee .ci/combined.log
+          combined_status=${PIPESTATUS[0]}
+          echo "combined_status=${combined_status}" | tee .ci/status.txt
+          if [ "${combined_status}" -ne 0 ]; then
+            for test_file in "${test_files[@]}"; do
+              log_name=".ci/$(basename "${test_file}" .ts).log"
+              echo "===== ${test_file} =====" | tee -a .ci/status.txt
+              timeout 90s node --import tsx --import ./tests/setup-db-isolation.ts --test "${test_file}" 2>&1 | tee "${log_name}"
+              file_status=${PIPESTATUS[0]}
+              echo "${test_file}=${file_status}" | tee -a .ci/status.txt
+            done
+          fi
+          exit "${combined_status}"
       - name: Upload backend diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: note-split-backend-${{ github.run_attempt }}
-          path: backend/.ci/note-split.log
+          path: backend/.ci
           if-no-files-found: error
           retention-days: 3
       - name: Backend typecheck
