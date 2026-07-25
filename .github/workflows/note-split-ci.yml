@@ -99,6 +99,7 @@ jobs:
       tiptap_note_split_status: ${{ steps.split_tests.outputs.tiptap_note_split_status }}
       tiptap_note_split_empty_status: ${{ steps.split_tests.outputs.tiptap_note_split_empty_status }}
       block_link_redirect_status: ${{ steps.split_tests.outputs.block_link_redirect_status }}
+      note_split_tail_b64: ${{ steps.split_tests.outputs.note_split_tail_b64 }}
     defaults:
       run:
         working-directory: backend
@@ -151,13 +152,12 @@ jobs:
             for key in "${keys[@]}"; do
               value=$(cat ".ci/${key}.status" 2>/dev/null || echo missing)
               echo "${key}=${value}" >> "$GITHUB_OUTPUT"
-              if [ "${value}" != "0" ]; then
-                echo "===== ${key} tail ====="
-                tail -n 160 ".ci/${key}.log" 2>/dev/null || true
-              fi
             done
+            note_split_tail_b64=$(tail -n 80 .ci/note_split_status.log 2>/dev/null | base64 -w0 || true)
+            echo "note_split_tail_b64=${note_split_tail_b64}" >> "$GITHUB_OUTPUT"
           else
             for key in "${keys[@]}"; do echo "${key}=not_run" >> "$GITHUB_OUTPUT"; done
+            echo "note_split_tail_b64=" >> "$GITHUB_OUTPUT"
           fi
           exit "${combined_status}"
       - name: Backend typecheck
@@ -173,6 +173,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Print backend diagnostic status
+        env:
+          NOTE_SPLIT_TAIL_B64: ${{ needs.backend.outputs.note_split_tail_b64 }}
         run: |
           echo "combined_status=${{ needs.backend.outputs.combined_status }}"
           echo "note_split_status=${{ needs.backend.outputs.note_split_status }}"
@@ -180,3 +182,5 @@ jobs:
           echo "tiptap_note_split_status=${{ needs.backend.outputs.tiptap_note_split_status }}"
           echo "tiptap_note_split_empty_status=${{ needs.backend.outputs.tiptap_note_split_empty_status }}"
           echo "block_link_redirect_status=${{ needs.backend.outputs.block_link_redirect_status }}"
+          echo "===== note_split_status tail ====="
+          printf '%s' "$NOTE_SPLIT_TAIL_B64" | base64 -d || true
