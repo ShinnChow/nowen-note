@@ -248,6 +248,7 @@ export function applyCapturedTextFormat(editor: Editor, format: CapturedTextForm
 
   const targetBlocks = collectSimpleTextBlocks(editor, selection.from, selection.to);
   const canConvertNodeType = targetBlocks.size === 1;
+  let degraded = targetBlocks.size !== 1;
   targetBlocks.forEach((node, pos) => {
     const sourceBlock = format.block;
     if (!sourceBlock) return;
@@ -260,8 +261,24 @@ export function applyCapturedTextFormat(editor: Editor, format: CapturedTextForm
     if (canConvertNodeType) {
       const desiredType = schema.nodes[sourceBlock.nodeType];
       if (desiredType) {
-        nextType = desiredType;
-        if (sourceBlock.nodeType === "heading") nextAttrs.level = sourceBlock.headingLevel ?? 1;
+        if (desiredType === node.type) {
+          nextType = desiredType;
+          if (sourceBlock.nodeType === "heading") nextAttrs.level = sourceBlock.headingLevel ?? 1;
+        } else {
+          const $pos = tr.doc.resolve(pos);
+          const parent = $pos.parent;
+          const index = $pos.index();
+          const validReplacement = desiredType.validContent(node.content)
+            && parent.canReplaceWith(index, index + 1, desiredType);
+          if (validReplacement) {
+            nextType = desiredType;
+            if (sourceBlock.nodeType === "heading") nextAttrs.level = sourceBlock.headingLevel ?? 1;
+          } else {
+            degraded = true;
+          }
+        }
+      } else {
+        degraded = true;
       }
     }
 
@@ -269,8 +286,8 @@ export function applyCapturedTextFormat(editor: Editor, format: CapturedTextForm
     tr.setNodeMarkup(pos, nextType, nextAttrs, node.marks);
   });
 
-  if (!tr.docChanged) return { ok: true, degraded: targetBlocks.size !== 1 };
+  if (!tr.docChanged) return { ok: true, degraded };
   tr.setMeta("formatPainter", true);
   editor.view.dispatch(tr.scrollIntoView());
-  return { ok: true, degraded: targetBlocks.size !== 1 };
+  return { ok: true, degraded };
 }

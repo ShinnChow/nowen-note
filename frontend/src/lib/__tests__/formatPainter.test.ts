@@ -216,6 +216,42 @@ describe("safe format painter", () => {
     expect(textMarks(editor, "Second").bold).toBeDefined();
   });
 
+  it("keeps list structure when the requested heading conversion is invalid", () => {
+    const editor = createEditor({
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2, textAlign: "center", lineHeight: "1.6" },
+          content: [{ type: "text", text: "Source", marks: [{ type: "bold" }] }],
+        },
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "Nested target" }] },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    editor.commands.setTextSelection(findTextRange(editor, "Source"));
+    const captured = captureTextFormat(editor);
+    if (!captured.ok || !captured.format) throw new Error("format capture failed");
+    editor.commands.setTextSelection(findTextRange(editor, "Nested target"));
+
+    expect(applyCapturedTextFormat(editor, captured.format)).toMatchObject({ ok: true, degraded: true });
+    expect(blockForText(editor, "Nested target")).toMatchObject({
+      type: "paragraph",
+      attrs: { textAlign: "center", lineHeight: "1.6" },
+    });
+    expect(textMarks(editor, "Nested target").bold).toBeDefined();
+  });
+
   it("rejects unsafe style values and readonly edits", () => {
     expect(normalizeSafeFormatColor("#abc")).toBe("#abc");
     expect(normalizeSafeFormatColor("rgb(12, 34, 56)")).toBe("rgb(12, 34, 56)");
