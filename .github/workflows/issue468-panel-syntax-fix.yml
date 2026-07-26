@@ -1,0 +1,29 @@
+name: Issue 468 Panel Syntax Fix
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/fix_issue468_panel_syntax.py'
+      - '.github/workflows/issue468-panel-syntax-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - run: python3 scripts/fix_issue468_panel_syntax.py
+      - run: rm scripts/fix_issue468_panel_syntax.py
+      - name: Commit syntax fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/components/KnowledgeTreePanel.tsx scripts/fix_issue468_panel_syntax.py
+          git commit -m "fix(knowledge-tree): repair context-menu panel JSX"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
