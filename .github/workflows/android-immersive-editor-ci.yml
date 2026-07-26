@@ -6,6 +6,7 @@ on:
     paths:
       - 'frontend/src/components/EditorPane.tsx'
       - 'frontend/src/components/TiptapEditor.tsx'
+      - 'frontend/src/components/MarkdownEditorImpl.tsx'
       - 'frontend/src/components/PublicSpaceLauncher.tsx'
       - 'frontend/src/hooks/useKeyboardVisible.ts'
       - 'frontend/src/lib/__tests__/androidImmersiveEditorContract.test.ts'
