@@ -1,0 +1,35 @@
+name: Android Immersive Editor Cutover
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/patch_android_immersive_editor.py'
+      - '.github/workflows/android-immersive-editor-cutover.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Apply Android immersive editor patch
+        run: python3 scripts/patch_android_immersive_editor.py
+      - name: Remove one-shot patch script
+        run: rm scripts/patch_android_immersive_editor.py
+      - name: Commit integrated implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/components/EditorPane.tsx \
+                  frontend/src/components/TiptapEditor.tsx \
+                  frontend/src/components/PublicSpaceLauncher.tsx \
+                  frontend/src/lib/__tests__/androidImmersiveEditorContract.test.ts \
+                  scripts/patch_android_immersive_editor.py
+          git commit -m "feat(android): add immersive mobile editing mode"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
