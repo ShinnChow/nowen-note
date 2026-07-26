@@ -28,11 +28,24 @@ jobs:
         working-directory: frontend
         run: npm ci --silent
       - name: Safe format painter tests
+        id: focused-tests
+        continue-on-error: true
         working-directory: frontend
         run: >-
           npx vitest run --reporter=basic
           src/lib/__tests__/formatPainter.test.ts
           src/lib/__tests__/formatPainterUiContract.test.ts
+          > format-painter-test.log 2>&1
+      - name: Upload focused test diagnostics
+        if: steps.focused-tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-455-format-painter-test-diagnostics
+          path: frontend/format-painter-test.log
+          if-no-files-found: error
+      - name: Enforce focused test result
+        if: steps.focused-tests.outcome == 'failure'
+        run: exit 1
       - name: Frontend typecheck
         working-directory: frontend
         run: npx tsc -b
