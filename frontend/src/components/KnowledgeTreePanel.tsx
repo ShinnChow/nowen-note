@@ -390,7 +390,6 @@ export function KnowledgeTreePanel({
   }, [surfaceActive]);
 
   const allChildren = useMemo(() => buildChildren(nodes), [nodes]);
-  const allChildren = useMemo(() => buildChildren(nodes), [nodes]);
   const filteredNodes = useMemo(() => filterKnowledgeTreeNodes(nodes, query), [nodes, query]);
   const children = useMemo(() => buildChildren(filteredNodes), [filteredNodes]);
   const effectiveExpanded = query.trim() ? new Set(filteredNodes.map((node) => node.id)) : expanded;
