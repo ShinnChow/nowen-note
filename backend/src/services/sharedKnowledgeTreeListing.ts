@@ -117,6 +117,11 @@ export function listSharedKnowledgeTree(input: {
       node.nodeType, node.resourceType, node.resourceId, node.sortOrder,
       node.isExpanded, node.isDeleted, node.createdAt, node.updatedAt,
       ${TITLE_EXPRESSION} AS title,
+      CASE WHEN node.resourceType = 'notebook' THEN nb.icon ELSE NULL END AS icon,
+      CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isPinned, 0) ELSE 0 END AS isPinned,
+      CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isFavorite, 0) ELSE 0 END AS isFavorite,
+      CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isLocked, 0) ELSE 0 END AS isLocked,
+      CASE WHEN node.resourceType = 'note' THEN note.contentFormat ELSE NULL END AS contentFormat,
       shared_tree.sharedRootId, shared_tree.sharedDepth,
       shared_tree.rootWeight, shared_tree.sourcePriority
     FROM shared_tree

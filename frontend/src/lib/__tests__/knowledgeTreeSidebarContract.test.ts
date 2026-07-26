@@ -30,6 +30,9 @@ describe("knowledge tree sidebar contract", () => {
     expect(panel).toContain("不能移动到自己的子节点中");
     expect(panel).not.toContain("onRequestLegacy");
     expect(panel).not.toContain("使用旧树");
+    expect(panel).toContain("KnowledgeTreeNodeMenu");
+    expect(panel).toContain("onContextMenu");
+    expect(panel).toContain("onTouchStart");
   });
 
   it("loads and focuses only the currently visible desktop or mobile tree", () => {

@@ -19,7 +19,9 @@ import {
   X,
 } from "lucide-react";
 
+import KnowledgeTreeNodeMenu from "@/components/KnowledgeTreeNodeMenu";
 import { choose, confirm, prompt } from "@/components/ui/confirm";
+import { useContextMenu } from "@/hooks/useContextMenu";
 import { api } from "@/lib/api";
 import {
   knowledgeTreeApi,
@@ -60,7 +62,11 @@ function buildChildren(nodes: KnowledgeTreeNode[]) {
 }
 
 function nodeIcon(node: KnowledgeTreeNode) {
-  if (node.nodeType === "folder") return <Folder size={15} className="text-amber-500" />;
+  if (node.nodeType === "folder") {
+    return node.icon
+      ? <span className="w-[15px] shrink-0 text-center text-sm leading-none">{node.icon}</span>
+      : <Folder size={15} className="text-amber-500" />;
+  }
   if (node.nodeType === "markdown") return <FileCode size={15} className="text-emerald-500" />;
   return <FileText size={15} className="text-accent-primary" />;
 }
@@ -313,16 +319,17 @@ export function KnowledgeTreePanel({
   const actions = useAppActions();
   const surfaceActive = useActiveSidebarSurface(variant);
   const searchRef = useRef<HTMLInputElement>(null);
-  const menuRootRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<KnowledgeTreeNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sharedLoadError, setSharedLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [menuNodeId, setMenuNodeId] = useState<string | null>(null);
   const [permissionsNode, setPermissionsNode] = useState<KnowledgeTreeNode | null>(null);
   const [movingNode, setMovingNode] = useState<KnowledgeTreeNode | null>(null);
+  const { menu, menuRef, openMenu, openMenuAt, closeMenu } = useContextMenu();
+  const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const menuNode = menu.targetId ? nodes.find((candidate) => candidate.id === menu.targetId) || null : null;
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -382,15 +389,6 @@ export function KnowledgeTreePanel({
     return () => window.removeEventListener(FOCUS_KNOWLEDGE_TREE_EVENT, focus);
   }, [surfaceActive]);
 
-  useEffect(() => {
-    if (!menuNodeId) return;
-    const close = (event: MouseEvent) => {
-      if (!menuRootRef.current?.contains(event.target as Node)) setMenuNodeId(null);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [menuNodeId]);
-
   const allChildren = useMemo(() => buildChildren(nodes), [nodes]);
   const filteredNodes = useMemo(() => filterKnowledgeTreeNodes(nodes, query), [nodes, query]);
   const children = useMemo(() => buildChildren(filteredNodes), [filteredNodes]);
@@ -407,7 +405,7 @@ export function KnowledgeTreePanel({
   };
 
   const openDocument = async (node: KnowledgeTreeNode) => {
-    setMenuNodeId(null);
+    closeMenu();
     if (node.nodeType === "folder") {
       await toggle(node);
       return;
@@ -437,11 +435,11 @@ export function KnowledgeTreePanel({
   const openSplit = (node: KnowledgeTreeNode, direction: "right" | "down") => {
     if (node.resourceType !== "note") return;
     actions.splitEditor({ noteId: node.resourceId, direction });
-    setMenuNodeId(null);
+    closeMenu();
   };
 
   const createChild = async (parent: KnowledgeTreeNode | null) => {
-    setMenuNodeId(null);
+    closeMenu();
     const choice = await choose({
       title: parent ? `在“${parent.title}”下新建` : "新建根内容",
       choices: parent
@@ -477,7 +475,7 @@ export function KnowledgeTreePanel({
   };
 
   const rename = async (node: KnowledgeTreeNode) => {
-    setMenuNodeId(null);
+    closeMenu();
     const title = await prompt({ title: "重命名", defaultValue: node.title, confirmText: "保存" });
     if (title == null || !title.trim() || title.trim() === node.title) return;
     try {
@@ -492,7 +490,7 @@ export function KnowledgeTreePanel({
   };
 
   const remove = async (node: KnowledgeTreeNode) => {
-    setMenuNodeId(null);
+    closeMenu();
     const hasChildren = node.childCount > 0 || (allChildren.get(node.id)?.length || 0) > 0;
     let mode: "subtree" | "promote" = "subtree";
     if (hasChildren) {
@@ -553,11 +551,38 @@ export function KnowledgeTreePanel({
     }
   };
 
+  const cancelLongPress = () => {
+    if (!longPressRef.current) return;
+    clearTimeout(longPressRef.current.timer);
+    longPressRef.current = null;
+  };
+
+  const beginLongPress = (event: React.TouchEvent, node: KnowledgeTreeNode) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    cancelLongPress();
+    const x = touch.clientX;
+    const y = touch.clientY;
+    const timer = setTimeout(() => {
+      openMenuAt(x, y, node.id, "knowledge-node");
+      longPressRef.current = null;
+    }, 600);
+    longPressRef.current = { timer, x, y };
+  };
+
+  const moveLongPress = (event: React.TouchEvent) => {
+    const current = longPressRef.current;
+    const touch = event.touches[0];
+    if (!current || !touch) return;
+    const dx = touch.clientX - current.x;
+    const dy = touch.clientY - current.y;
+    if (dx * dx + dy * dy > 100) cancelLongPress();
+  };
+
   const renderNode = (node: KnowledgeTreeNode, depth: number): React.ReactNode => {
     const childNodes = children.get(node.id) || [];
     const hasChildren = childNodes.length > 0 || node.childCount > 0;
     const isExpanded = effectiveExpanded.has(node.id);
-    const menuOpen = menuNodeId === node.id;
     const active = node.resourceType === "note" && state.activeNote?.id === node.resourceId;
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
     return (
@@ -583,6 +608,11 @@ export function KnowledgeTreePanel({
             event.preventDefault();
             void dropMove(event.dataTransfer.getData("application/x-nowen-tree-node"), node.id);
           }}
+          onContextMenu={(event) => openMenu(event, node.id, "knowledge-node")}
+          onTouchStart={(event) => beginLongPress(event, node)}
+          onTouchMove={moveLongPress}
+          onTouchEnd={cancelLongPress}
+          onTouchCancel={cancelLongPress}
         >
           <button type="button" onClick={() => hasChildren && void toggle(node)} className="flex h-7 w-5 shrink-0 items-center justify-center text-tx-tertiary" aria-label={isExpanded ? "折叠" : "展开"}>
             {hasChildren ? (isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : null}
@@ -604,28 +634,17 @@ export function KnowledgeTreePanel({
           {node.access.capabilities.canCreate && (
             <button type="button" onClick={() => void createChild(node)} className={cn("h-6 w-6 items-center justify-center rounded text-tx-tertiary hover:bg-app-active", actionVisibility)} title="新建子内容"><Plus size={13} /></button>
           )}
-          <button type="button" onClick={() => setMenuNodeId(menuOpen ? null : node.id)} className={cn("h-6 w-6 items-center justify-center rounded text-tx-tertiary hover:bg-app-active", actionVisibility)} title="更多"><MoreHorizontal size={14} /></button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              const rect = event.currentTarget.getBoundingClientRect();
+              openMenuAt(rect.right, rect.bottom + 4, node.id, "knowledge-node");
+            }}
+            className={cn("h-6 w-6 items-center justify-center rounded text-tx-tertiary hover:bg-app-active", actionVisibility)}
+            title="更多"
+          ><MoreHorizontal size={14} /></button>
 
-          {menuOpen && (
-            <div className="absolute right-1 top-7 z-[210] w-52 rounded-lg border border-app-border bg-app-elevated py-1 shadow-xl">
-              {node.resourceType === "note" && (
-                <>
-                  <button type="button" onClick={() => openSplit(node, "right")} className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-tx-secondary hover:bg-app-hover"><SplitSquareHorizontal size={13} />在右侧分屏打开</button>
-                  <button type="button" onClick={() => openSplit(node, "down")} className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-tx-secondary hover:bg-app-hover"><SplitSquareVertical size={13} />在下方分屏打开</button>
-                  <div className="my-1 border-t border-app-border" />
-                </>
-              )}
-              {node.access.capabilities.canEdit && <button type="button" onClick={() => void rename(node)} className="flex w-full px-3 py-1.5 text-xs text-tx-secondary hover:bg-app-hover">重命名</button>}
-              {node.access.capabilities.canMove && !isSharedRoot(node) && <button type="button" onClick={() => { setMenuNodeId(null); setMovingNode(node); }} className="flex w-full px-3 py-1.5 text-xs text-tx-secondary hover:bg-app-hover">移动</button>}
-              {node.access.capabilities.canManageMembers && <button type="button" onClick={() => { setMenuNodeId(null); setPermissionsNode(node); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-tx-secondary hover:bg-app-hover"><ShieldCheck size={13} />成员与权限</button>}
-              {node.access.capabilities.canDelete && (
-                <>
-                  <div className="my-1 border-t border-app-border" />
-                  <button type="button" onClick={() => void remove(node)} className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-500 hover:bg-red-500/10"><Trash2 size={13} />删除</button>
-                </>
-              )}
-            </div>
-          )}
         </div>
         {isExpanded && childNodes.map((child) => renderNode(child, depth + 1))}
       </div>
@@ -637,7 +656,7 @@ export function KnowledgeTreePanel({
   const sharedRoots = rootNodes.filter((node) => Boolean(node.sharedRootId));
 
   return (
-    <section ref={menuRootRef} className={cn("relative flex min-h-0 flex-1 flex-col", className)} data-nowen-knowledge-tree="embedded" data-sidebar-surface-active={surfaceActive ? "true" : "false"}>
+    <section className={cn("relative flex min-h-0 flex-1 flex-col", className)} data-nowen-knowledge-tree="embedded" data-sidebar-surface-active={surfaceActive ? "true" : "false"}>
       <div className="flex items-center gap-1.5 px-2 pb-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-app-border bg-app-bg px-2 py-1.5">
           <Search size={13} className="shrink-0 text-tx-tertiary" />
@@ -697,6 +716,20 @@ export function KnowledgeTreePanel({
         {permissionsNode && <PermissionsPanel node={permissionsNode} onClose={() => setPermissionsNode(null)} />}
         {movingNode && <MovePanel node={movingNode} nodes={nodes} children={allChildren} onMoved={() => void reload()} onClose={() => setMovingNode(null)} />}
       </div>
+      <KnowledgeTreeNodeMenu
+        menu={menu}
+        menuRef={menuRef}
+        node={menuNode}
+        nodes={nodes}
+        onClose={closeMenu}
+        onOpen={openDocument}
+        onSplit={openSplit}
+        onRename={rename}
+        onMove={setMovingNode}
+        onPermissions={setPermissionsNode}
+        onDelete={remove}
+        onReload={reload}
+      />
     </section>
   );
 }

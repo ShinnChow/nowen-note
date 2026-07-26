@@ -7,9 +7,12 @@ on:
       - 'frontend/src/components/Sidebar.tsx'
       - 'frontend/src/components/KnowledgeTreeDrawer.tsx'
       - 'frontend/src/components/KnowledgeTreePanel.tsx'
+      - 'frontend/src/components/KnowledgeTreeNodeMenu.tsx'
       - 'frontend/src/components/SharedNotebookTree.tsx'
       - 'frontend/src/lib/sidebarTreeMode.ts'
+      - 'frontend/src/lib/knowledgeTreeApi.ts'
       - 'frontend/src/lib/__tests__/knowledgeTreeSidebarContract.test.ts'
+      - 'frontend/src/lib/__tests__/knowledgeTreeNodeMenu.test.tsx'
       - 'frontend/src/lib/__tests__/sharedKnowledgeTree.test.ts'
       - '.github/workflows/knowledge-tree-sidebar-ci.yml'
 
@@ -35,14 +38,17 @@ jobs:
             frontend/src/components/Sidebar.tsx \
             frontend/src/components/KnowledgeTreePanel.tsx
           grep -q "<KnowledgeTreePanel" frontend/src/components/Sidebar.tsx
+          grep -q "onContextMenu" frontend/src/components/KnowledgeTreePanel.tsx
+          grep -q "onTouchStart" frontend/src/components/KnowledgeTreePanel.tsx
+          grep -q "KnowledgeTreeNodeMenu" frontend/src/components/KnowledgeTreePanel.tsx
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --silent
 
-      - name: Unified Sidebar and shared-tree tests
+      - name: Unified Sidebar, context-menu and shared-tree tests
         working-directory: frontend
-        run: npx vitest run --reporter=basic src/lib/__tests__/knowledgeTreeSidebarContract.test.ts src/lib/__tests__/knowledgeTreeModel.test.ts src/lib/__tests__/sharedKnowledgeTree.test.ts
+        run: npx vitest run --reporter=basic src/lib/__tests__/knowledgeTreeSidebarContract.test.ts src/lib/__tests__/knowledgeTreeNodeMenu.test.tsx src/lib/__tests__/knowledgeTreeModel.test.ts src/lib/__tests__/sharedKnowledgeTree.test.ts
 
       - name: Frontend typecheck
         working-directory: frontend
