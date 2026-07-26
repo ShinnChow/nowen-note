@@ -29,6 +29,15 @@ describe("Android immersive editor contract", () => {
     expect(source).toContain('showBackToTop && !compactMobileEditing');
   });
 
+  it("applies the same compact hierarchy to native Markdown documents", () => {
+    const source = read("src/components/MarkdownEditorImpl.tsx");
+    expect(source).toContain('data-markdown-mobile-editing-compact');
+    expect(source).toContain('data-markdown-mobile-toolbar="compact"');
+    expect(source).toContain('data-markdown-mobile-toolbar="expanded"');
+    expect(source).toContain('data-markdown-mobile-status');
+    expect(source).toContain('!compactMobileEditing');
+  });
+
   it("suppresses the mobile space launcher while the IME is open", () => {
     const source = read("src/components/PublicSpaceLauncher.tsx");
     expect(source).toContain('useKeyboardVisible');
