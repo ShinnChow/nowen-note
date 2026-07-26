@@ -1,24 +1,66 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
+import KnowledgeTreeSortButton from "@/components/KnowledgeTreeSortButton";
 import {
   applySidebarSearchExperience,
+  KNOWLEDGE_TREE_FILTER_SELECTOR,
   SIDEBAR_SEARCH_SURFACE_SELECTOR,
 } from "@/lib/sidebarSearchExperience";
 
+const SORT_SLOT_ATTRIBUTE = "data-knowledge-tree-sort-slot";
+let sortSlotSequence = 0;
+
+function collectSortSlots(): HTMLElement[] {
+  const slots: HTMLElement[] = [];
+  const inputs = Array.from(document.querySelectorAll<HTMLInputElement>(KNOWLEDGE_TREE_FILTER_SELECTOR));
+
+  for (const input of inputs) {
+    const filterSurface = input.parentElement;
+    const toolbar = filterSurface?.parentElement;
+    if (!(filterSurface instanceof HTMLElement) || !(toolbar instanceof HTMLElement)) continue;
+
+    let slot = Array.from(toolbar.children).find(
+      (child): child is HTMLElement => child instanceof HTMLElement && child.hasAttribute(SORT_SLOT_ATTRIBUTE),
+    );
+    if (!slot) {
+      slot = document.createElement("span");
+      slot.setAttribute(SORT_SLOT_ATTRIBUTE, "");
+      slot.dataset.knowledgeTreeSortSlotId = `sort-slot-${++sortSlotSequence}`;
+      slot.className = "contents";
+      toolbar.insertBefore(slot, filterSurface.nextSibling);
+    }
+    slots.push(slot);
+  }
+
+  return slots;
+}
+
+function sameSlots(current: HTMLElement[], next: HTMLElement[]): boolean {
+  return current.length === next.length && current.every((slot, index) => slot === next[index]);
+}
+
 /**
- * 统一内容树上线后的搜索入口兼容桥。
+ * 统一内容树上线后的侧栏入口兼容桥。
  *
- * Sidebar 目前仍包含旧笔记本树的大量兼容代码，直接在本次 UI 收敛中整体拆除风险较高。
- * 此桥只负责搜索入口语义，不参与任何业务查询：全文搜索仍由命令面板负责，
- * 内容树输入框继续调用 KnowledgeTreePanel 自己的本地过滤逻辑。
+ * - 退休与树筛选语义冲突的旧全文搜索框；
+ * - 在统一树工具栏恢复排序入口；
+ * - 同时兼容桌面与移动 Sidebar 的挂载和工作区切换。
  */
 export default function SidebarSearchExperienceBridge() {
+  const [sortSlots, setSortSlots] = useState<HTMLElement[]>([]);
+
   useEffect(() => {
-    const applyDocument = () => applySidebarSearchExperience(document);
+    const applyDocument = () => {
+      applySidebarSearchExperience(document);
+      const next = collectSortSlots();
+      setSortSlots((current) => sameSlots(current, next) ? current : next);
+    };
 
     applyDocument();
 
     const observer = new MutationObserver((records) => {
+      let relevant = false;
       for (const record of records) {
         for (const addedNode of record.addedNodes) {
           if (!(addedNode instanceof Element)) continue;
@@ -26,14 +68,27 @@ export default function SidebarSearchExperienceBridge() {
             addedNode.matches(SIDEBAR_SEARCH_SURFACE_SELECTOR)
             || addedNode.querySelector(SIDEBAR_SEARCH_SURFACE_SELECTOR)
           ) {
-            applySidebarSearchExperience(addedNode);
+            relevant = true;
+            break;
           }
         }
+        if (relevant) break;
+        for (const removedNode of record.removedNodes) {
+          if (!(removedNode instanceof Element)) continue;
+          if (
+            removedNode.hasAttribute(SORT_SLOT_ATTRIBUTE)
+            || removedNode.querySelector(`[${SORT_SLOT_ATTRIBUTE}]`)
+          ) {
+            relevant = true;
+            break;
+          }
+        }
+        if (relevant) break;
       }
+      if (relevant) applyDocument();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // 工作区切换时移动端/桌面端 Sidebar 可能重新挂载，主动再收敛一次。
     window.addEventListener("nowen:workspace-changed", applyDocument);
 
     return () => {
@@ -42,5 +97,13 @@ export default function SidebarSearchExperienceBridge() {
     };
   }, []);
 
-  return null;
+  return (
+    <>
+      {sortSlots.map((slot) => createPortal(
+        <KnowledgeTreeSortButton />,
+        slot,
+        slot.dataset.knowledgeTreeSortSlotId,
+      ))}
+    </>
+  );
 }
