@@ -18,6 +18,38 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+      - name: Prepare unique EditorPane anchor
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          pane = Path('frontend/src/components/EditorPane.tsx')
+          source = pane.read_text(encoding='utf-8')
+          old = '''  const handleEditorReady = useCallback((scrollTo: (pos: number) => void) => {
+              scrollToRef.current = scrollTo;
+            }, []);
+            const { t } = useTranslation();'''
+          if old not in source:
+              old = '''  const handleEditorReady = useCallback((scrollTo: (pos: number) => void) => {
+              scrollToRef.current = scrollTo;
+            }, []);
+            const { t } = useTranslation();'''.replace('            ', '  ')
+          if source.count(old) != 1:
+              raise SystemExit(f'EditorPane primary translation anchor count={source.count(old)}')
+          new = old + '\n  const { visible: keyboardVisible } = useKeyboardVisible();'
+          pane.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          patch = Path('scripts/patch_android_immersive_editor.py')
+          text = patch.read_text(encoding='utf-8')
+          block = '''replace_once(
+              "frontend/src/components/EditorPane.tsx",
+              "  const { t } = useTranslation();",
+              "  const { t } = useTranslation();\\n  const { visible: keyboardVisible } = useKeyboardVisible();",
+          )
+          '''
+          if text.count(block) != 1:
+              raise SystemExit(f'ambiguous patch block count={text.count(block)}')
+          patch.write_text(text.replace(block, '', 1), encoding='utf-8')
+          PY
       - name: Apply Android immersive editor patch
         id: patch
         continue-on-error: true
