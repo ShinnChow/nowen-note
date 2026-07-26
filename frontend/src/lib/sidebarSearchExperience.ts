@@ -1,5 +1,7 @@
 export const LEGACY_GLOBAL_SEARCH_SELECTOR = "[data-sidebar-search]";
 export const KNOWLEDGE_TREE_FILTER_SELECTOR = "[data-knowledge-tree-search]";
+export const SIDEBAR_SEARCH_SURFACE_SELECTOR =
+  `${LEGACY_GLOBAL_SEARCH_SELECTOR},${KNOWLEDGE_TREE_FILTER_SELECTOR}`;
 
 const RETIRED_MARKER = "sidebarSearchRetired";
 
@@ -10,6 +12,14 @@ function setNativeInputValue(input: HTMLInputElement, value: string): void {
     return;
   }
   input.value = value;
+}
+
+function findInputs(root: ParentNode, selector: string): HTMLInputElement[] {
+  const inputs = Array.from(root.querySelectorAll<HTMLInputElement>(selector));
+  if (root instanceof HTMLInputElement && root.matches(selector)) {
+    inputs.unshift(root);
+  }
+  return inputs;
 }
 
 /**
@@ -25,8 +35,7 @@ function setNativeInputValue(input: HTMLInputElement, value: string): void {
 export function applySidebarSearchExperience(root: ParentNode = document): boolean {
   let changed = false;
 
-  const legacyInput = root.querySelector<HTMLInputElement>(LEGACY_GLOBAL_SEARCH_SELECTOR);
-  if (legacyInput) {
+  for (const legacyInput of findInputs(root, LEGACY_GLOBAL_SEARCH_SELECTOR)) {
     const row = legacyInput.parentElement?.parentElement;
     if (row instanceof HTMLElement && row.dataset.retiredSidebarSearchRow !== "true") {
       row.dataset.retiredSidebarSearchRow = "true";
@@ -49,17 +58,31 @@ export function applySidebarSearchExperience(root: ParentNode = document): boole
     }
   }
 
-  const treeFilter = root.querySelector<HTMLInputElement>(KNOWLEDGE_TREE_FILTER_SELECTOR);
-  if (treeFilter) {
+  for (const treeFilter of findInputs(root, KNOWLEDGE_TREE_FILTER_SELECTOR)) {
     const filterSurface = treeFilter.parentElement;
-    if (filterSurface instanceof HTMLElement) {
+    if (
+      filterSurface instanceof HTMLElement
+      && filterSurface.dataset.treeFilterSurface !== "true"
+    ) {
       filterSurface.dataset.treeFilterSurface = "true";
+      changed = true;
     }
-    treeFilter.placeholder = "筛选目录与文档…";
-    treeFilter.setAttribute("aria-label", "筛选当前目录中的文件夹与文档");
-    treeFilter.title = "仅筛选当前内容树，不搜索笔记正文";
-    treeFilter.dataset.searchScope = "tree";
-    changed = true;
+    if (treeFilter.placeholder !== "筛选目录与文档…") {
+      treeFilter.placeholder = "筛选目录与文档…";
+      changed = true;
+    }
+    if (treeFilter.getAttribute("aria-label") !== "筛选当前目录中的文件夹与文档") {
+      treeFilter.setAttribute("aria-label", "筛选当前目录中的文件夹与文档");
+      changed = true;
+    }
+    if (treeFilter.title !== "仅筛选当前内容树，不搜索笔记正文") {
+      treeFilter.title = "仅筛选当前内容树，不搜索笔记正文";
+      changed = true;
+    }
+    if (treeFilter.dataset.searchScope !== "tree") {
+      treeFilter.dataset.searchScope = "tree";
+      changed = true;
+    }
   }
 
   return changed;
