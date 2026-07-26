@@ -81,7 +81,7 @@ import {
   Indent, Outdent, AlignLeft, AlignCenter, AlignRight, Trash2,
   FileType, Check, AlertCircle, Info, ArrowUp, Copy, Link as LinkIcon,
   ExternalLink, Unlink2, Workflow, Sigma, BookOpen, Download, Phone,
-  Type, Palette, Eraser, ChevronDown, Search, Upload,
+  Type, Palette, Eraser, Paintbrush, ChevronDown, Search, Upload,
   // 表格气泡菜单图标
   Rows3, Columns3, Merge, Split, Heading, Network,
 } from "lucide-react";
@@ -148,6 +148,11 @@ import {
 import { useTranslation } from "react-i18next";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { getActiveListType, type ActiveListType } from "@/lib/activeListType";
+import {
+  applyCapturedTextFormat,
+  captureTextFormat,
+  type CapturedTextFormat,
+} from "@/lib/formatPainter";
 
 const lowlight = instrumentPhaseALowlight(createLowlight(common));
 
@@ -1605,6 +1610,12 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   const wordStatsDisplayRef = useRef<WordStatsHandle>(null);
   const [activeListType, setActiveListType] = useState<ActiveListType>(null);
   const activeListTypeRef = useRef<ActiveListType>(null);
+  const [formatPainterArmed, setFormatPainterArmed] = useState(false);
+  const formatPainterRef = useRef<CapturedTextFormat | null>(null);
+  const formatPainterSourceRef = useRef<{ from: number; to: number; noteId: string } | null>(null);
+  const formatPainterApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formatPainterPointerSelectingRef = useRef(false);
+  const applyingFormatPainterRef = useRef(false);
   const syncActiveListType = useCallback((currentEditor: Editor | null) => {
     const next = getActiveListType(currentEditor);
     if (activeListTypeRef.current === next) return;
@@ -2950,6 +2961,168 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
    *                 拿到最新 JSON+纯文本，立即回填 activeNote 后再 setEditorMode，
    *                 MD 侧的 normalizeToMarkdown 就能直接基于最新内容初始化。
    */
+  const cancelFormatPainter = useCallback((announce = false) => {
+    if (formatPainterApplyTimerRef.current) {
+      clearTimeout(formatPainterApplyTimerRef.current);
+      formatPainterApplyTimerRef.current = null;
+    }
+    formatPainterRef.current = null;
+    formatPainterSourceRef.current = null;
+    formatPainterPointerSelectingRef.current = false;
+    applyingFormatPainterRef.current = false;
+    setFormatPainterArmed(false);
+    if (announce) {
+      toast.info(t("tiptap.formatPainterCancelled", { defaultValue: "已取消格式刷" }));
+    }
+  }, [t]);
+
+  const toggleFormatPainter = useCallback(() => {
+    if (!editor || !editable || isGuest) {
+      toast.info(t("tiptap.formatPainterReadonly", { defaultValue: "当前文档不可使用格式刷" }));
+      return;
+    }
+    if (formatPainterRef.current) {
+      cancelFormatPainter(true);
+      return;
+    }
+
+    const captured = captureTextFormat(editor);
+    if (!captured.ok) {
+      const message = captured.reason === "empty-selection"
+        ? t("tiptap.formatPainterSelectSource", { defaultValue: "请先选择一段源文本" })
+        : captured.reason === "unsupported-selection"
+          ? t("tiptap.formatPainterUnsupportedSource", { defaultValue: "请选择普通文本作为格式来源" })
+          : t("tiptap.formatPainterNoText", { defaultValue: "所选内容没有可复制的文本格式" });
+      toast.info(message);
+      return;
+    }
+    if (!captured.format) {
+      toast.info(t("tiptap.formatPainterNoText", { defaultValue: "所选内容没有可复制的文本格式" }));
+      return;
+    }
+
+    formatPainterRef.current = captured.format;
+    formatPainterSourceRef.current = {
+      from: editor.state.selection.from,
+      to: editor.state.selection.to,
+      noteId: note.id,
+    };
+    setFormatPainterArmed(true);
+    setBubble((current) => ({ ...current, open: false }));
+    setImageBubble((current) => ({ ...current, open: false }));
+    setTableBubble((current) => ({ ...current, open: false }));
+    toast.info(t("tiptap.formatPainterChooseTarget", { defaultValue: "格式已复制，请选择目标文本" }));
+  }, [cancelFormatPainter, editable, editor, isGuest, note.id, t]);
+
+  useEffect(() => {
+    if (!editor) return;
+
+    const attemptApply = () => {
+      const format = formatPainterRef.current;
+      const sourceSelection = formatPainterSourceRef.current;
+      if (!format || !sourceSelection || applyingFormatPainterRef.current) return;
+      if (sourceSelection.noteId !== noteRef.current.id) {
+        cancelFormatPainter();
+        return;
+      }
+
+      const { selection } = editor.state;
+      if (selection.empty) return;
+      if (selection.from === sourceSelection.from && selection.to === sourceSelection.to) return;
+
+      applyingFormatPainterRef.current = true;
+      const result = applyCapturedTextFormat(editor, format);
+      applyingFormatPainterRef.current = false;
+
+      if (!result.ok) {
+        if (result.reason === "empty-selection") return;
+        cancelFormatPainter();
+        toast.info(t("tiptap.formatPainterUnsupportedTarget", {
+          defaultValue: "该目标包含不支持的复杂节点，格式刷已取消",
+        }));
+        return;
+      }
+
+      cancelFormatPainter();
+      setBubble((current) => ({ ...current, open: false }));
+      toast.success(result.degraded
+        ? t("tiptap.formatPainterAppliedInlineOnly", { defaultValue: "格式已应用；跨段内容保留原有段落类型" })
+        : t("tiptap.formatPainterApplied", { defaultValue: "格式已应用" }));
+    };
+
+    const scheduleApply = (delay = 140) => {
+      if (!formatPainterRef.current) return;
+      if (formatPainterApplyTimerRef.current) clearTimeout(formatPainterApplyTimerRef.current);
+      formatPainterApplyTimerRef.current = setTimeout(() => {
+        formatPainterApplyTimerRef.current = null;
+        attemptApply();
+      }, delay);
+    };
+
+    const handleSelectionUpdate = () => {
+      if (!formatPainterRef.current || formatPainterPointerSelectingRef.current) return;
+      scheduleApply();
+    };
+    const handleTransaction = ({ transaction }: any) => {
+      if (!formatPainterRef.current || applyingFormatPainterRef.current) return;
+      if (transaction.docChanged && !transaction.getMeta("formatPainter")) {
+        cancelFormatPainter();
+      }
+    };
+    const handleBlur = () => {
+      window.setTimeout(() => {
+        if (formatPainterRef.current && !editor.isFocused) cancelFormatPainter();
+      }, 0);
+    };
+    const handlePointerDown = () => {
+      if (!formatPainterRef.current) return;
+      formatPainterPointerSelectingRef.current = true;
+      if (formatPainterApplyTimerRef.current) {
+        clearTimeout(formatPainterApplyTimerRef.current);
+        formatPainterApplyTimerRef.current = null;
+      }
+    };
+    const handlePointerUp = () => {
+      if (!formatPainterPointerSelectingRef.current) return;
+      formatPainterPointerSelectingRef.current = false;
+      scheduleApply(0);
+    };
+
+    editor.on("selectionUpdate", handleSelectionUpdate);
+    editor.on("transaction", handleTransaction);
+    editor.on("blur", handleBlur);
+    editor.view.dom.addEventListener("pointerdown", handlePointerDown, { passive: true });
+    window.addEventListener("pointerup", handlePointerUp, { passive: true });
+    window.addEventListener("pointercancel", handlePointerUp, { passive: true });
+
+    return () => {
+      editor.off("selectionUpdate", handleSelectionUpdate);
+      editor.off("transaction", handleTransaction);
+      editor.off("blur", handleBlur);
+      editor.view.dom.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      if (formatPainterApplyTimerRef.current) clearTimeout(formatPainterApplyTimerRef.current);
+    };
+  }, [cancelFormatPainter, editor, t]);
+
+  useEffect(() => {
+    cancelFormatPainter();
+  }, [cancelFormatPainter, editable, isGuest, note.id]);
+
+  useEffect(() => {
+    if (!formatPainterArmed) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelFormatPainter(true);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [cancelFormatPainter, formatPainterArmed]);
+
+
   useImperativeHandle(
     ref,
     () => ({
@@ -4789,7 +4962,13 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   return (
     <div
       data-mobile-editing-compact={compactMobileEditing ? "true" : "false"}
-      className={cn("flex flex-col relative", scrollLayout.root, presentationMode && "tiptap-presentation-mode")}
+      data-format-painter-active={formatPainterArmed ? "true" : "false"}
+      className={cn(
+        "flex flex-col relative",
+        scrollLayout.root,
+        presentationMode && "tiptap-presentation-mode",
+        formatPainterArmed && "[&_.ProseMirror]:cursor-crosshair",
+      )}
     >
       {/* Toolbar
           v2026-05-18：取消「键盘弹起时隐藏 + 浮动工具栏顶替」方案，改为始终保留
@@ -4925,6 +5104,16 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
         <FontSizePopover editor={editor} iconSize={iconSize} />
         <LineHeightPopover editor={editor} iconSize={iconSize} />
         <ColorPopover editor={editor} iconSize={iconSize} />
+        <ToolbarButton
+          onClick={toggleFormatPainter}
+          isActive={formatPainterArmed}
+          disabled={!editable || isGuest}
+          title={formatPainterArmed
+            ? t("tiptap.formatPainterCancel", { defaultValue: "取消格式刷 (Esc)" })
+            : t("tiptap.formatPainter", { defaultValue: "格式刷" })}
+        >
+          <Paintbrush size={iconSize} />
+        </ToolbarButton>
         <ToolbarButton
           onClick={openLinkEditor}
           isActive={editor.isActive("link")}
@@ -5214,6 +5403,16 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
             title={t('tiptap.selectAllText')}
           >
             <ArrowUp size={14} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={toggleFormatPainter}
+            isActive={formatPainterArmed}
+            disabled={!editable || isGuest}
+            title={formatPainterArmed
+              ? t("tiptap.formatPainterCancel", { defaultValue: "取消格式刷 (Esc)" })
+              : t("tiptap.formatPainter", { defaultValue: "格式刷" })}
+          >
+            <Paintbrush size={14} />
           </ToolbarButton>
           {selectedTextAction?.type === "phone" && (
             <ToolbarButton
