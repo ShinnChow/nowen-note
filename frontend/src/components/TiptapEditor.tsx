@@ -146,6 +146,7 @@ import {
 } from "@/lib/outlineScroll";
 
 import { useTranslation } from "react-i18next";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { getActiveListType, type ActiveListType } from "@/lib/activeListType";
 
 const lowlight = instrumentPhaseALowlight(createLowlight(common));
@@ -1669,6 +1670,13 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     setIsMobile(mq.matches);
     return () => mq.removeEventListener("change", handler);
   }, []);
+  const { visible: keyboardVisible } = useKeyboardVisible();
+  const compactMobileEditing = isMobile && editable && keyboardVisible;
+  const [mobileToolbarExpanded, setMobileToolbarExpanded] = useState(false);
+  useEffect(() => {
+    if (!isMobile || compactMobileEditing) setMobileToolbarExpanded(false);
+  }, [compactMobileEditing, isMobile]);
+  useEffect(() => setMobileToolbarExpanded(false), [note.id]);
   useEffect(() => {
     if (!imageBubble.open) setImageSizeMenuOpen(false);
   }, [imageBubble.open]);
@@ -4780,7 +4788,10 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       .run();
   };
   return (
-    <div className={cn("flex flex-col relative", scrollLayout.root, presentationMode && "tiptap-presentation-mode")}>
+    <div
+      data-mobile-editing-compact={compactMobileEditing ? "true" : "false"}
+      className={cn("flex flex-col relative", scrollLayout.root, presentationMode && "tiptap-presentation-mode")}
+    >
       {/* Toolbar
           v2026-05-18：取消「键盘弹起时隐藏 + 浮动工具栏顶替」方案，改为始终保留
           单一顶部工具栏并 sticky 在容器顶端：
@@ -4788,14 +4799,48 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
             - sticky top-0 让长内容滚动时也能随时点到工具栏；
             - z 索引压在选区/链接气泡之下（z-50），保留气泡的覆盖能力。 */}
       {!presentationMode && (
-      <div
-        ref={outlineToolbarRef}
-        className={cn(
-          "editor-toolbar-scroll-fade hide-scrollbar sticky top-0 z-20 flex flex-nowrap items-center gap-0.5 overflow-x-auto touch-pan-x border-b border-app-border bg-app-surface/95 px-4 py-2 backdrop-blur transition-shadow duration-200 supports-[backdrop-filter]:bg-app-surface/70 md:flex-wrap md:overflow-visible md:touch-auto",
-          // 滚动离顶后加底部阴影，表达「工具栏浮于内容之上」
-          toolbarShadow && "shadow-[0_2px_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.4)]",
-        )}
-      >
+      <>
+        <div
+          data-mobile-editor-toolbar="compact"
+          className={cn(
+            "md:hidden sticky top-0 z-20 flex flex-nowrap items-center gap-0.5 overflow-x-auto touch-pan-x border-b border-app-border bg-app-surface/95 px-2 py-1.5 backdrop-blur transition-shadow duration-200 supports-[backdrop-filter]:bg-app-surface/70",
+            toolbarShadow && "shadow-[0_2px_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.4)]",
+          )}
+        >
+          <ToolbarButton compact onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title={t('tiptap.undo')}>
+            <Undo size={16} />
+          </ToolbarButton>
+          <ToolbarButton compact onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title={t('tiptap.redo')}>
+            <Redo size={16} />
+          </ToolbarButton>
+          <ToolbarDivider />
+          <ToolbarButton compact onClick={() => toggleHeadingSmart(editor, 1)} isActive={editor.isActive("heading", { level: 1 })} title={t('tiptap.heading1')}>
+            <Heading1 size={16} />
+          </ToolbarButton>
+          <ToolbarButton compact onClick={() => toggleHeadingSmart(editor, 2)} isActive={editor.isActive("heading", { level: 2 })} title={t('tiptap.heading2')}>
+            <Heading2 size={16} />
+          </ToolbarButton>
+          <ToolbarButton compact onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive("bold")} title={t('tiptap.bold')}>
+            <Bold size={16} />
+          </ToolbarButton>
+          <ToolbarButton compact onClick={() => toggleBulletListSmart(editor)} isActive={activeListType === "bulletList"} title={t('tiptap.bulletList')}>
+            <List size={16} />
+          </ToolbarButton>
+          <ToolbarButton compact onClick={() => setMobileToolbarExpanded((value) => !value)} isActive={mobileToolbarExpanded} title={t('common.more')}>
+            <ChevronDown size={16} className={cn("transition-transform", mobileToolbarExpanded && "rotate-180")} />
+          </ToolbarButton>
+        </div>
+        <div
+          ref={outlineToolbarRef}
+          data-mobile-editor-toolbar="expanded"
+          className={cn(
+            "editor-toolbar-scroll-fade hide-scrollbar z-30 flex-nowrap items-center gap-0.5 overflow-x-auto touch-pan-x border-b border-app-border bg-app-elevated/98 px-3 py-2 backdrop-blur transition-shadow duration-200 supports-[backdrop-filter]:bg-app-elevated/90 md:sticky md:top-0 md:z-20 md:flex md:flex-wrap md:overflow-visible md:touch-auto md:bg-app-surface/95 md:px-4 md:supports-[backdrop-filter]:bg-app-surface/70",
+            mobileToolbarExpanded
+              ? "flex max-md:absolute max-md:left-0 max-md:right-0 max-md:top-10 max-md:max-h-[38vh] max-md:flex-wrap max-md:overflow-y-auto max-md:shadow-xl"
+              : "hidden md:flex",
+            toolbarShadow && "shadow-[0_2px_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.4)]",
+          )}
+        >
         <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title={t('tiptap.undo')}>
           <Undo size={iconSize} />
         </ToolbarButton>
@@ -5089,6 +5134,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           </>
         )}
       </div>
+      </>
       )}
 
       {/* 查找替换浮窗：依附最外层 relative，右上角应于序列。
@@ -5104,7 +5150,10 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
 
       {/* Title */}
       {!presentationMode && (
-      <div className="px-4 md:px-8 pt-4 md:pt-6 pb-0">
+      <div
+        data-mobile-editor-title=""
+        className={cn("px-4 md:px-8 pb-0", compactMobileEditing ? "pt-2" : "pt-3 md:pt-6")}
+      >
         <input
           ref={titleRef}
           defaultValue={note.title}
@@ -5115,11 +5164,15 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           spellCheck={false}
           readOnly={!editable}
           className={cn(
-            "w-full bg-transparent text-2xl font-bold text-tx-primary placeholder:text-tx-tertiary focus:outline-none no-focus-ring",
+            "w-full bg-transparent text-xl md:text-2xl font-bold text-tx-primary placeholder:text-tx-tertiary focus:outline-none no-focus-ring",
+            compactMobileEditing && "text-lg leading-7",
             !editable && "cursor-default"
           )}
         />
-        <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-2 text-[10px] text-tx-tertiary">
+        <div
+          data-mobile-editor-metadata=""
+          className={cn("flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-2 text-[10px] text-tx-tertiary", compactMobileEditing && "hidden")}
+        >
           <span>{t('tiptap.version')}{note.version}</span>
           <span className="max-md:hidden">·</span>
           <span>{t('tiptap.updatedAt')}{new Date(note.updatedAt + "Z").toLocaleString()}</span>
@@ -5134,7 +5187,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       )}
 
       {/* Tag Bar：访客模式下隐藏（TagInput 依赖 AppProvider + 登录态 API） */}
-      {!isGuest && !windowedSection && (
+      {!isGuest && !windowedSection && !compactMobileEditing && (
         <div className="px-4 md:px-8 pb-2">
           <TagInput
             noteId={note.id}
@@ -5804,7 +5857,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
 
       {/* 回到顶部按钮：滚动超过阈值后显示在编辑区右下角 */}
       <AnimatePresence>
-        {showBackToTop && scrollLayout.ownsViewportOverlay && (
+        {showBackToTop && !compactMobileEditing && scrollLayout.ownsViewportOverlay && (
           <motion.button
             type="button"
             initial={{ opacity: 0, y: 8, scale: 0.9 }}
