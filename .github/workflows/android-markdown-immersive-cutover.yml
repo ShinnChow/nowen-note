@@ -1,0 +1,45 @@
+name: Android Markdown Immersive Cutover
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/patch_android_markdown_immersive.py'
+      - '.github/workflows/android-markdown-immersive-cutover.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Apply Markdown immersive editor patch
+        id: patch
+        continue-on-error: true
+        run: python3 scripts/patch_android_markdown_immersive.py > patch-output.log 2>&1
+      - name: Upload patch diagnostics
+        if: steps.patch.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-markdown-immersive-patch-diagnostics
+          path: patch-output.log
+          if-no-files-found: error
+      - name: Enforce patch result
+        if: steps.patch.outcome == 'failure'
+        run: exit 1
+      - name: Remove one-shot patch script
+        run: rm scripts/patch_android_markdown_immersive.py
+      - name: Commit integrated implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/components/MarkdownEditorImpl.tsx \
+                  frontend/src/lib/__tests__/androidImmersiveEditorContract.test.ts \
+                  scripts/patch_android_markdown_immersive.py
+          git commit -m "feat(android): extend immersive editing to Markdown"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
