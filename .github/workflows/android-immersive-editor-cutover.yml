@@ -19,7 +19,19 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - name: Apply Android immersive editor patch
-        run: python3 scripts/patch_android_immersive_editor.py
+        id: patch
+        continue-on-error: true
+        run: python3 scripts/patch_android_immersive_editor.py > patch-output.log 2>&1
+      - name: Upload patch diagnostics
+        if: steps.patch.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-immersive-patch-diagnostics
+          path: patch-output.log
+          if-no-files-found: error
+      - name: Enforce patch result
+        if: steps.patch.outcome == 'failure'
+        run: exit 1
       - name: Remove one-shot patch script
         run: rm scripts/patch_android_immersive_editor.py
       - name: Commit integrated implementation
