@@ -205,6 +205,7 @@ function ToolbarButton({ onClick, disabled, children, title }: ToolbarButtonProp
     <button
       type="button"
       onClick={onClick}
+      onMouseDown={(event) => event.preventDefault()}
       disabled={disabled}
       title={title}
       className={cn(
@@ -400,9 +401,8 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
     && window.matchMedia("(max-width: 767px)").matches;
   const [mobileToolbarExpanded, setMobileToolbarExpanded] = useState(false);
   useEffect(() => {
-    if (compactMobileEditing) setMobileToolbarExpanded(false);
-  }, [compactMobileEditing]);
-  useEffect(() => setMobileToolbarExpanded(false), [note.id]);
+    setMobileToolbarExpanded(false);
+  }, [keyboardVisible, note.id]);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const previewRootRef = useRef<HTMLDivElement | null>(null);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);

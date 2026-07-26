@@ -1674,9 +1674,8 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   const compactMobileEditing = isMobile && editable && keyboardVisible;
   const [mobileToolbarExpanded, setMobileToolbarExpanded] = useState(false);
   useEffect(() => {
-    if (!isMobile || compactMobileEditing) setMobileToolbarExpanded(false);
-  }, [compactMobileEditing, isMobile]);
-  useEffect(() => setMobileToolbarExpanded(false), [note.id]);
+    setMobileToolbarExpanded(false);
+  }, [keyboardVisible, isMobile, note.id]);
   useEffect(() => {
     if (!imageBubble.open) setImageSizeMenuOpen(false);
   }, [imageBubble.open]);

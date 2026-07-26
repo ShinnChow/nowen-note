@@ -36,6 +36,8 @@ describe("Android immersive editor contract", () => {
     expect(source).toContain('data-markdown-mobile-toolbar="expanded"');
     expect(source).toContain('data-markdown-mobile-status');
     expect(source).toContain('!compactMobileEditing');
+    expect(source).toContain('onMouseDown={(event) => event.preventDefault()}');
+    expect(source).toContain('[keyboardVisible, note.id]');
   });
 
   it("suppresses the mobile space launcher while the IME is open", () => {
