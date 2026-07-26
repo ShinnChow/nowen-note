@@ -38,6 +38,11 @@ export function listKnowledgeTree(input: {
            node.nodeType, node.resourceType, node.resourceId, node.sortOrder,
            node.isExpanded, node.isDeleted, node.deletedAt, node.createdAt, node.updatedAt,
            ${TITLE_EXPRESSION} AS title,
+           CASE WHEN node.resourceType = 'notebook' THEN nb.icon ELSE NULL END AS icon,
+           CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isPinned, 0) ELSE 0 END AS isPinned,
+           CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isFavorite, 0) ELSE 0 END AS isFavorite,
+           CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isLocked, 0) ELSE 0 END AS isLocked,
+           CASE WHEN node.resourceType = 'note' THEN note.contentFormat ELSE NULL END AS contentFormat,
            (SELECT COUNT(*) FROM knowledge_tree_nodes child
              WHERE child.parentId = node.id AND child.isDeleted = 0) AS childCount
     FROM knowledge_tree_nodes node

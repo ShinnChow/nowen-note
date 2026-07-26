@@ -25,6 +25,11 @@ export interface KnowledgeTreeNode {
   resourceType: KnowledgeResourceType;
   resourceId: string;
   title: string;
+  icon?: string | null;
+  isPinned?: number;
+  isFavorite?: number;
+  isLocked?: number;
+  contentFormat?: string | null;
   sortOrder: number;
   isExpanded: number;
   isDeleted: number;

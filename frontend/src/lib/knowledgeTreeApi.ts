@@ -34,6 +34,11 @@ export interface KnowledgeTreeNode {
   resourceType: "notebook" | "note" | "mindmap" | "file";
   resourceId: string;
   title: string;
+  icon?: string | null;
+  isPinned?: number;
+  isFavorite?: number;
+  isLocked?: number;
+  contentFormat?: string | null;
   sortOrder: number;
   isExpanded: number;
   isDeleted: number;
