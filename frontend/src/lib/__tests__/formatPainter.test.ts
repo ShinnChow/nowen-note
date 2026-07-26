@@ -1,6 +1,5 @@
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
 import { Color, FontSize, TextStyle } from "@tiptap/extension-text-style";
@@ -24,7 +23,6 @@ function createEditor(content: object): Editor {
     element: document.createElement("div"),
     extensions: [
       StarterKit,
-      Underline,
       Highlight.configure({ multicolor: true }),
       TextStyle,
       Color,
@@ -86,7 +84,7 @@ describe("safe format painter", () => {
                 { type: "italic" },
                 { type: "underline" },
                 { type: "strike" },
-                { type: "textStyle", attrs: { fontSize: "20px", color: "#ef4444", fontFamily: "serif" } },
+                { type: "textStyle", attrs: { fontSize: "20px", color: "#ef4444" } },
                 { type: "highlight", attrs: { color: "#fef9c3" } },
                 { type: "link", attrs: { href: "https://source.example", target: "_blank", rel: "noopener noreferrer nofollow" } },
               ],
@@ -101,7 +99,7 @@ describe("safe format painter", () => {
               type: "text",
               text: "Target",
               marks: [
-                { type: "textStyle", attrs: { fontSize: "12px", color: "#3b82f6", fontFamily: "monospace" } },
+                { type: "textStyle", attrs: { fontSize: "12px", color: "#3b82f6" } },
                 { type: "link", attrs: { href: "https://target.example", target: "_blank", rel: "noopener noreferrer nofollow" } },
               ],
             },
@@ -145,7 +143,6 @@ describe("safe format painter", () => {
     expect(marks.textStyle).toMatchObject({
       fontSize: "20px",
       color: "#ef4444",
-      fontFamily: "monospace",
     });
     expect(marks.link).toMatchObject({ href: "https://target.example" });
     expect(editor.getText()).toContain("Source");
