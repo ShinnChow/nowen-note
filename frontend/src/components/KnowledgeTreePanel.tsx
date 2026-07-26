@@ -648,8 +648,6 @@ export function KnowledgeTreePanel({
 
         </div>
         {isExpanded && childNodes.map((child) => renderNode(child, depth + 1))}
-        </div>
-        {isExpanded && childNodes.map((child) => renderNode(child, depth + 1))}
       </div>
     );
   };
