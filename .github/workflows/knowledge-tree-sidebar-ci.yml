@@ -51,19 +51,5 @@ jobs:
         run: npx vitest run --reporter=basic src/lib/__tests__/knowledgeTreeSidebarContract.test.ts src/lib/__tests__/knowledgeTreeNodeMenu.test.tsx src/lib/__tests__/knowledgeTreeModel.test.ts src/lib/__tests__/sharedKnowledgeTree.test.ts
 
       - name: Frontend typecheck
-        id: typecheck
-        continue-on-error: true
         working-directory: frontend
-        run: npx tsc -b > ../issue468-typecheck.log 2>&1
-
-      - name: Upload typecheck diagnostics
-        if: steps.typecheck.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: issue468-typecheck-diagnostics
-          path: issue468-typecheck.log
-          if-no-files-found: error
-
-      - name: Enforce frontend typecheck
-        if: steps.typecheck.outcome == 'failure'
-        run: exit 1
+        run: npx tsc -b
