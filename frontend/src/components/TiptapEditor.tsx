@@ -2961,43 +2961,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
    *                 拿到最新 JSON+纯文本，立即回填 activeNote 后再 setEditorMode，
    *                 MD 侧的 normalizeToMarkdown 就能直接基于最新内容初始化。
    */
-  useImperativeHandle(
-    ref,
-    () => ({
-      flushSave: () => {
-        if (!editor) return;
-        if (!debounceTimer.current) return;
-        clearTimeout(debounceTimer.current);
-        debounceTimer.current = null;
-        const json = JSON.stringify(editor.getJSON());
-        const text = getEditorPlainTextForSave(editor, analysisCacheRef.current);
-        const title = isTitleComposingRef.current
-          ? noteRef.current.title
-          : titleRef.current?.value || noteRef.current.title;
-        lastEmittedTitleRef.current = title;
-        onUpdateRef.current({
-          content: json,
-          contentText: text,
-          title,
-          _noteId: noteRef.current.id,
-          _saveGeneration: ++saveGenerationRef.current,
-        });
-      },
-      discardPending: () => {
-        // 切换编辑器时调用方已经自己 PUT 规范化内容，清掉 debounce 避免竞态
-        if (debounceTimer.current) {
-          clearTimeout(debounceTimer.current);
-          debounceTimer.current = null;
-        }
-        if (derivedTimer.current) {
-          clearTimeout(derivedTimer.current);
-          derivedTimer.current = null;
-        }
-        editorRevisionGuardRef.current.invalidate();
-        pendingSaveAckRef.current = null;
-      },
-      getSnapshot: () => {
-        const cancelFormatPainter = useCallback((announce = false) => {
+  const cancelFormatPainter = useCallback((announce = false) => {
     if (formatPainterApplyTimerRef.current) {
       clearTimeout(formatPainterApplyTimerRef.current);
       formatPainterApplyTimerRef.current = null;
@@ -3023,13 +2987,17 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     }
 
     const captured = captureTextFormat(editor);
-    if (!captured.ok || !captured.format) {
+    if (!captured.ok) {
       const message = captured.reason === "empty-selection"
         ? t("tiptap.formatPainterSelectSource", { defaultValue: "请先选择一段源文本" })
         : captured.reason === "unsupported-selection"
           ? t("tiptap.formatPainterUnsupportedSource", { defaultValue: "请选择普通文本作为格式来源" })
           : t("tiptap.formatPainterNoText", { defaultValue: "所选内容没有可复制的文本格式" });
       toast.info(message);
+      return;
+    }
+    if (!captured.format) {
+      toast.info(t("tiptap.formatPainterNoText", { defaultValue: "所选内容没有可复制的文本格式" }));
       return;
     }
 
@@ -3154,7 +3122,44 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [cancelFormatPainter, formatPainterArmed]);
 
-  if (!editor) return null;
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      flushSave: () => {
+        if (!editor) return;
+        if (!debounceTimer.current) return;
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+        const json = JSON.stringify(editor.getJSON());
+        const text = getEditorPlainTextForSave(editor, analysisCacheRef.current);
+        const title = isTitleComposingRef.current
+          ? noteRef.current.title
+          : titleRef.current?.value || noteRef.current.title;
+        lastEmittedTitleRef.current = title;
+        onUpdateRef.current({
+          content: json,
+          contentText: text,
+          title,
+          _noteId: noteRef.current.id,
+          _saveGeneration: ++saveGenerationRef.current,
+        });
+      },
+      discardPending: () => {
+        // 切换编辑器时调用方已经自己 PUT 规范化内容，清掉 debounce 避免竞态
+        if (debounceTimer.current) {
+          clearTimeout(debounceTimer.current);
+          debounceTimer.current = null;
+        }
+        if (derivedTimer.current) {
+          clearTimeout(derivedTimer.current);
+          derivedTimer.current = null;
+        }
+        editorRevisionGuardRef.current.invalidate();
+        pendingSaveAckRef.current = null;
+      },
+      getSnapshot: () => {
+        if (!editor) return null;
         return {
           content: JSON.stringify(editor.getJSON()),
           contentText: getEditorPlainTextForSave(editor, analysisCacheRef.current),
