@@ -47,5 +47,17 @@ jobs:
         if: steps.focused-tests.outcome == 'failure'
         run: exit 1
       - name: Frontend typecheck
+        id: typecheck
+        continue-on-error: true
         working-directory: frontend
-        run: npx tsc -b
+        run: npx tsc -b > format-painter-tsc.log 2>&1
+      - name: Upload typecheck diagnostics
+        if: steps.typecheck.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-455-format-painter-tsc-diagnostics
+          path: frontend/format-painter-tsc.log
+          if-no-files-found: error
+      - name: Enforce typecheck result
+        if: steps.typecheck.outcome == 'failure'
+        run: exit 1
