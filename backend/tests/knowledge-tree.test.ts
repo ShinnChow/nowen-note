@@ -86,11 +86,17 @@ test("v64 migration builds a mixed tree and enforces inherited capabilities", as
     db,
   });
 
+  db.prepare(`INSERT INTO favorites (userId, noteId, workspaceId, createdAt)
+    VALUES (?, ?, ?, datetime('now'))`)
+    .run("owner", product.resourceId, "ws");
+
   phase("list mixed tree");
   const tree = listKnowledgeTree({ userId: "owner", workspaceId: "ws", db });
   assert.equal(tree.find((node) => node.id === orderFolder.id)?.parentId, product.id);
   assert.equal(tree.find((node) => node.id === production.id)?.parentId, orderFolder.id);
   assert.equal(tree.find((node) => node.id === product.id)?.childCount, 1);
+  assert.equal(tree.find((node) => node.id === product.id)?.isFavorite, 1);
+  assert.equal(tree.find((node) => node.id === production.id)?.isFavorite, 0);
 
   phase("legacy sort and expand update");
   db.prepare("UPDATE notebooks SET sortOrder = sortOrder + 1, isExpanded = 0 WHERE id = ?")

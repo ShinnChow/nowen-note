@@ -40,7 +40,10 @@ export function listKnowledgeTree(input: {
            ${TITLE_EXPRESSION} AS title,
            CASE WHEN node.resourceType = 'notebook' THEN nb.icon ELSE NULL END AS icon,
            CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isPinned, 0) ELSE 0 END AS isPinned,
-           CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isFavorite, 0) ELSE 0 END AS isFavorite,
+           CASE WHEN node.resourceType = 'note' AND EXISTS(
+             SELECT 1 FROM favorites favorite
+             WHERE favorite.noteId = note.id AND favorite.userId = ?
+           ) THEN 1 ELSE 0 END AS isFavorite,
            CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isLocked, 0) ELSE 0 END AS isLocked,
            CASE WHEN node.resourceType = 'note' THEN note.contentFormat ELSE NULL END AS contentFormat,
            (SELECT COUNT(*) FROM knowledge_tree_nodes child
@@ -57,7 +60,7 @@ export function listKnowledgeTree(input: {
       node.sortOrder,
       lower(${TITLE_EXPRESSION}),
       node.id
-  `).all(key) as ListedNodeRow[];
+  `).all(input.userId, key) as ListedNodeRow[];
 
   return rows
     .map((row) => ({ ...row, access: resolveKnowledgeNodeAccess(row.id, input.userId, db) }))

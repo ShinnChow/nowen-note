@@ -46,6 +46,7 @@ import { useApp, useAppActions } from "@/store/AppContext";
 import type { Notebook } from "@/types";
 
 type LoadedNote = Awaited<ReturnType<typeof api.getNote>>;
+type NoteStatusPatch = Partial<Pick<LoadedNote, "isPinned" | "isFavorite" | "isLocked">>;
 
 export interface KnowledgeTreeNodeMenuProps {
   menu: ContextMenuState;
@@ -61,6 +62,7 @@ export interface KnowledgeTreeNodeMenuProps {
   onPermissions: (node: KnowledgeTreeNode) => void;
   onDelete: (node: KnowledgeTreeNode) => void | Promise<void>;
   onReload: () => void | Promise<void>;
+  onNotePatched: (nodeId: string, patch: NoteStatusPatch) => void;
 }
 
 function separator(id: string): ContextMenuItem {
@@ -224,6 +226,7 @@ export default function KnowledgeTreeNodeMenu({
   onPermissions,
   onDelete,
   onReload,
+  onNotePatched,
 }: KnowledgeTreeNodeMenuProps) {
   const { state } = useApp();
   const actions = useAppActions();
@@ -350,10 +353,11 @@ export default function KnowledgeTreeNodeMenu({
     return found;
   };
 
-  const patchNote = async (patch: Partial<LoadedNote>) => {
+  const patchNote = async (patch: NoteStatusPatch) => {
     if (!node || node.resourceType !== "note") return;
     const current = note || await api.getNote(node.resourceId);
     await api.updateNote(current.id, patch as any);
+    onNotePatched(node.id, patch);
     const next = { ...current, ...patch } as LoadedNote;
     setNote(next);
     actions.updateNoteInList({ id: current.id, ...patch } as any);

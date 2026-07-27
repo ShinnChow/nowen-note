@@ -119,7 +119,10 @@ export function listSharedKnowledgeTree(input: {
       ${TITLE_EXPRESSION} AS title,
       CASE WHEN node.resourceType = 'notebook' THEN nb.icon ELSE NULL END AS icon,
       CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isPinned, 0) ELSE 0 END AS isPinned,
-      CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isFavorite, 0) ELSE 0 END AS isFavorite,
+      CASE WHEN node.resourceType = 'note' AND EXISTS(
+        SELECT 1 FROM favorites favorite
+        WHERE favorite.noteId = note.id AND favorite.userId = ?
+      ) THEN 1 ELSE 0 END AS isFavorite,
       CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isLocked, 0) ELSE 0 END AS isLocked,
       CASE WHEN node.resourceType = 'note' THEN note.contentFormat ELSE NULL END AS contentFormat,
       shared_tree.sharedRootId, shared_tree.sharedDepth,
@@ -139,6 +142,7 @@ export function listSharedKnowledgeTree(input: {
     input.userId,
     input.userId,
     currentScopeKey,
+    input.userId,
   ) as CandidateRow[];
 
   const selectedById = new Map<string, SelectedCandidate>();

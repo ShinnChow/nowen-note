@@ -378,10 +378,15 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt?: string; onClo
 function AboutPanel() {
   const { t } = useTranslation();
   const [showSponsor, setShowSponsor] = useState(false);
+  const [sponsorMethod, setSponsorMethod] = useState<"wechat" | "alipay">("wechat");
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [showAuthorStory, setShowAuthorStory] = useState(false);
   // 赞赏码大图预览：点击赞赏码缩略图时弹起 Lightbox
   const [sponsorPreviewOpen, setSponsorPreviewOpen] = useState(false);
+  const sponsorImage = sponsorMethod === "wechat" ? "/weixin.jpg" : "/zhifubao.png";
+  const sponsorLabel = sponsorMethod === "wechat"
+    ? t('about.sponsorWechat')
+    : t('about.sponsorAlipay');
   return (
     <div className="space-y-6">
       {/* 标题区 */}
@@ -520,18 +525,52 @@ function AboutPanel() {
               className="overflow-hidden"
             >
               <div className="px-4 pb-4 pt-2 flex flex-col items-center gap-3 border-t border-zinc-200/60 dark:border-zinc-800/60">
+                <div
+                  className="grid w-full max-w-xs grid-cols-2 rounded-lg bg-zinc-200/70 p-1 dark:bg-zinc-800"
+                  role="tablist"
+                  aria-label={t('about.sponsorMethod')}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={sponsorMethod === "wechat"}
+                    onClick={() => setSponsorMethod("wechat")}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      sponsorMethod === "wechat"
+                        ? "bg-emerald-500 text-white shadow-sm"
+                        : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
+                    )}
+                  >
+                    {t('about.sponsorWechat')}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={sponsorMethod === "alipay"}
+                    onClick={() => setSponsorMethod("alipay")}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      sponsorMethod === "alipay"
+                        ? "bg-blue-500 text-white shadow-sm"
+                        : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100",
+                    )}
+                  >
+                    {t('about.sponsorAlipay')}
+                  </button>
+                </div>
                 {/* 点击图片打开 Lightbox 看大图（按钮包裹 → 无障碍/键盘可达） */}
                 <button
                   type="button"
                   onClick={() => setSponsorPreviewOpen(true)}
                   className="group relative rounded-lg overflow-hidden cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
-                  title={t('about.sponsor')}
-                  aria-label={t('about.sponsor')}
+                  title={sponsorLabel}
+                  aria-label={sponsorLabel}
                 >
                   <img
-                    src="/weixin.jpg"
-                    alt={t('about.sponsor')}
-                    className="w-44 h-44 sm:w-52 sm:h-52 object-contain rounded-lg bg-white p-2 shadow-sm transition-transform duration-200 group-hover:scale-[1.02]"
+                    src={sponsorImage}
+                    alt={sponsorLabel}
+                    className="w-44 sm:w-52 max-h-72 object-contain rounded-lg bg-white p-2 shadow-sm transition-transform duration-200 group-hover:scale-[1.02]"
                     loading="lazy"
                     draggable={false}
                   />
@@ -544,7 +583,9 @@ function AboutPanel() {
                   </span>
                 </button>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center">
-                  {t('about.sponsorTip')}
+                  {sponsorMethod === "wechat"
+                    ? t('about.sponsorWechatTip')
+                    : t('about.sponsorAlipayTip')}
                 </p>
               </div>
             </motion.div>
@@ -572,8 +613,8 @@ function AboutPanel() {
       {/* 赞赏码大图预览 Lightbox */}
       {sponsorPreviewOpen && (
         <ImageLightbox
-          src="/weixin.jpg"
-          alt={t('about.sponsor')}
+          src={sponsorImage}
+          alt={sponsorLabel}
           onClose={() => setSponsorPreviewOpen(false)}
         />
       )}

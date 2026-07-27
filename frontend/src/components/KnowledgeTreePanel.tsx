@@ -8,12 +8,14 @@ import {
   Folder,
   Loader2,
   MoreHorizontal,
+  Pin,
   Plus,
   RefreshCw,
   Search,
   ShieldCheck,
   SplitSquareHorizontal,
   SplitSquareVertical,
+  Star,
   Trash2,
   TreePine,
   UserPlus,
@@ -463,6 +465,15 @@ export function KnowledgeTreePanel({
     closeMenu();
   };
 
+  const patchNoteStatus = useCallback((
+    nodeId: string,
+    patch: Partial<Pick<KnowledgeTreeNode, "isPinned" | "isFavorite" | "isLocked">>,
+  ) => {
+    setNodes((current) => current.map((node) => (
+      node.id === nodeId ? { ...node, ...patch } : node
+    )));
+  }, []);
+
   const startInlineCreate = useCallback((parent: KnowledgeTreeNode | null, kind: KnowledgeTreeInlineCreateKind) => {
     if (parent && !parent.access.capabilities.canCreate) return;
     if (!parent && kind !== "folder") return;
@@ -749,6 +760,24 @@ export function KnowledgeTreePanel({
           >
             {nodeIcon(node)}
             <span className="min-w-0 flex-1 truncate">{node.title}</span>
+            {node.resourceType === "note" && node.isPinned === 1 && (
+              <span
+                className="flex shrink-0 items-center text-accent-primary"
+                title="已置顶"
+                aria-label="已置顶"
+              >
+                <Pin size={11} className="fill-current" aria-hidden="true" />
+              </span>
+            )}
+            {node.resourceType === "note" && node.isFavorite === 1 && (
+              <span
+                className="flex shrink-0 items-center text-amber-400"
+                title="已收藏"
+                aria-label="已收藏"
+              >
+                <Star size={11} className="fill-current" aria-hidden="true" />
+              </span>
+            )}
             {isSharedRoot(node) && <span className="rounded bg-accent-primary/10 px-1 text-[9px] text-accent-primary">共享</span>}
             {node.access.source === "inherited" && <span className="rounded bg-app-active px-1 text-[9px] text-tx-tertiary">继承</span>}
           </button>
@@ -873,6 +902,7 @@ export function KnowledgeTreePanel({
         onPermissions={setPermissionsNode}
         onDelete={remove}
         onReload={reload}
+        onNotePatched={patchNoteStatus}
       />
     </section>
   );

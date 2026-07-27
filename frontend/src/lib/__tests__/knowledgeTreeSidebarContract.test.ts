@@ -46,4 +46,19 @@ describe("knowledge tree sidebar contract", () => {
     expect(panel).toContain('data-sidebar-surface-active={surfaceActive ? "true" : "false"}');
     expect(panel).toContain("if (!surfaceActive) return");
   });
+
+  it("keeps pinned and favorite note states visible beside the tree title", () => {
+    const panel = source("../../components/KnowledgeTreePanel.tsx");
+    expect(panel).toContain('aria-label="已置顶"');
+    expect(panel).toContain('aria-label="已收藏"');
+    expect(panel).toContain("node.isPinned === 1");
+    expect(panel).toContain("node.isFavorite === 1");
+  });
+
+  it("updates tree note status immediately after a successful menu action", () => {
+    const panel = source("../../components/KnowledgeTreePanel.tsx");
+    const menu = source("../../components/KnowledgeTreeNodeMenu.tsx");
+    expect(panel).toContain("onNotePatched={patchNoteStatus}");
+    expect(menu).toContain("onNotePatched(node.id, patch)");
+  });
 });

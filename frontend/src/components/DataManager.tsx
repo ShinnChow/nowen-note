@@ -42,6 +42,7 @@ import YoudaoImport from "@/components/YoudaoImport";
 import ObsidianImport from "@/components/ObsidianImport";
 import WeChatFavoritesImport from "@/components/WeChatFavoritesImport";
 import UrlImport from "@/components/UrlImport";
+import RemoteImageLocalizationPanel from "@/components/RemoteImageLocalizationPanel";
 import {
   IMPORT_METHOD_GROUPS,
   persistImportMethod,
@@ -976,6 +977,7 @@ export default function DataManager() {
         <div className="space-y-3 mb-4">
           <SyncCenterCard />
           <DesktopDataSafetyCard />
+          <RemoteImageLocalizationPanel />
         </div>
 
         {/* ===== 一级 Tab：scope（个人空间 / 工作区 / 系统） =====
