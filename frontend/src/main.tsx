@@ -35,6 +35,7 @@ import NoteTransferCenter from "./components/NoteTransferCenter";
 import RoundTripImportBatchCenter from "./components/RoundTripImportBatchCenter";
 import RoundTripPermissionMappingCenter from "./components/RoundTripPermissionMappingCenter";
 import RoundTripPermissionExportCenter from "./components/RoundTripPermissionExportCenter";
+import SiyuanImportProgressBridge from "./components/SiyuanImportProgressBridge";
 import "./index.css";
 import "./editor-list-markers.css";
 import "./code-block-wrap.css";
@@ -170,6 +171,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <RoundTripImportBatchCenter />
           <RoundTripPermissionMappingCenter />
           <RoundTripPermissionExportCenter />
+          <SiyuanImportProgressBridge />
           <App />
         </>
       )}
