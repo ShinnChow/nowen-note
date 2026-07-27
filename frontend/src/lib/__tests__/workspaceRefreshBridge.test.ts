@@ -2,7 +2,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/realtime", () => ({ realtime: {} }));
+const realtimeHarness = vi.hoisted(() => {
+  const listeners = new Map<string, (payload: unknown) => void>();
+  const on = vi.fn((event: string, listener: (payload: unknown) => void) => {
+    listeners.set(event, listener);
+    return () => listeners.delete(event);
+  });
+  return { listeners, on };
+});
+
+vi.mock("@/lib/realtime", () => ({
+  realtime: { on: realtimeHarness.on },
+}));
 vi.mock("@/lib/syncEngine", () => ({
   SYNC_SNAPSHOT_APPLIED_EVENT: "sync-snapshot-applied",
   syncNow: vi.fn(),
@@ -11,6 +22,8 @@ vi.mock("@/lib/syncEngine", () => ({
 describe("workspace refresh button placement", () => {
   beforeEach(() => {
     vi.resetModules();
+    realtimeHarness.listeners.clear();
+    realtimeHarness.on.mockClear();
     document.body.innerHTML = `
       <div>
         <button data-nowen-notebook-sort type="button">sort</button>
@@ -32,5 +45,17 @@ describe("workspace refresh button placement", () => {
 
     expect(refresh).not.toBeNull();
     expect(refresh?.nextElementSibling).toBe(sort);
+  });
+
+  it("refreshes the knowledge tree when an import broadcasts notes:imported", async () => {
+    const changed = vi.fn();
+    window.addEventListener("nowen:knowledge-tree-changed", changed, { once: true });
+    await import("@/lib/workspaceRefreshBridge");
+
+    realtimeHarness.listeners.get("notes:imported")?.({ reason: "siyuan-import" });
+
+    expect(changed).toHaveBeenCalledTimes(1);
+    const event = changed.mock.calls[0][0] as CustomEvent<{ reason: string }>;
+    expect(event.detail.reason).toBe("siyuan-import");
   });
 });
