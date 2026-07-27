@@ -98,8 +98,20 @@ jobs:
           npm run test:run --
           src/lib/__tests__/markdownUserContent.test.ts
           src/components/__tests__/FormatAwareEditorPane.test.tsx
-      - name: Issue 494 Callout and iframe regression
-        run: npm run test:run -- src/components/__tests__/MarkdownPreview.issue494.test.tsx
+      - name: Issue 494 Callout sanitization regression
+        run: >-
+          npm run test:run --
+          src/components/__tests__/MarkdownPreview.issue494.test.tsx
+          -t "preserves Callout metadata"
+      - name: Issue 494 iframe parameter regression
+        if: always()
+        run: >-
+          npm run test:run --
+          src/components/__tests__/MarkdownPreview.issue494.test.tsx
+          -t "decodes legacy double-escaped iframe parameters"
       - name: Issue 494 content-tree refresh regression
+        if: always()
         run: npm run test:run -- src/lib/__tests__/workspaceRefreshBridge.test.ts
-      - run: npx tsc -b
+      - name: Frontend typecheck
+        if: always()
+        run: npx tsc -b
