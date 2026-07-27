@@ -247,8 +247,8 @@ const calloutStyles: Record<SiyuanCalloutType, { icon: React.ComponentType<any>;
 };
 
 function CalloutBlockquote({ node, children, sourceOffset = 0 }: { node?: any; children?: React.ReactNode; sourceOffset?: number }) {
-  const type = node?.properties?.["data-callout-type"] as SiyuanCalloutType | undefined;
-  const title = node?.properties?.["data-callout-title"] as string | undefined;
+  const type = (node?.properties?.["data-callout-type"] ?? node?.properties?.dataCalloutType) as SiyuanCalloutType | undefined;
+  const title = (node?.properties?.["data-callout-title"] ?? node?.properties?.dataCalloutTitle) as string | undefined;
   const style = type ? calloutStyles[type] : undefined;
   if (!type || !title || !style) {
     return <blockquote {...headingDataAttrs(node, sourceOffset)} className="my-4 rounded-r-lg border-l-4 border-accent-primary/40 bg-app-hover/40 px-4 py-2 italic text-tx-secondary">{children}</blockquote>;
