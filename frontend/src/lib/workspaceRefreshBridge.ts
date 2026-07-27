@@ -6,6 +6,7 @@ import {
 
 const INSTALL_KEY = "__NOWEN_WORKSPACE_REFRESH_BRIDGE__" as const;
 const BUTTON_ATTRIBUTE = "data-nowen-workspace-refresh";
+const KNOWLEDGE_TREE_CHANGED_EVENT = "nowen:knowledge-tree-changed";
 const AUTO_REFRESH_COOLDOWN_MS = 4_000;
 const BACKGROUND_REFRESH_MIN_MS = 800;
 const DESKTOP_POLL_INTERVAL_MS = 30_000;
@@ -64,6 +65,12 @@ function resolveCopy() {
         success: "Current space refreshed",
         failed: "Refresh failed. Check the connection and try again.",
       };
+}
+
+function emitKnowledgeTreeRefresh(reason: string): void {
+  window.dispatchEvent(new CustomEvent(KNOWLEDGE_TREE_CHANGED_EVENT, {
+    detail: { reason, at: Date.now() },
+  }));
 }
 
 function emitCollectionRefresh(reason: RefreshReason): void {
@@ -209,6 +216,12 @@ export function installWorkspaceRefreshBridge(): void {
     lastSnapshotAnnouncementAt = Date.now();
     emitCollectionRefresh("sync-snapshot");
   };
+  const onNotesImported = (payload: unknown) => {
+    const reason = typeof payload === "object" && payload !== null && "reason" in payload
+      ? String((payload as { reason?: unknown }).reason || "notes-imported")
+      : "notes-imported";
+    emitKnowledgeTreeRefresh(reason);
+  };
   const onBlur = () => {
     backgroundedAt = Date.now();
   };
@@ -234,6 +247,7 @@ export function installWorkspaceRefreshBridge(): void {
   mountDesktopRefreshButton();
   const observer = new MutationObserver(scheduleMount);
   observer.observe(document.body, { childList: true, subtree: true });
+  const unsubscribeNotesImported = realtime.on("notes:imported", onNotesImported);
 
   // Electron/desktop keeps polling only while visible. This covers MCP/CLI writes
   // from older servers that do not yet broadcast note creation events, while the
@@ -253,6 +267,7 @@ export function installWorkspaceRefreshBridge(): void {
 
   bridgeWindow[INSTALL_KEY] = () => {
     observer.disconnect();
+    unsubscribeNotesImported();
     if (mutationFrame) window.cancelAnimationFrame(mutationFrame);
     if (refreshTimer !== null) window.clearTimeout(refreshTimer);
     if (pollTimer !== null) window.clearInterval(pollTimer);
