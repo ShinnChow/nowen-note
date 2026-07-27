@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "backend/src/lib/markdownUserContent.ts"
+      - "backend/src/lib/siyuanSyParser.ts"
       - "backend/src/routes/notes.ts"
       - "backend/src/routes/export.ts"
       - "backend/tests/markdown-user-content.test.ts"
       - "backend/tests/notes-content-view.test.ts"
+      - "backend/tests/siyuan-issue-494-markdown.test.ts"
       - "frontend/src/lib/editorMode.ts"
       - "frontend/src/lib/noteEditorRouting.ts"
       - "frontend/src/lib/markdownUserContent.ts"
@@ -26,10 +28,12 @@ on:
   pull_request:
     paths:
       - "backend/src/lib/markdownUserContent.ts"
+      - "backend/src/lib/siyuanSyParser.ts"
       - "backend/src/routes/notes.ts"
       - "backend/src/routes/export.ts"
       - "backend/tests/markdown-user-content.test.ts"
       - "backend/tests/notes-content-view.test.ts"
+      - "backend/tests/siyuan-issue-494-markdown.test.ts"
       - "frontend/src/lib/editorMode.ts"
       - "frontend/src/lib/noteEditorRouting.ts"
       - "frontend/src/lib/markdownUserContent.ts"
@@ -66,6 +70,7 @@ jobs:
           node --import tsx --test
           tests/markdown-user-content.test.ts
           tests/notes-content-view.test.ts
+          tests/siyuan-issue-494-markdown.test.ts
       - run: npm run build:tsc
 
   frontend:
