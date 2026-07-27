@@ -82,6 +82,19 @@
       "ticketExpired": "两步验证会话已过期，请重新输入密码",
       "backToLogin": "← 返回用密码登录"
     },
+    "loginHistory": {
+      "title": "登录过的账号",
+      "shortTitle": "账号",
+      "recentAccounts": "最近登录",
+      "addAccount": "登录其他账号",
+      "reauth": "需重登",
+      "sessionExpired": "该账号的登录已失效，请重新输入密码。",
+      "connectFailed": "无法连接目标服务器，当前账号未切换",
+      "storageFailed": "无法读取系统安全存储，当前账号未切换",
+      "remove": "删除登录历史",
+      "removeConfirm": "删除 {{username}} 的登录历史？",
+      "removeFailed": "删除登录历史失败"
+    },
     "demoBanner": {
       "title": "这是体验环境",
       "desc": "您可以使用体验账号 {{username}} / {{password}} 登录，数据可能会被定期清理。",

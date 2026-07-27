@@ -82,6 +82,19 @@
       "ticketExpired": "Two-factor session expired. Please sign in again.",
       "backToLogin": "← Back to password login"
     },
+    "loginHistory": {
+      "title": "Signed-in accounts",
+      "shortTitle": "Accounts",
+      "recentAccounts": "Recent accounts",
+      "addAccount": "Sign in to another account",
+      "reauth": "Sign in again",
+      "sessionExpired": "This session has expired. Please enter the password again.",
+      "connectFailed": "Could not reach the target server. Your current account was not changed.",
+      "storageFailed": "Could not read secure storage. Your current account was not changed.",
+      "remove": "Remove login history",
+      "removeConfirm": "Remove login history for {{username}}?",
+      "removeFailed": "Failed to remove login history"
+    },
     "demoBanner": {
       "title": "Demo environment",
       "desc": "Try it out with the demo account {{username}} / {{password}}. Data may be reset periodically.",
