@@ -119,12 +119,15 @@ export default function EmbeddingIndexTaskCopyBridge() {
       if (nextSection !== observedSection) {
         sectionObserver?.disconnect();
         observedSection = nextSection;
-        sectionObserver = nextSection ? new MutationObserver(schedule) : null;
-        sectionObserver?.observe(nextSection, {
-          childList: true,
-          subtree: true,
-          characterData: true,
-        });
+        sectionObserver = null;
+        if (nextSection) {
+          sectionObserver = new MutationObserver(schedule);
+          sectionObserver.observe(nextSection, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+          });
+        }
       }
 
       if (nextSection) applyEmbeddingIndexTaskCopy(nextSection);
