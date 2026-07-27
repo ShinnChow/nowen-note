@@ -72,7 +72,8 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
-      - run: >-
+      - name: Markdown and SiYuan regressions
+        run: >-
           node --import tsx --test
           tests/markdown-user-content.test.ts
           tests/notes-content-view.test.ts
@@ -92,10 +93,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: >-
+      - name: Existing content-format regressions
+        run: >-
           npm run test:run --
           src/lib/__tests__/markdownUserContent.test.ts
           src/components/__tests__/FormatAwareEditorPane.test.tsx
-          src/components/__tests__/MarkdownPreview.issue494.test.tsx
-          src/lib/__tests__/workspaceRefreshBridge.test.ts
+      - name: Issue 494 Callout and iframe regression
+        run: npm run test:run -- src/components/__tests__/MarkdownPreview.issue494.test.tsx
+      - name: Issue 494 content-tree refresh regression
+        run: npm run test:run -- src/lib/__tests__/workspaceRefreshBridge.test.ts
       - run: npx tsc -b
