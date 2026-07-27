@@ -25,6 +25,7 @@ import {
   type OfflineQueueItem,
 } from "@/lib/offlineQueue";
 import { offlineQueueFetch } from "@/lib/offlineQueueFetch";
+import { resolveQueuedNoteConflicts } from "@/lib/conflictResolution";
 import type { Note, User } from "@/types";
 
 type SyncState = "idle" | "bootstrapping" | "ready" | "error";
@@ -90,6 +91,17 @@ export function countVersionConflicts(
   items: ReadonlyArray<Pick<OfflineQueueItem, "conflict" | "errorCode">>,
 ): number {
   return items.filter((item) => item.conflict || item.errorCode === "VERSION_CONFLICT").length;
+}
+
+async function resolveConfiguredVersionConflicts(): Promise<void> {
+  const result = await resolveQueuedNoteConflicts(getOfflineQueue());
+  if (result.failed > 0) {
+    console.warn("[syncEngine] automatic latest-write conflict resolution incomplete", {
+      attempted: result.attempted,
+      resolved: result.resolved,
+      failures: result.failures,
+    });
+  }
 }
 
 export function findLocallyDeletedQueuedNoteIds(
@@ -243,6 +255,7 @@ export async function bootstrap(user: User): Promise<void> {
         console.warn("[syncEngine] flush offline queue before pull failed:", error);
       });
     }
+    if (getOfflineQueue().length > 0) await resolveConfiguredVersionConflicts();
     await pullServerSnapshot();
     const pending = getQueueLength();
     const versionConflicts = countVersionConflicts(getFailedQueueItems());
@@ -276,6 +289,7 @@ export async function syncNow(): Promise<{
   setState("bootstrapping");
   try {
     if (getQueueLength() > 0) await flushQueue(offlineQueueFetch);
+    if (getQueueLength() > 0) await resolveConfiguredVersionConflicts();
     await pullServerSnapshot();
 
     const pending = getQueueLength();
