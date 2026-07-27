@@ -14,6 +14,8 @@ vi.mock("@/components/MathView", () => ({
   MathView: ({ source }: { source: string }) => <span>{source}</span>,
 }));
 
+const SIYUAN_IFRAME = '<iframe src="https://pan.example.test/#/share?sid=kkrjkp7p&amp;amp;p=XfN7xr" title="SiYuan embed"></iframe>';
+
 describe("MarkdownPreview issue 494", () => {
   let host: HTMLDivElement;
   let root: Root;
@@ -31,13 +33,13 @@ describe("MarkdownPreview issue 494", () => {
     vi.clearAllMocks();
   });
 
-  it("keeps callout styling when the same note contains a SiYuan iframe", async () => {
+  it("preserves Callout metadata when raw iframe HTML enables sanitization", async () => {
     const markdown = [
       "> [!TIP] Tip",
       ">",
       "> 这是Tip类型Callout",
       "",
-      '<iframe src="https://pan.example.test/#/share?sid=kkrjkp7p&amp;amp;p=XfN7xr" title="SiYuan embed"></iframe>',
+      SIYUAN_IFRAME,
     ].join("\n");
 
     await act(async () => {
@@ -49,6 +51,12 @@ describe("MarkdownPreview issue 494", () => {
     expect(callout?.className).toContain("border-emerald-400/70");
     expect(callout?.textContent).toContain("Tip");
     expect(callout?.textContent).toContain("这是Tip类型Callout");
+  });
+
+  it("decodes legacy double-escaped iframe parameters", async () => {
+    await act(async () => {
+      root.render(<MarkdownPreview markdown={SIYUAN_IFRAME} />);
+    });
 
     const iframe = host.querySelector<HTMLIFrameElement>("iframe");
     expect(iframe).not.toBeNull();
