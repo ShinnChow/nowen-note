@@ -109,26 +109,47 @@ export function applyEmbeddingIndexTaskCopy(root: ParentNode = document): boolea
 export default function EmbeddingIndexTaskCopyBridge() {
   useEffect(() => {
     let frame = 0;
-    const schedule = () => {
+    let observedSection: HTMLElement | null = null;
+    let sectionObserver: MutationObserver | null = null;
+
+    function refresh() {
+      const resolved = resolveEmbeddingSection(document);
+      const nextSection = resolved?.section || null;
+
+      if (nextSection !== observedSection) {
+        sectionObserver?.disconnect();
+        observedSection = nextSection;
+        sectionObserver = nextSection ? new MutationObserver(schedule) : null;
+        sectionObserver?.observe(nextSection, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+      }
+
+      if (nextSection) applyEmbeddingIndexTaskCopy(nextSection);
+    }
+
+    function schedule() {
       if (frame) return;
       frame = window.requestAnimationFrame(() => {
         frame = 0;
-        applyEmbeddingIndexTaskCopy();
+        refresh();
       });
-    };
+    }
 
     schedule();
-    const observer = new MutationObserver(schedule);
-    observer.observe(document.body, {
+    const rootObserver = new MutationObserver(schedule);
+    rootObserver.observe(document.body, {
       childList: true,
       subtree: true,
-      characterData: true,
     });
     window.addEventListener("nowen:ai-settings-changed", schedule);
 
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
-      observer.disconnect();
+      rootObserver.disconnect();
+      sectionObserver?.disconnect();
       window.removeEventListener("nowen:ai-settings-changed", schedule);
     };
   }, []);
