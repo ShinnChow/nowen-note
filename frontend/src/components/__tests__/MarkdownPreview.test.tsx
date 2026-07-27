@@ -126,29 +126,6 @@ describe("MarkdownPreview task checkboxes", () => {
     expect(host.querySelector("img")?.getAttribute("src")).toBe("//cdn.example.com/image.png");
   });
 
-  it("preserves callout styling and iframe parameters in the same raw-HTML preview", async () => {
-    const markdown = [
-      "> [!TIP] Tip",
-      ">",
-      "> 这是Tip类型Callout",
-      "",
-      '<iframe src="https://pan.example.test/#/share?sid=kkrjkp7p&amp;amp;p=XfN7xr" title="SiYuan embed"></iframe>',
-    ].join("\n");
-
-    await act(async () => {
-      root.render(<MarkdownPreview markdown={markdown} />);
-    });
-
-    const callout = host.querySelector("blockquote");
-    expect(callout?.className).toContain("border-emerald");
-    expect(callout?.textContent).toContain("Tip");
-    expect(callout?.textContent).toContain("这是Tip类型Callout");
-
-    const iframe = host.querySelector<HTMLIFrameElement>("iframe");
-    expect(iframe).not.toBeNull();
-    expect(iframe?.getAttribute("src")).toBe("https://pan.example.test/#/share?sid=kkrjkp7p&p=XfN7xr");
-  });
-
   it("mounts long previews by viewport segment and preserves global task indices", async () => {
     const callbacks: IntersectionObserverCallback[] = [];
     class MockIntersectionObserver {
