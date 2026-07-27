@@ -72,7 +72,7 @@ function getMathSource(props: Record<string, unknown>): string | null {
   }
 }
 
-const safeHtmlSchema = {
+export const safeHtmlSchema = {
   ...defaultSchema,
   tagNames: Array.from(new Set([
     ...(defaultSchema.tagNames || []),
@@ -96,6 +96,9 @@ const safeHtmlSchema = {
       "dataNowenMathDisplay",
       "dataNowenTitleMode",
       "dataNowenBlockEmbed",
+      "dataCalloutType",
+      "dataCalloutTitle",
+      "dataCalloutFold",
     ],
     iframe: ["src", "title", "width", "height", "loading", "allow", "allowFullScreen", "referrerPolicy"],
     video: ["src", "controls", "poster", "preload", "width", "height"],
@@ -114,10 +117,22 @@ const safeHtmlSchema = {
   },
 };
 
-function normalizeEmbeddableUrl(src?: string): { url: string; sameOrigin: boolean } | null {
+function decodeHtmlAmpersands(value: string): string {
+  let decoded = value;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const next = decoded.replace(/&(?:amp|#0*38|#x0*26);/gi, "&");
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+}
+
+export function normalizeEmbeddableUrl(src?: string): { url: string; sameOrigin: boolean } | null {
   if (!src) return null;
   try {
-    const parsed = new URL(src, window.location.href);
+    // Raw HTML is parsed once by rehype before this component receives `src`.
+    // Older SiYuan imports may still contain a second escaped layer (`&amp;`).
+    const parsed = new URL(decodeHtmlAmpersands(src), window.location.href);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
     return { url: parsed.toString(), sameOrigin: parsed.origin === window.location.origin };
   } catch {
