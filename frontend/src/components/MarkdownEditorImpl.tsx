@@ -853,6 +853,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
         return {
           content: md,
           contentText: markdownToPlainText(md),
+          title: titleRef.current?.value || noteRef.current.title,
         };
       },
       isReady: () => !!viewRef.current,

@@ -76,6 +76,11 @@ import {
   shouldSkipUnchangedTitleOnlyUpdate,
 } from "@/lib/editorSyncGuards";
 import { canWriteNote } from "@/lib/notePermissions";
+import {
+  NOTE_CONFLICT_AUTO_RESOLVED_EVENT,
+  shouldPersistPendingConflictSnapshot,
+  type NoteConflictAutoResolvedDetail,
+} from "@/lib/conflictResolution";
 
 // ---------------------------------------------------------------------------
 // 编辑器模式切换（MD vs Tiptap）
@@ -658,10 +663,7 @@ export default function EditorPane({
   // �Ĳݸ壬�򵯳��ָ���ʾ�������������ϴ����� / �����˳������½��롣
   const [pendingDraft, setPendingDraft] = useState<NoteDraft | null>(null);
   // handleUpdate ������Ŷ��壬������ ref ����"ʹ��δ��ʼ������"
-  const handleUpdateRef = useRef<
-    | ((data: { content?: string; contentText?: string; title: string }) => Promise<void>)
-    | null
-  >(null);
+  const handleUpdateRef = useRef<((data: NoteEditorUpdatePayload) => Promise<void>) | null>(null);
   const handleEditorUpdate = useCallback(async (data: NoteEditorUpdatePayload) => {
     await handleUpdateRef.current?.(data);
   }, []);
@@ -671,6 +673,48 @@ export default function EditorPane({
     if (!current || (data._noteId && data._noteId !== current.id)) return;
     publishEditorSplitMirrorUpdate(current.id, data);
   }, []);
+
+  const persistPendingConflictSnapshot = useCallback((detail: NoteConflictAutoResolvedDetail): boolean => {
+    const current = activeNoteRef.current;
+    if (!current || current.id !== detail.note.id) return false;
+
+    const editorHandle = editorHandleRef.current;
+    if (editorHandle) {
+      let snapshot: ReturnType<NonNullable<NoteEditorHandle["getSnapshot"]>> = null;
+      try {
+        snapshot = editorHandle.getSnapshot?.() ?? null;
+      } catch {
+        return false;
+      }
+      if (!snapshot) return false;
+
+      const snapshotTitle = snapshot.title ?? current.title;
+      if (shouldPersistPendingConflictSnapshot(snapshot, current.title, detail)) {
+        void handleUpdateRef.current?.({
+          title: snapshotTitle,
+          content: snapshot.content,
+          contentText: snapshot.contentText,
+          _noteId: current.id,
+        });
+        return false;
+      }
+      editorHandle.discardPending?.();
+    }
+
+    activeNoteRef.current = detail.note;
+    actions.setActiveNote(detail.note);
+    return true;
+  }, [actions]);
+
+  useEffect(() => {
+    const handleAutoResolvedConflict = (event: Event) => {
+      const detail = (event as CustomEvent<NoteConflictAutoResolvedDetail>).detail;
+      if (!detail?.note || !detail.resolvedLocal) return;
+      persistPendingConflictSnapshot(detail);
+    };
+    window.addEventListener(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, handleAutoResolvedConflict);
+    return () => window.removeEventListener(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, handleAutoResolvedConflict);
+  }, [persistPendingConflictSnapshot]);
 
   useEffect(() => {
     const prepareSplitClose = (event: Event) => {

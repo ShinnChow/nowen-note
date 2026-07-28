@@ -23,6 +23,7 @@ import {
   getConflictCopyId,
   resolveNoteConflict,
   resolveQueuedNoteConflicts,
+  shouldPersistPendingConflictSnapshot,
 } from "@/lib/conflictResolution";
 
 function remoteNote(overrides: Partial<Note> = {}): Note {
@@ -88,6 +89,33 @@ describe("resolveNoteConflict", () => {
     loadDraft.mockReturnValue(null);
     discardResolvedQueueItems.mockReturnValue({ discarded: true, remainingForNote: false });
     apiMock.getNote.mockResolvedValue(remoteNote());
+  });
+
+  it("distinguishes debounced editor input from the conflict payload already copied", () => {
+    const detail = {
+      note: remoteNote(),
+      resolvedLocal: {
+        title: "本地标题",
+        content: "本地正文",
+        contentText: "本地正文",
+      },
+    };
+
+    expect(shouldPersistPendingConflictSnapshot({
+      content: "刚输入的新正文",
+      contentText: "刚输入的新正文",
+      title: "本地标题",
+    }, "本地标题", detail)).toBe(true);
+    expect(shouldPersistPendingConflictSnapshot({
+      content: "本地正文",
+      contentText: "本地正文",
+      title: "本地标题",
+    }, "本地标题", detail)).toBe(false);
+    expect(shouldPersistPendingConflictSnapshot({
+      content: "服务器正文",
+      contentText: "服务器正文",
+      title: "服务器标题",
+    }, "本地标题", detail)).toBe(false);
   });
 
   it("keeps the local version using a non-queued confirmed write and clears only after ACK", async () => {
@@ -164,7 +192,13 @@ describe("resolveNoteConflict", () => {
     }));
     expect(apiMock.updateNoteConfirmed).not.toHaveBeenCalled();
     expect(resolvedEvents).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ note: expect.objectContaining({ id: "note-1" }) }),
+      detail: expect.objectContaining({
+        note: expect.objectContaining({ id: "note-1" }),
+        resolvedLocal: expect.objectContaining({
+          title: "最后提交的标题",
+          content: "最后提交的正文",
+        }),
+      }),
     }));
     window.removeEventListener("nowen:note-conflict-auto-resolved", resolvedEvents);
   });

@@ -22,11 +22,9 @@ import {
   SYNC_SNAPSHOT_APPLIED_EVENT,
   type SyncSummary,
 } from "@/lib/syncEngine";
-import { NOTE_CONFLICT_AUTO_RESOLVED_EVENT } from "@/lib/conflictResolution";
 import { toast } from "@/lib/toast";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { useApp, useAppActions } from "@/store/AppContext";
-import type { Note } from "@/types";
+import { useAppActions } from "@/store/AppContext";
 
 function itemTypeLabel(item: OfflineQueueItem): string {
   if (item.type === "createNote") return "新建笔记";
@@ -160,7 +158,6 @@ function downloadDiagnostics(): void {
 }
 
 export default function OfflineIndicator() {
-  const { state } = useApp();
   const actions = useAppActions();
   const { isOnline, wasOffline, pendingCount, flush } = useNetworkStatus();
   const [summary, setSummary] = useState<SyncSummary>(() => getSyncSummary());
@@ -186,17 +183,6 @@ export default function OfflineIndicator() {
     window.addEventListener(SYNC_SNAPSHOT_APPLIED_EVENT, handleSnapshot);
     return () => window.removeEventListener(SYNC_SNAPSHOT_APPLIED_EVENT, handleSnapshot);
   }, [actions]);
-
-  useEffect(() => {
-    const handleAutoResolvedConflict = (event: Event) => {
-      const detail = (event as CustomEvent<{ note?: Note }>).detail;
-      if (detail.note && state.activeNote?.id === detail.note.id) {
-        actions.setActiveNote(detail.note);
-      }
-    };
-    window.addEventListener(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, handleAutoResolvedConflict);
-    return () => window.removeEventListener(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, handleAutoResolvedConflict);
-  }, [actions, state.activeNote?.id]);
 
   const failedItems = useMemo(() => queue.filter(
     (item) => item.conflict || item.blocked || !!item.errorCode || item.retryCount > 0,

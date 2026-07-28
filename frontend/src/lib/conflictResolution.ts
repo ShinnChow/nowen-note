@@ -11,6 +11,28 @@ import { clearNoteSyncConflict } from "@/lib/noteSyncSafety";
 export type ConflictResolutionChoice = "keep-local" | "use-server";
 export const NOTE_CONFLICT_AUTO_RESOLVED_EVENT = "nowen:note-conflict-auto-resolved";
 
+export interface NoteConflictAutoResolvedDetail {
+  note: Note;
+  resolvedLocal: {
+    title: string;
+    content: string;
+    contentText: string;
+  };
+}
+
+export function shouldPersistPendingConflictSnapshot(
+  snapshot: { content: string; contentText: string; title?: string },
+  currentTitle: string,
+  detail: NoteConflictAutoResolvedDetail,
+): boolean {
+  const snapshotTitle = snapshot.title ?? currentTitle;
+  const matchesResolvedLocal = snapshot.content === detail.resolvedLocal.content
+    && snapshotTitle === detail.resolvedLocal.title;
+  const matchesServer = snapshot.content === detail.note.content
+    && snapshotTitle === detail.note.title;
+  return !matchesResolvedLocal && !matchesServer;
+}
+
 export interface ConflictResolutionResult {
   note: Note;
   conflictCopy?: Note;
@@ -199,8 +221,12 @@ export async function resolveQueuedNoteConflicts(
       // 服务器当前 revision 作为正式版本；清理冲突前先确认本地副本已经落库。
       const result = await resolveNoteConflict(item, "use-server");
       if (typeof window !== "undefined") {
+        const detail: NoteConflictAutoResolvedDetail = {
+          note: result.note,
+          resolvedLocal: getConflictLocalPayload(item, result.note),
+        };
         window.dispatchEvent(new CustomEvent(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, {
-          detail: { note: result.note },
+          detail,
         }));
       }
       resolved += 1;
