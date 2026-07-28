@@ -113,8 +113,9 @@ describe("ShareModal clipboard fallback", () => {
 
       - name: Commit implementation
         run: |
+          rm -f .github/edge-share-copy-trigger
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/src/components/ShareModal.tsx frontend/src/components/__tests__/ShareModalClipboard.test.ts
+          git add -A
           git commit -m "fix(share): add Edge clipboard fallback"
           git push origin HEAD:fix/edge-share-copy-fallback
