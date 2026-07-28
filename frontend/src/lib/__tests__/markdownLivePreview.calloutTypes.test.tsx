@@ -55,12 +55,18 @@ describe("Markdown live preview SiYuan Callouts", () => {
     const parent = document.createElement("div");
     document.body.appendChild(parent);
 
-    const renderedBlocks = CALLOUTS.map(({ type, body }) => [
-      `> [!${type}] ${type[0]}${type.slice(1).toLowerCase()}`,
-      `> ${body}`,
-    ].join("\n"));
+    // Plain paragraphs separate the blockquotes. This mirrors a real note and keeps
+    // the active source Callout from sharing one semantic replacement range with all
+    // inactive Callouts.
+    const renderedSections = CALLOUTS.flatMap(({ type, body }, index) => [
+      [
+        `> [!${type}] ${type[0]}${type.slice(1).toLowerCase()}`,
+        `> ${body}`,
+      ].join("\n"),
+      `分隔段落 ${index + 1}`,
+    ]);
     const activeSource = "> [!TIP] 正在编辑\n> 这里保持 Markdown 源码";
-    const doc = [...renderedBlocks, activeSource].join("\n\n");
+    const doc = [...renderedSections, activeSource].join("\n\n");
 
     const view = new EditorView({
       parent,
