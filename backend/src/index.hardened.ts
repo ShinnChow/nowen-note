@@ -2,6 +2,9 @@
 import "./runtime/url-import-dns-compat.js";
 // Register feature migrations before any runtime imports can initialize the database.
 import "./runtime/knowledge-tree-migration-bootstrap.js";
+// Permission routes import ACL services that may initialize database guards, so they must load
+// only after the feature migration list has been registered.
+import "./runtime/notebook-permission-management.js";
 // Install schema/route hardening before the main backend module evaluates.
 import "./runtime/task-stats-hardening.js";
 // Recover interrupted embedding jobs before the legacy worker starts polling.

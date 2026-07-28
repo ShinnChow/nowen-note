@@ -1,4 +1,3 @@
-import "./notebook-permission-management.js";
 import { knowledgeTreeMigration } from "../db/knowledgeTreeMigration.js";
 import { knowledgeTreeResourceMigration } from "../db/knowledgeTreeResourceMigration.js";
 import { knowledgeTreeParentPreservationMigration } from "../db/knowledgeTreeParentPreservationMigration.js";
@@ -7,10 +6,12 @@ import { knowledgeTreeStructuralGuardMigration } from "../db/knowledgeTreeStruct
 import { MIGRATIONS as BASE_MIGRATIONS } from "../db/migrations.impl.js";
 
 // index.hardened imports this module before any runtime that can open the database.
-// Keep modular route installers here as well, so they are attached to their shared routers
-// before the application mounts those routers under /api.
 // Mutating the historical base list here lets migrations.ts compute CURRENT_SCHEMA_VERSION
 // with the feature migrations included, without coupling the main migration wrapper to them.
+//
+// Do not import route/runtime installers from this file. Some of them depend on ACL services
+// that install database guards at module-evaluation time. Opening the database here would load
+// migrations.ts before versions 60-64 are appended and freeze CURRENT_SCHEMA_VERSION at 59.
 for (const featureMigration of [
   knowledgeTreeMigration,
   knowledgeTreeResourceMigration,

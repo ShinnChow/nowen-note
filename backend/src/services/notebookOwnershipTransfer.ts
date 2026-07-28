@@ -34,6 +34,12 @@ function placeholders(count: number): string {
   return Array.from({ length: count }, () => "?").join(",");
 }
 
+function tableExists(db: Database.Database, table: string): boolean {
+  return Boolean(db.prepare(
+    "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ?",
+  ).get(table));
+}
+
 /**
  * 将个人空间目录及完整子树转交给一个现有协作者。
  *
@@ -127,18 +133,56 @@ export function transferNotebookOwnership(
       Boolean(row.parentId && notebookIdSet.has(row.parentId)),
   );
   const notebookMarks = placeholders(notebookIds.length);
-  const noteIds = (db.prepare(
-    `SELECT id FROM notes WHERE notebookId IN (${notebookMarks})`,
-  ).all(...notebookIds) as Array<{ id: string }>).map((row) => row.id);
+  const noteRows = db.prepare(
+    `SELECT id, notebookId FROM notes WHERE notebookId IN (${notebookMarks})`,
+  ).all(...notebookIds) as Array<{ id: string; notebookId: string }>;
+  const noteIds = noteRows.map((row) => row.id);
   const noteMarks = noteIds.length > 0 ? placeholders(noteIds.length) : "";
+
+  // The unified tree can preserve richer parents than notes.notebookId/notebooks.parentId.
+  // Capture all internal edges before detaching so ownership changes can happen without ever
+  // exposing a cross-user parent relation to the v64 structural guard.
+  let knowledgeTreeRows: Array<{ id: string; parentId: string | null }> = [];
+  if (tableExists(db, "knowledge_tree_nodes")) {
+    const predicates = [`(resourceType = 'notebook' AND resourceId IN (${notebookMarks}))`];
+    const params: string[] = [...notebookIds];
+    if (noteIds.length > 0) {
+      predicates.push(`(resourceType = 'note' AND resourceId IN (${noteMarks}))`);
+      params.push(...noteIds);
+    }
+    knowledgeTreeRows = db.prepare(
+      `SELECT id, parentId
+         FROM knowledge_tree_nodes
+        WHERE ${predicates.join(" OR ")}`,
+    ).all(...params) as Array<{ id: string; parentId: string | null }>;
+  }
+  const knowledgeTreeNodeIds = knowledgeTreeRows.map((row) => row.id);
+  const knowledgeTreeNodeIdSet = new Set(knowledgeTreeNodeIds);
+  const knowledgeTreeInternalEdges = knowledgeTreeRows.filter(
+    (row): row is { id: string; parentId: string } =>
+      Boolean(row.parentId && knowledgeTreeNodeIdSet.has(row.parentId)),
+  );
+  const knowledgeTreeMarks = knowledgeTreeNodeIds.length > 0
+    ? placeholders(knowledgeTreeNodeIds.length)
+    : "";
 
   let attachmentCount = 0;
   const detachedFromParent = Boolean(root.parentId);
   ensureNotebookAclOverridesTable();
 
   const execute = db.transaction(() => {
-    // Tree guards intentionally reject a half-transferred tree. Temporarily detach the subtree,
-    // move resources and ownership while every node is a root, then restore only internal edges.
+    // First detach the unified nodes themselves. Updating a note owner fires the legacy-to-unified
+    // sync trigger; if its unified parent still belongs to the old owner, v64 correctly rejects it.
+    if (knowledgeTreeNodeIds.length > 0) {
+      db.prepare(
+        `UPDATE knowledge_tree_nodes
+            SET parentId = NULL, updatedAt = datetime('now')
+          WHERE id IN (${knowledgeTreeMarks}) AND parentId IS NOT NULL`,
+      ).run(...knowledgeTreeNodeIds);
+    }
+
+    // Legacy tree guards also reject a half-transferred tree. Temporarily detach every physical
+    // notebook, move notes/resources and ownership while each node is a root, then restore edges.
     db.prepare(
       `UPDATE notebooks
           SET parentId = NULL, updatedAt = datetime('now')
@@ -166,11 +210,23 @@ export function transferNotebookOwnership(
         WHERE id IN (${notebookMarks})`,
     ).run(targetUserId, ...notebookIds);
 
-    const restoreParent = db.prepare(
+    const restoreLegacyParent = db.prepare(
       "UPDATE notebooks SET parentId = ?, updatedAt = datetime('now') WHERE id = ?",
     );
     for (const edge of internalEdges) {
-      restoreParent.run(edge.parentId, edge.id);
+      restoreLegacyParent.run(edge.parentId, edge.id);
+    }
+
+    // Legacy sync restores physical notebook edges. Reapply the captured unified-tree edges last
+    // so richer note/folder nesting remains intact. Edges to nodes outside the transferred subtree
+    // intentionally stay detached, making the transferred root safe in the recipient's space.
+    if (knowledgeTreeInternalEdges.length > 0) {
+      const restoreKnowledgeParent = db.prepare(
+        "UPDATE knowledge_tree_nodes SET parentId = ?, updatedAt = datetime('now') WHERE id = ?",
+      );
+      for (const edge of knowledgeTreeInternalEdges) {
+        restoreKnowledgeParent.run(edge.parentId, edge.id);
+      }
     }
 
     db.prepare(
