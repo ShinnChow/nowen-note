@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  findSiyuanImportPanel,
   inspectSiyuanEntryNames,
   isSiyuanImportRequest,
   normalizeSiyuanPackageName,
@@ -48,5 +49,22 @@ describe("SiyuanImportProgressBridge", () => {
     expect(isSiyuanImportRequest("/api/export/import/siyuan-package?contentFormat=markdown")).toBe(true);
     expect(isSiyuanImportRequest("/api/export/import")).toBe(false);
     expect(isSiyuanImportRequest("/api/export/import/nowen-package")).toBe(false);
+  });
+
+  it("resolves the import panel so progress can render below the import controls", () => {
+    const panel = document.createElement("div");
+    panel.className = "mt-5 rounded-xl border p-3 sm:p-4";
+    const dropzone = document.createElement("div");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = ".md,.zip";
+    dropzone.appendChild(input);
+    panel.appendChild(dropzone);
+    document.body.appendChild(panel);
+
+    expect(findSiyuanImportPanel(input)).toBe(panel);
+
+    panel.remove();
   });
 });
