@@ -106,10 +106,12 @@ async function importMarkdownFile(file: File, target: KnowledgeTreeNode): Promis
       nodeType: "markdown",
       title,
     });
+    const createdNote = await api.getNote(createdNode.resourceId);
     await api.updateNoteConfirmed(createdNode.resourceId, {
       title,
       content,
       contentFormat: "markdown",
+      version: createdNote.version,
     });
   } catch (error) {
     if (createdNode) {
