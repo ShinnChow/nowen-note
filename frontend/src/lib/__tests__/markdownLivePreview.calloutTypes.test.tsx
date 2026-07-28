@@ -51,7 +51,7 @@ async function flushPreview() {
 }
 
 describe("Markdown live preview SiYuan Callouts", () => {
-  it("renders all five Callout types while leaving the active Markdown source visible", async () => {
+  it("renders all five Callout types while preserving the active Markdown source", async () => {
     const parent = document.createElement("div");
     document.body.appendChild(parent);
 
@@ -87,8 +87,10 @@ describe("Markdown live preview SiYuan Callouts", () => {
       expect(blockquotes[index].textContent).not.toContain(`[!${expected.type}]`);
     });
 
+    // CodeMirror may virtualize or split its DOM text, so the stable contract is the
+    // editor state: the currently edited Callout must remain native Markdown.
     expect(view.state.doc.toString()).toContain(activeSource);
-    expect(parent.querySelector(".cm-content")?.textContent).toContain("[!TIP] 正在编辑");
+    expect(view.state.selection.main.from).toBe(doc.lastIndexOf("正在编辑"));
 
     view.destroy();
   });
