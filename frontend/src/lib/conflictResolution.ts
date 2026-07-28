@@ -36,6 +36,7 @@ export function shouldPersistPendingConflictSnapshot(
 export interface ConflictResolutionResult {
   note: Note;
   conflictCopy?: Note;
+  resolvedLocal: NoteConflictAutoResolvedDetail["resolvedLocal"];
 }
 
 export interface AutoConflictResolutionResult {
@@ -142,7 +143,7 @@ async function keepLocalVersion(
   if (!clearResolvedConflict(item)) {
     throw new Error("处理期间本地内容已更新，等待下一次后台同步。");
   }
-  return { note: updated };
+  return { note: updated, resolvedLocal: local };
 }
 
 async function createOrLoadConflictCopy(
@@ -182,7 +183,7 @@ async function useServerVersion(
   if (!clearResolvedConflict(item)) {
     throw new Error("处理期间本地内容已更新，等待下一次后台同步。");
   }
-  return { note: remote, conflictCopy };
+  return { note: remote, conflictCopy, resolvedLocal: local };
 }
 
 export async function resolveNoteConflict(
@@ -223,7 +224,7 @@ export async function resolveQueuedNoteConflicts(
       if (typeof window !== "undefined") {
         const detail: NoteConflictAutoResolvedDetail = {
           note: result.note,
-          resolvedLocal: getConflictLocalPayload(item, result.note),
+          resolvedLocal: result.resolvedLocal,
         };
         window.dispatchEvent(new CustomEvent(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, {
           detail,

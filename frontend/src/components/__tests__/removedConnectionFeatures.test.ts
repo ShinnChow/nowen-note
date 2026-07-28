@@ -64,6 +64,8 @@ describe("已移除的连接与迁移功能", () => {
     expect(editorSource).toContain("NOTE_CONFLICT_AUTO_RESOLVED_EVENT");
     expect(editorSource).toContain("handleAutoResolvedConflict");
     expect(editorSource).toContain("persistPendingConflictSnapshot");
+    expect(editorSource).toContain("editorHandle.discardPending?.()");
+    expect(editorSource).toContain("preserveNoteSyncConflictSnapshot");
     expect(syncEngineSource).not.toContain("请在同步状态面板处理");
   });
 });

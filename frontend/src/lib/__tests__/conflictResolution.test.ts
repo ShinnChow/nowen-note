@@ -127,7 +127,10 @@ describe("resolveNoteConflict", () => {
     });
     apiMock.updateNoteConfirmed.mockResolvedValue(updated);
 
-    await expect(resolveNoteConflict(conflictItem(), "keep-local")).resolves.toEqual({ note: updated });
+    await expect(resolveNoteConflict(conflictItem(), "keep-local")).resolves.toMatchObject({
+      note: updated,
+      resolvedLocal: expect.objectContaining({ content: "本地正文" }),
+    });
 
     expect(apiMock.updateNoteConfirmed).toHaveBeenCalledWith("note-1", expect.objectContaining({
       title: "本地标题",
@@ -198,6 +201,36 @@ describe("resolveNoteConflict", () => {
           title: "最后提交的标题",
           content: "最后提交的正文",
         }),
+      }),
+    }));
+    window.removeEventListener("nowen:note-conflict-auto-resolved", resolvedEvents);
+  });
+
+  it("emits the exact draft payload copied before conflict cleanup", async () => {
+    const draft = {
+      noteId: "note-1",
+      editorMode: "tiptap" as const,
+      title: "防抖草稿标题",
+      content: "防抖草稿正文",
+      contentText: "防抖草稿正文",
+      baseVersion: 3,
+      savedAt: Date.now(),
+    };
+    loadDraft.mockReturnValue(draft);
+    clearDraft.mockImplementationOnce(() => loadDraft.mockReturnValue(null));
+    apiMock.createNoteConfirmed.mockResolvedValue(remoteNote({ id: "copy-1", version: 1 }));
+    const resolvedEvents = vi.fn();
+    window.addEventListener("nowen:note-conflict-auto-resolved", resolvedEvents);
+
+    await resolveQueuedNoteConflicts([conflictItem()]);
+
+    expect(apiMock.createNoteConfirmed).toHaveBeenCalledWith(expect.objectContaining({
+      title: expect.stringContaining("防抖草稿标题"),
+      content: "防抖草稿正文",
+    }));
+    expect(resolvedEvents).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({
+        resolvedLocal: expect.objectContaining({ content: "防抖草稿正文" }),
       }),
     }));
     window.removeEventListener("nowen:note-conflict-auto-resolved", resolvedEvents);

@@ -76,6 +76,7 @@ import {
   shouldSkipUnchangedTitleOnlyUpdate,
 } from "@/lib/editorSyncGuards";
 import { canWriteNote } from "@/lib/notePermissions";
+import { preserveNoteSyncConflictSnapshot } from "@/lib/noteSyncSafety";
 import {
   NOTE_CONFLICT_AUTO_RESOLVED_EVENT,
   shouldPersistPendingConflictSnapshot,
@@ -663,7 +664,10 @@ export default function EditorPane({
   // �Ĳݸ壬�򵯳��ָ���ʾ�������������ϴ����� / �����˳������½��롣
   const [pendingDraft, setPendingDraft] = useState<NoteDraft | null>(null);
   // handleUpdate ������Ŷ��壬������ ref ����"ʹ��δ��ʼ������"
-  const handleUpdateRef = useRef<((data: NoteEditorUpdatePayload) => Promise<void>) | null>(null);
+  const handleUpdateRef = useRef<
+    | ((data: { content?: string; contentText?: string; title: string }) => Promise<void>)
+    | null
+  >(null);
   const handleEditorUpdate = useCallback(async (data: NoteEditorUpdatePayload) => {
     await handleUpdateRef.current?.(data);
   }, []);
@@ -690,12 +694,22 @@ export default function EditorPane({
 
       const snapshotTitle = snapshot.title ?? current.title;
       if (shouldPersistPendingConflictSnapshot(snapshot, current.title, detail)) {
-        void handleUpdateRef.current?.({
+        preserveNoteSyncConflictSnapshot(current.id, {
+          version: current.version,
           title: snapshotTitle,
           content: snapshot.content,
           contentText: snapshot.contentText,
-          _noteId: current.id,
-        });
+          contentFormat: current.contentFormat,
+        }, current.version, detail.note);
+        editorHandle.discardPending?.();
+        const localNote = {
+          ...current,
+          title: snapshotTitle,
+          content: snapshot.content,
+          contentText: snapshot.contentText,
+        };
+        activeNoteRef.current = localNote;
+        actions.setActiveNote(localNote);
         return false;
       }
       editorHandle.discardPending?.();

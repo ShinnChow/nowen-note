@@ -247,6 +247,16 @@ function preserveConflict(
   return record;
 }
 
+/** 把编辑器尚未提交的最新快照直接存为冲突，不向服务器发起写请求。 */
+export function preserveNoteSyncConflictSnapshot(
+  noteId: string,
+  data: NoteMutation,
+  baseVersion: number,
+  server: Partial<Note>,
+): void {
+  preserveConflict(noteId, data, baseVersion, server, "VERSION_CONFLICT");
+}
+
 function pausedConflictResponse(
   noteId: string,
   data: NoteMutation,
