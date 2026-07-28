@@ -39,8 +39,9 @@ describe("SiyuanRichTextCalloutBridge", () => {
       callbacks.splice(0).forEach((callback) => callback(0));
     });
 
-    const editorRoot = document.querySelector('.prose[contenteditable="true"]');
+    const editorRoot = document.querySelector<HTMLElement>('.prose[contenteditable="true"]');
     const blockquote = editorRoot?.querySelector("blockquote");
+    expect(editorRoot).not.toBeNull();
     expect(editorRoot?.classList.contains("ProseMirror")).toBe(false);
     expect(blockquote?.classList.contains("nowen-siyuan-callout")).toBe(true);
     expect(blockquote?.getAttribute("data-callout-type")).toBe("tip");
