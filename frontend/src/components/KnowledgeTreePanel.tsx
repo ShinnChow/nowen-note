@@ -751,7 +751,7 @@ export function KnowledgeTreePanel({
             <span className="min-w-0 flex-1 truncate">{node.title}</span>
             {firstLevelNotebookCount !== null && (
               <span
-                className="min-w-4 shrink-0 rounded-full bg-app-hover px-1.5 text-center text-[10px] leading-4 tabular-nums text-tx-tertiary"
+                className="min-w-4 shrink-0 rounded-full bg-app-hover px-1.5 text-center text-[10px] leading-4 tabular-nums text-tx-tertiary transition-opacity [@media(hover:hover)]:group-hover:opacity-0"
                 aria-label={`“${node.title}”下共 ${firstLevelNotebookCount} 个笔记本`}
                 data-knowledge-tree-first-level-notebook-count=""
               >

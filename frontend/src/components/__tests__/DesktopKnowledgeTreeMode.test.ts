@@ -73,4 +73,9 @@ describe("desktop knowledge tree browsing mode", () => {
     expect(treePanelSource).toContain("buildFirstLevelNotebookCounts(nodes)");
     expect(quickPanelSource).toContain("buildFirstLevelNotebookCounts(nodes)");
   });
+
+  it("hides first-level notebook counts on mouse hover only", () => {
+    expect(treePanelSource).toContain("[@media(hover:hover)]:group-hover:opacity-0");
+    expect(quickPanelSource).toContain("[@media(hover:hover)]:group-hover:opacity-0");
+  });
 });
