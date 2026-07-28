@@ -27,14 +27,14 @@ function findImagePreviewOverlay(target: EventTarget | null): HTMLElement | null
 
 function isTouchLikePointer(event: PointerEvent): boolean {
   return event.pointerType === "touch"
-    || window.matchMedia("(pointer: coarse)").matches;
+    || (event.pointerType === "" && window.matchMedia("(pointer: coarse)").matches);
 }
 
 /**
  * Android WebView turns a touch on the lightbox image into the image's mouse-drag path.
  * That path calls preventDefault(), so the overlay click handler never receives a click.
  * Capture the native pointer gesture before React's mouse compatibility events and route a
- * stationary tap to the existing close button. Zoom controls and genuine drags remain intact.
+ * stationary tap to the existing close button. Desktop mouse dragging remains unchanged.
  */
 function useAndroidImagePreviewTapClose(): void {
   useEffect(() => {
