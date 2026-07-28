@@ -45,7 +45,7 @@ router.put("/", async (c) => {
   const denied = requireSudo(c);
   if (denied) return denied;
   const userId = c.req.header("X-User-Id") || "";
-  const input = await c.req.json<BackupWebDavConfigInput>().catch(() => ({}));
+  const input = (await c.req.json().catch(() => ({}))) as BackupWebDavConfigInput;
   try {
     const config = saveBackupWebDavConfig(input);
     logAudit(userId, "system", "backup_webdav_config_update", {
@@ -76,7 +76,7 @@ router.delete("/", (c) => {
 router.post("/test", async (c) => {
   const denied = requireSudo(c);
   if (denied) return denied;
-  const input = await c.req.json<BackupWebDavConfigInput>().catch(() => ({}));
+  const input = (await c.req.json().catch(() => ({}))) as BackupWebDavConfigInput;
   try {
     await testBackupWebDavConnection(input);
     return c.json({
