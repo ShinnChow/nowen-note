@@ -1,7 +1,7 @@
 import type { Note } from "@/types";
 import { api } from "@/lib/api";
 import {
-  discardNoteQueueItems,
+  discardResolvedQueueItems,
   type OfflineQueueItem,
 } from "@/lib/offlineQueue";
 import { clearDraft, loadDraft } from "@/lib/draftStorage";
@@ -9,6 +9,7 @@ import { clearOfflineNoteSnapshot } from "@/lib/offlineRead";
 import { clearNoteSyncConflict } from "@/lib/noteSyncSafety";
 
 export type ConflictResolutionChoice = "keep-local" | "use-server";
+export const NOTE_CONFLICT_AUTO_RESOLVED_EVENT = "nowen:note-conflict-auto-resolved";
 
 export interface ConflictResolutionResult {
   note: Note;
@@ -92,11 +93,13 @@ export function getConflictCopyId(itemId: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function clearResolvedConflict(noteId: string): void {
-  discardNoteQueueItems([noteId]);
-  clearDraft(noteId);
-  clearNoteSyncConflict(noteId);
-  clearOfflineNoteSnapshot(noteId);
+function clearResolvedConflict(item: OfflineQueueItem): boolean {
+  const cleanup = discardResolvedQueueItems(item);
+  if (!cleanup.discarded || cleanup.remainingForNote) return false;
+  clearDraft(item.noteId);
+  clearNoteSyncConflict(item.noteId);
+  clearOfflineNoteSnapshot(item.noteId);
+  return true;
 }
 
 async function keepLocalVersion(
@@ -114,7 +117,9 @@ async function keepLocalVersion(
   if (typeof updated.version !== "number" || updated.version <= remote.version) {
     throw new Error("服务器尚未确认此设备版本，请保持页面打开后重试。");
   }
-  clearResolvedConflict(item.noteId);
+  if (!clearResolvedConflict(item)) {
+    throw new Error("处理期间本地内容已更新，等待下一次后台同步。");
+  }
   return { note: updated };
 }
 
@@ -152,7 +157,9 @@ async function useServerVersion(
   if (!sameContent(local, remote)) {
     conflictCopy = await createOrLoadConflictCopy(item, remote, local);
   }
-  clearResolvedConflict(item.noteId);
+  if (!clearResolvedConflict(item)) {
+    throw new Error("处理期间本地内容已更新，等待下一次后台同步。");
+  }
   return { note: remote, conflictCopy };
 }
 
@@ -190,7 +197,12 @@ export async function resolveQueuedNoteConflicts(
   for (const item of conflicts) {
     try {
       // 服务器当前 revision 作为正式版本；清理冲突前先确认本地副本已经落库。
-      await resolveNoteConflict(item, "use-server");
+      const result = await resolveNoteConflict(item, "use-server");
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, {
+          detail: { note: result.note },
+        }));
+      }
       resolved += 1;
     } catch (error) {
       failures.push({

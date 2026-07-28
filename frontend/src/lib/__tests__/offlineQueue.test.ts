@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearQueue,
   discardNoteQueueItems,
+  discardResolvedQueueItems,
   enqueue,
   flushQueue,
   generateLocalNoteId,
   getQueue,
   getQueueLength,
+  replaceItem,
   retryQueueItem,
   updateItem,
 } from "@/lib/offlineQueue";
@@ -87,6 +89,31 @@ describe("offlineQueue reliability", () => {
     expect(result).toEqual({ success: 0, failed: 0, remaining: 1 });
     expect(fetchFn).not.toHaveBeenCalled();
     expect(retryQueueItem(getQueue()[0].id)).toBe(false);
+  });
+
+  it("keeps a newer replacement when a stale conflict resolution tries to clear its snapshot", () => {
+    enqueueUpdate("note-race", 2);
+    const original = getQueue()[0];
+
+    const replacement = replaceItem(original.id, {
+      body: { ...original.body, content: "newer body", contentText: "newer body" },
+      localPayload: { ...original.body, content: "newer body", contentText: "newer body" },
+      conflict: true,
+      errorCode: "VERSION_CONFLICT",
+    });
+
+    expect(replacement?.id).not.toBe(original.id);
+    expect(discardResolvedQueueItems(original)).toEqual({
+      discarded: false,
+      remainingForNote: true,
+    });
+    expect(getQueue()).toEqual([
+      expect.objectContaining({
+        id: replacement?.id,
+        noteId: "note-race",
+        localPayload: expect.objectContaining({ content: "newer body" }),
+      }),
+    ]);
   });
 
   it("lets a later trash intent replace an earlier conflicted update", async () => {

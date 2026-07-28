@@ -60,6 +60,8 @@ describe("已移除的连接与迁移功能", () => {
     expect(editorSource).not.toContain("offlineVersionConflict");
     expect(indicatorSource).not.toContain("处理冲突");
     expect(indicatorSource).not.toContain("请选择保留此设备内容");
+    expect(indicatorSource).toContain("NOTE_CONFLICT_AUTO_RESOLVED_EVENT");
+    expect(indicatorSource).toContain("actions.setActiveNote(detail.note)");
     expect(syncEngineSource).not.toContain("请在同步状态面板处理");
   });
 });

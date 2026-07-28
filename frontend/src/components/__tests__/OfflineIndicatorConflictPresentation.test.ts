@@ -136,6 +136,22 @@ describe("OfflineIndicator status information architecture", () => {
     })).toBeNull();
   });
 
+  it("keeps version conflicts out of the offline pending count", () => {
+    expect(getSyncIndicatorPresentation({
+      ...basePresentationInput,
+      isOnline: false,
+      pendingCount: 3,
+      failedCount: 3,
+      conflictCount: 3,
+      queueCount: 3,
+    })).toMatchObject({
+      tone: "offline",
+      label: "当前离线",
+      description: "联网后将自动恢复同步。",
+      action: "none",
+    });
+  });
+
   it("still reports non-conflict failures when conflicts are also pending", () => {
     expect(getSyncIndicatorPresentation({
       ...basePresentationInput,

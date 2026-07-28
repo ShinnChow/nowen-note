@@ -22,9 +22,11 @@ import {
   SYNC_SNAPSHOT_APPLIED_EVENT,
   type SyncSummary,
 } from "@/lib/syncEngine";
+import { NOTE_CONFLICT_AUTO_RESOLVED_EVENT } from "@/lib/conflictResolution";
 import { toast } from "@/lib/toast";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { useAppActions } from "@/store/AppContext";
+import { useApp, useAppActions } from "@/store/AppContext";
+import type { Note } from "@/types";
 
 function itemTypeLabel(item: OfflineQueueItem): string {
   if (item.type === "createNote") return "新建笔记";
@@ -95,12 +97,15 @@ export function getSyncIndicatorPresentation({
   queueCount,
   lastError,
 }: SyncIndicatorPresentationInput): SyncIndicatorPresentation | null {
+  const visibleFailedCount = Math.max(0, failedCount - conflictCount);
+  const visiblePendingCount = Math.max(0, pendingCount - conflictCount);
+
   if (!isOnline) {
     return {
       tone: "offline",
       label: "当前离线",
-      description: pendingCount > 0
-        ? `${pendingCount} 项修改已保存在本机，联网后将自动同步。`
+      description: visiblePendingCount > 0
+        ? `${visiblePendingCount} 项修改已保存在本机，联网后将自动同步。`
         : "联网后将自动恢复同步。",
       action: "none",
     };
@@ -115,9 +120,6 @@ export function getSyncIndicatorPresentation({
       compact: true,
     };
   }
-
-  const visibleFailedCount = Math.max(0, failedCount - conflictCount);
-  const visiblePendingCount = Math.max(0, pendingCount - conflictCount);
 
   if (visibleFailedCount > 0 || lastError) {
     const count = Math.max(visibleFailedCount, visiblePendingCount);
@@ -158,6 +160,7 @@ function downloadDiagnostics(): void {
 }
 
 export default function OfflineIndicator() {
+  const { state } = useApp();
   const actions = useAppActions();
   const { isOnline, wasOffline, pendingCount, flush } = useNetworkStatus();
   const [summary, setSummary] = useState<SyncSummary>(() => getSyncSummary());
@@ -183,6 +186,17 @@ export default function OfflineIndicator() {
     window.addEventListener(SYNC_SNAPSHOT_APPLIED_EVENT, handleSnapshot);
     return () => window.removeEventListener(SYNC_SNAPSHOT_APPLIED_EVENT, handleSnapshot);
   }, [actions]);
+
+  useEffect(() => {
+    const handleAutoResolvedConflict = (event: Event) => {
+      const detail = (event as CustomEvent<{ note?: Note }>).detail;
+      if (detail.note && state.activeNote?.id === detail.note.id) {
+        actions.setActiveNote(detail.note);
+      }
+    };
+    window.addEventListener(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, handleAutoResolvedConflict);
+    return () => window.removeEventListener(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, handleAutoResolvedConflict);
+  }, [actions, state.activeNote?.id]);
 
   const failedItems = useMemo(() => queue.filter(
     (item) => item.conflict || item.blocked || !!item.errorCode || item.retryCount > 0,

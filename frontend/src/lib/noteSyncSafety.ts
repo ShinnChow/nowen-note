@@ -11,7 +11,7 @@ import {
 import {
   enqueue,
   getQueue,
-  updateItem,
+  replaceItem,
 } from "@/lib/offlineQueue";
 import { saveDraft } from "@/lib/draftStorage";
 
@@ -201,7 +201,7 @@ function upsertConflictQueueItem(
   } as const;
 
   if (existing) {
-    updateItem(existing.id, patch);
+    replaceItem(existing.id, patch);
     return;
   }
 
