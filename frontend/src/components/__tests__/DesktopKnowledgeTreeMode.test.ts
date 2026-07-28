@@ -70,7 +70,7 @@ describe("desktop knowledge tree browsing mode", () => {
   it("shows descendant notebook counts on first-level directory rows", () => {
     expect(treePanelSource).toContain('data-knowledge-tree-first-level-notebook-count=""');
     expect(quickPanelSource).toContain('data-mobile-knowledge-tree-first-level-notebook-count=""');
-    expect(treePanelSource).toContain("countDescendantNotebooks(nodes, node.id)");
-    expect(quickPanelSource).toContain("countDescendantNotebooks(nodes, node.id)");
+    expect(treePanelSource).toContain("buildFirstLevelNotebookCounts(nodes)");
+    expect(quickPanelSource).toContain("buildFirstLevelNotebookCounts(nodes)");
   });
 });

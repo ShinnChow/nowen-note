@@ -43,7 +43,7 @@ import {
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
 import {
-  countDescendantNotebooks,
+  buildFirstLevelNotebookCounts,
   countOwnedNotebooks,
 } from "@/lib/knowledgeTreeStats";
 import {
@@ -305,6 +305,7 @@ export default function MobileKnowledgeTreePanel({
   }, [nodes, rememberOpened, state.activeNote?.id]);
 
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const firstLevelNotebookCounts = useMemo(() => buildFirstLevelNotebookCounts(nodes), [nodes]);
   const currentFolder = parentId ? byId.get(parentId) || null : null;
   const breadcrumbs = useMemo(() => {
     if (!currentFolder) return [];
@@ -646,7 +647,7 @@ export default function MobileKnowledgeTreePanel({
     const updatedAt = formatUpdatedAt(node.updatedAt);
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
     const firstLevelNotebookCount = parentId === null && !showPath && node.nodeType === "folder" && !node.sharedRootId
-      ? countDescendantNotebooks(nodes, node.id)
+      ? firstLevelNotebookCounts.get(node.id) ?? 0
       : null;
     return (
       <div

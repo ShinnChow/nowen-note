@@ -45,7 +45,7 @@ import {
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
 import {
-  countDescendantNotebooks,
+  buildFirstLevelNotebookCounts,
   countOwnedNotebooks,
 } from "@/lib/knowledgeTreeStats";
 import { toast } from "@/lib/toast";
@@ -312,6 +312,7 @@ export function KnowledgeTreePanel({
   }, [draft?.kind, draft?.parentId]);
 
   const allChildren = useMemo(() => buildChildren(nodes), [nodes]);
+  const firstLevelNotebookCounts = useMemo(() => buildFirstLevelNotebookCounts(nodes), [nodes]);
   const filteredNodes = useMemo(() => filterKnowledgeTreeNodes(nodes, query), [nodes, query]);
   const children = useMemo(() => buildChildren(filteredNodes), [filteredNodes]);
   const effectiveExpanded = query.trim() ? new Set(filteredNodes.map((node) => node.id)) : expanded;
@@ -702,7 +703,7 @@ export function KnowledgeTreePanel({
     const active = node.resourceType === "note" && state.activeNote?.id === node.resourceId;
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
     const firstLevelNotebookCount = depth === 0 && node.nodeType === "folder" && !node.sharedRootId
-      ? countDescendantNotebooks(nodes, node.id)
+      ? firstLevelNotebookCounts.get(node.id) ?? 0
       : null;
     return (
       <div key={node.id}>

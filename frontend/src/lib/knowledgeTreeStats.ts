@@ -8,29 +8,36 @@ export function countOwnedNotebooks(nodes: KnowledgeTreeNode[]): number {
   )).length;
 }
 
-export function countDescendantNotebooks(
+export function buildFirstLevelNotebookCounts(
   nodes: KnowledgeTreeNode[],
-  rootNodeId: string,
-): number {
+): Map<string, number> {
   const children = new Map<string, KnowledgeTreeNode[]>();
+  const roots: KnowledgeTreeNode[] = [];
   for (const node of nodes) {
-    if (!node.parentId || node.isDeleted === 1 || node.sharedRootId) continue;
+    if (node.isDeleted === 1 || node.sharedRootId) continue;
+    if (!node.parentId) {
+      roots.push(node);
+      continue;
+    }
     const siblings = children.get(node.parentId) || [];
     siblings.push(node);
     children.set(node.parentId, siblings);
   }
 
-  let count = 0;
-  const pending = [rootNodeId];
-  const visited = new Set(pending);
-  while (pending.length > 0) {
-    const parentId = pending.pop()!;
-    for (const child of children.get(parentId) || []) {
+  const counts = new Map<string, number>();
+  const visited = new Set<string>();
+  for (const root of roots) {
+    if (root.nodeType !== "folder") continue;
+    let count = 0;
+    const pending = [...(children.get(root.id) || [])];
+    while (pending.length > 0) {
+      const child = pending.pop()!;
       if (visited.has(child.id)) continue;
       visited.add(child.id);
       if (child.resourceType === "notebook") count += 1;
-      pending.push(child.id);
+      pending.push(...(children.get(child.id) || []));
     }
+    counts.set(root.id, count);
   }
-  return count;
+  return counts;
 }
