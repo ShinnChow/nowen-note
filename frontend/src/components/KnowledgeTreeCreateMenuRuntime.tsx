@@ -1,27 +1,22 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FileCode, FileText, Folder } from "lucide-react";
+import { FileCode, FileText, FileType2, Folder, Link2 } from "lucide-react";
 
 import KnowledgeTreePanelBase, {
   FOCUS_KNOWLEDGE_TREE_EVENT,
   KNOWLEDGE_TREE_CHANGED_EVENT,
+  type KnowledgeTreeImportRequest,
+  type KnowledgeTreeInlineCreateRequest,
   type KnowledgeTreePanelProps,
 } from "./KnowledgeTreePanel";
-import { api } from "@/lib/api";
-import {
-  defaultInlineCreateTitle,
-  type KnowledgeTreeInlineCreateKind,
-} from "@/lib/knowledgeTreeInlineCreate";
-import { knowledgeTreeApi } from "@/lib/knowledgeTreeApi";
-import { toast } from "@/lib/toast";
-import { useAppActions } from "@/store/AppContext";
+import { type KnowledgeTreeInlineCreateKind } from "@/lib/knowledgeTreeInlineCreate";
 
 export { FOCUS_KNOWLEDGE_TREE_EVENT, KNOWLEDGE_TREE_CHANGED_EVENT };
 export type { KnowledgeTreePanelProps };
 
 const CREATE_SCOPE_ATTR = "data-nowen-create-scope";
 const CREATE_MENU_WIDTH = 184;
-const CREATE_MENU_HEIGHT = 116;
+const CREATE_MENU_HEIGHT = 196;
 
 const CREATE_ITEMS = [
   { kind: "note", label: "富文本文档", icon: FileText },
@@ -29,9 +24,21 @@ const CREATE_ITEMS = [
   { kind: "folder", label: "文件夹", icon: Folder },
 ] as const;
 
-interface CreateMenuState {
+const IMPORT_ITEMS = [
+  { kind: "word", label: "导入 Word 文档", icon: FileType2 },
+  { kind: "wechat", label: "导入公众号文章", icon: Link2 },
+] as const;
+
+export interface KnowledgeTreeCreateMenuState {
   parentId: string | null;
   anchor: DOMRect;
+}
+
+interface KnowledgeTreeCreateDropdownProps {
+  menu: KnowledgeTreeCreateMenuState | null;
+  onClose: () => void;
+  onCreate: (parentId: string | null, kind: KnowledgeTreeInlineCreateKind) => void;
+  onImport: (parentId: string | null, kind: KnowledgeTreeImportRequest["kind"]) => void;
 }
 
 function markCreateButtons(root: HTMLElement): void {
@@ -51,12 +58,6 @@ function markCreateButtons(root: HTMLElement): void {
   }
 }
 
-function emitTreeChanged(): void {
-  window.dispatchEvent(new CustomEvent(KNOWLEDGE_TREE_CHANGED_EVENT, {
-    detail: { reason: "node-created-plus-menu" },
-  }));
-}
-
 function menuPosition(anchor: DOMRect): React.CSSProperties {
   const viewportWidth = typeof window === "undefined" ? 1024 : window.innerWidth;
   const viewportHeight = typeof window === "undefined" ? 768 : window.innerHeight;
@@ -71,12 +72,97 @@ function menuPosition(anchor: DOMRect): React.CSSProperties {
   return { top, left, width: CREATE_MENU_WIDTH };
 }
 
-export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
-  const actions = useAppActions();
-  const rootRef = useRef<HTMLDivElement>(null);
+export function KnowledgeTreeCreateDropdown({
+  menu,
+  onClose,
+  onCreate,
+  onImport,
+}: KnowledgeTreeCreateDropdownProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const creatingRef = useRef(false);
-  const [createMenu, setCreateMenu] = useState<CreateMenuState | null>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    const closeFromPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
+      onClose();
+    };
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("pointerdown", closeFromPointer, true);
+    window.addEventListener("keydown", closeFromKeyboard, true);
+    window.addEventListener("resize", onClose);
+    window.addEventListener("scroll", onClose, true);
+    return () => {
+      window.removeEventListener("pointerdown", closeFromPointer, true);
+      window.removeEventListener("keydown", closeFromKeyboard, true);
+      window.removeEventListener("resize", onClose);
+      window.removeEventListener("scroll", onClose, true);
+    };
+  }, [menu, onClose]);
+
+  if (!menu || typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      aria-label={menu.parentId ? "在当前节点下新建" : "在根目录新建"}
+      className="fixed z-[420] overflow-hidden rounded-lg border border-app-border bg-app-bg p-1 shadow-xl"
+      style={menuPosition(menu.anchor)}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {CREATE_ITEMS.map((item) => {
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.kind}
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-tx-secondary transition-colors hover:bg-app-hover hover:text-tx-primary focus:bg-app-hover focus:text-tx-primary focus:outline-none"
+            onClick={() => onCreate(menu.parentId, item.kind)}
+          >
+            <Icon
+              size={15}
+              className={item.kind === "folder"
+                ? "text-amber-500"
+                : item.kind === "markdown"
+                  ? "text-emerald-500"
+                  : "text-accent-primary"}
+            />
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+      <div className="my-1 border-t border-app-border" />
+      {IMPORT_ITEMS.map((item) => {
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.kind}
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-tx-secondary transition-colors hover:bg-app-hover hover:text-tx-primary focus:bg-app-hover focus:text-tx-primary focus:outline-none"
+            onClick={() => onImport(menu.parentId, item.kind)}
+          >
+            <Icon size={15} className={item.kind === "word" ? "text-violet-500" : "text-sky-500"} />
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </div>,
+    document.body,
+  );
+}
+
+export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const requestCounterRef = useRef(0);
+  const [createMenu, setCreateMenu] = useState<KnowledgeTreeCreateMenuState | null>(null);
+  const [createRequest, setCreateRequest] = useState<KnowledgeTreeInlineCreateRequest | undefined>();
+  const [importRequest, setImportRequest] = useState<KnowledgeTreeImportRequest | undefined>();
 
   useEffect(() => {
     const root = rootRef.current;
@@ -88,81 +174,31 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (!createMenu) return;
-
-    const closeFromPointer = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Node && menuRef.current?.contains(target)) return;
-      setCreateMenu(null);
-    };
-    const closeFromKeyboard = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setCreateMenu(null);
-    };
-    const closeFromViewport = () => setCreateMenu(null);
-
-    window.addEventListener("pointerdown", closeFromPointer, true);
-    window.addEventListener("keydown", closeFromKeyboard, true);
-    window.addEventListener("resize", closeFromViewport);
-    window.addEventListener("scroll", closeFromViewport, true);
-    return () => {
-      window.removeEventListener("pointerdown", closeFromPointer, true);
-      window.removeEventListener("keydown", closeFromKeyboard, true);
-      window.removeEventListener("resize", closeFromViewport);
-      window.removeEventListener("scroll", closeFromViewport, true);
-    };
-  }, [createMenu]);
-
-  const activateCreatedNote = useCallback(async (noteId: string) => {
-    const note = await api.getNote(noteId);
-    actions.setActiveNote(note);
-    actions.setSelectedNotebook(note.notebookId);
-    actions.setSelectedTag(null);
-    actions.setViewMode("notebook");
-    actions.openNoteTab({
-      id: note.id,
-      title: note.title,
-      notebookId: note.notebookId,
-      workspaceId: note.workspaceId,
-      contentFormat: note.contentFormat,
-      isLocked: note.isLocked,
-      isTrashed: note.isTrashed,
-      updatedAt: note.updatedAt,
-    });
-    actions.setMobileView("editor");
-    if (props.variant === "mobile") actions.setMobileSidebar(false);
-  }, [actions, props.variant]);
-
-  const createFromMenu = useCallback(async (
+  const requestInlineCreate = useCallback((
     parentId: string | null,
     kind: KnowledgeTreeInlineCreateKind,
   ) => {
-    if (creatingRef.current) return;
-    creatingRef.current = true;
     setCreateMenu(null);
-    try {
-      const created = await knowledgeTreeApi.create({
-        parentId,
-        nodeType: kind,
-        title: defaultInlineCreateTitle(kind),
-      });
-      emitTreeChanged();
-      actions.refreshNotebooks();
-      actions.refreshNotes();
+    requestCounterRef.current += 1;
+    setCreateRequest({
+      requestId: requestCounterRef.current,
+      parentId,
+      kind,
+    });
+  }, []);
 
-      if (kind === "folder") {
-        toast.success("已创建文件夹");
-        return;
-      }
-      await activateCreatedNote(created.resourceId);
-    } catch (error: any) {
-      toast.error(error?.message || "创建失败，请重试");
-    } finally {
-      creatingRef.current = false;
-    }
-  }, [actions, activateCreatedNote]);
+  const requestImport = useCallback((
+    parentId: string | null,
+    kind: KnowledgeTreeImportRequest["kind"],
+  ) => {
+    setCreateMenu(null);
+    requestCounterRef.current += 1;
+    setImportRequest({
+      requestId: requestCounterRef.current,
+      parentId,
+      kind,
+    });
+  }, []);
 
   const handleClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target;
@@ -180,49 +216,17 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
     setCreateMenu((current) => current?.parentId === parentId ? null : { parentId, anchor });
   }, []);
 
-  const dropdown = createMenu && typeof document !== "undefined"
-    ? createPortal(
-      <div
-        ref={menuRef}
-        role="menu"
-        aria-label={createMenu.parentId ? "在当前节点下新建" : "在根目录新建"}
-        className="fixed z-[420] overflow-hidden rounded-lg border border-app-border bg-app-bg p-1 shadow-xl"
-        style={menuPosition(createMenu.anchor)}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        {CREATE_ITEMS.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.kind}
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-tx-secondary transition-colors hover:bg-app-hover hover:text-tx-primary focus:bg-app-hover focus:text-tx-primary focus:outline-none"
-              onClick={() => void createFromMenu(createMenu.parentId, item.kind)}
-            >
-              <Icon
-                size={15}
-                className={item.kind === "folder"
-                  ? "text-amber-500"
-                  : item.kind === "markdown"
-                    ? "text-emerald-500"
-                    : "text-accent-primary"}
-              />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </div>,
-      document.body,
-    )
-    : null;
-
   return (
     <>
       <div ref={rootRef} className="contents" onClickCapture={handleClickCapture}>
-        <KnowledgeTreePanelBase {...props} />
+        <KnowledgeTreePanelBase {...props} createRequest={createRequest} importRequest={importRequest} />
       </div>
-      {dropdown}
+      <KnowledgeTreeCreateDropdown
+        menu={createMenu}
+        onClose={() => setCreateMenu(null)}
+        onCreate={requestInlineCreate}
+        onImport={requestImport}
+      />
     </>
   );
 }

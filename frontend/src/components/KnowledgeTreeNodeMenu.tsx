@@ -17,6 +17,7 @@ import {
   Plus,
   Printer,
   ShieldCheck,
+  Share2,
   SplitSquareHorizontal,
   SplitSquareVertical,
   Star,
@@ -29,7 +30,11 @@ import {
 import ContextMenu, { type ContextMenuItem } from "@/components/ContextMenu";
 import EmojiIconPicker from "@/components/EmojiPicker";
 import NotebookShareDialog from "@/components/NotebookShareDialog";
-import { prompt as appPrompt } from "@/components/ui/confirm";
+import ShareModal from "@/components/ShareModal";
+import {
+  importWeChatArticleIntoKnowledgeTree,
+  importWordIntoKnowledgeTree,
+} from "@/components/knowledgeTreeImport";
 import type { ContextMenuState } from "@/hooks/useContextMenu";
 import { api } from "@/lib/api";
 import {
@@ -40,7 +45,6 @@ import {
 } from "@/lib/exportService";
 import type { KnowledgeTreeInlineCreateKind } from "@/lib/knowledgeTreeInlineCreate";
 import type { KnowledgeTreeNode } from "@/lib/knowledgeTreeApi";
-import { knowledgeTreeApi } from "@/lib/knowledgeTreeApi";
 import { toast } from "@/lib/toast";
 import { useApp, useAppActions } from "@/store/AppContext";
 import type { Notebook } from "@/types";
@@ -150,6 +154,9 @@ export function buildKnowledgeTreeNodeMenuItems(
     management.push({ id: "change_icon", label: "修改图标", icon: <MoreHorizontal size={14} /> });
   }
   if (capabilities.canEdit) management.push({ id: "rename", label: "重命名", icon: <Pencil size={14} /> });
+  if (isDocument && (isOwned || capabilities.canReshare)) {
+    management.push({ id: "share_note", label: "分享", icon: <Share2 size={14} /> });
+  }
   if (isNotebook && (capabilities.canReshare || capabilities.canManageMembers)) {
     management.push({ id: "share", label: "分享与发布", icon: <Link2 size={14} /> });
   }
@@ -232,6 +239,7 @@ export default function KnowledgeTreeNodeMenu({
   const actions = useAppActions();
   const [note, setNote] = useState<LoadedNote | null>(null);
   const [shareNotebook, setShareNotebook] = useState<Notebook | null>(null);
+  const [shareNote, setShareNote] = useState<{ id: string; title: string } | null>(null);
   const [iconPicker, setIconPicker] = useState<{ notebook: Notebook; top: number; left: number } | null>(null);
 
   useEffect(() => {
@@ -270,77 +278,32 @@ export default function KnowledgeTreeNodeMenu({
     actions.setMobileSidebar(false);
   };
 
-  const resolvePhysicalNotebookId = async (parent: KnowledgeTreeNode): Promise<string> => {
-    let cursor: KnowledgeTreeNode | undefined = parent;
-    const byId = new Map(nodes.map((candidate) => [candidate.id, candidate]));
-    const visited = new Set<string>();
-    while (cursor && !visited.has(cursor.id)) {
-      visited.add(cursor.id);
-      if (cursor.resourceType === "notebook") return cursor.resourceId;
-      cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
-    }
-    if (parent.resourceType === "note") {
-      return (await api.getNote(parent.resourceId)).notebookId;
-    }
-    throw new Error("找不到可用于导入的物理目录");
-  };
-
   const importWord = async () => {
     if (!node) return;
-    const notebookId = await resolvePhysicalNotebookId(node);
-    const { pickDocxFile, importDocxAsNote } = await import("@/lib/wordNoteService");
-    const file = await pickDocxFile();
-    if (!file) return;
-    const toastId = toast.info("正在导入 Word 文档…", 0);
-    try {
-      const { note: imported } = await importDocxAsNote({ notebookId, file });
-      if (node.id !== `notebook:${notebookId}`) {
-        await knowledgeTreeApi.move(`note:${imported.id}`, { parentId: node.id });
-      }
-      toast.dismiss(toastId);
-      toast.success("导入成功");
-      openLoadedNote(imported as LoadedNote);
-      await onReload();
-      actions.refreshNotes();
-      actions.refreshNotebooks();
-    } catch (error: any) {
-      toast.dismiss(toastId);
-      throw error;
-    }
+    const imported = await importWordIntoKnowledgeTree({
+      parent: node,
+      nodes,
+      fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId,
+    });
+    if (!imported) return;
+    openLoadedNote(imported);
+    await onReload();
+    actions.refreshNotes();
+    actions.refreshNotebooks();
   };
 
   const importUrl = async () => {
     if (!node) return;
-    const raw = await appPrompt({
-      title: "导入公众号文章",
-      description: "请输入微信公众号文章链接",
-      placeholder: "https://mp.weixin.qq.com/s/...",
-      confirmText: "导入",
-      validate: (value) => {
-        const url = value.trim();
-        if (!url) return "请输入文章链接";
-        return /^https:\/\/mp\.weixin\.qq\.com\/s[\/?]/.test(url) ? null : "暂只支持微信公众号文章链接";
-      },
+    const imported = await importWeChatArticleIntoKnowledgeTree({
+      parent: node,
+      nodes,
+      fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId,
     });
-    if (raw == null) return;
-    const notebookId = await resolvePhysicalNotebookId(node);
-    const toastId = toast.info("正在导入文章…", 0);
-    try {
-      const result = await api.urlImport(raw.trim(), notebookId);
-      if (node.id !== `notebook:${notebookId}`) {
-        await knowledgeTreeApi.move(`note:${result.noteId}`, { parentId: node.id });
-      }
-      const imported = await api.getNote(result.noteId);
-      toast.dismiss(toastId);
-      toast.success(`已导入：${result.title}`);
-      openLoadedNote(imported);
-      await onReload();
-      actions.refreshNotes();
-      actions.refreshNotebooks();
-    } catch (error: any) {
-      toast.dismiss(toastId);
-      throw error;
-    }
+    if (!imported) return;
+    openLoadedNote(imported);
+    await onReload();
+    actions.refreshNotes();
+    actions.refreshNotebooks();
   };
 
   const getNotebook = async (): Promise<Notebook> => {
@@ -446,6 +409,7 @@ export default function KnowledgeTreeNodeMenu({
         case "permissions": onPermissions(node); break;
         case "delete": await onDelete(node); break;
         case "share": setShareNotebook(await getNotebook()); break;
+        case "share_note": setShareNote({ id: node.resourceId, title: node.title }); break;
         case "change_icon": {
           const notebook = await getNotebook();
           setIconPicker({ notebook, top: menu.y, left: menu.x });
@@ -476,6 +440,13 @@ export default function KnowledgeTreeNodeMenu({
         header={node?.title}
       />
       {shareNotebook && <NotebookShareDialog notebook={shareNotebook} onClose={() => setShareNotebook(null)} />}
+      {shareNote && (
+        <ShareModal
+          noteId={shareNote.id}
+          noteTitle={shareNote.title}
+          onClose={() => setShareNote(null)}
+        />
+      )}
       {iconPicker && (
         <EmojiIconPicker
           currentIcon={iconPicker.notebook.icon || "📁"}

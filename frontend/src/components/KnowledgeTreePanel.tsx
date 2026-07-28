@@ -12,17 +12,20 @@ import {
   Plus,
   RefreshCw,
   Search,
-  ShieldCheck,
   SplitSquareHorizontal,
   SplitSquareVertical,
   Star,
   Trash2,
   TreePine,
-  UserPlus,
   X,
 } from "lucide-react";
 
 import KnowledgeTreeNodeMenu from "@/components/KnowledgeTreeNodeMenu";
+import KnowledgeTreePermissionsDialog from "@/components/KnowledgeTreePermissionsDialog";
+import {
+  importWeChatArticleIntoKnowledgeTree,
+  importWordIntoKnowledgeTree,
+} from "@/components/knowledgeTreeImport";
 import { choose, confirm, prompt } from "@/components/ui/confirm";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { api } from "@/lib/api";
@@ -33,12 +36,16 @@ import {
   type KnowledgeTreeInlineDraft,
 } from "@/lib/knowledgeTreeInlineCreate";
 import {
+  loadMobileKnowledgeTreeRecentEntries,
+  saveMobileKnowledgeTreeRecentEntries,
+  upsertMobileKnowledgeTreeRecentEntry,
+} from "@/lib/mobileKnowledgeTree";
+import {
   knowledgeTreeApi,
-  type KnowledgePermissionRow,
-  type KnowledgeRolePreset,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
 import { toast } from "@/lib/toast";
+import { compareKnowledgeTreePinnedPriority } from "@/lib/knowledgeTreeSort";
 import { cn } from "@/lib/utils";
 import {
   canMoveWithinSharedRoot,
@@ -50,13 +57,6 @@ import { useApp, useAppActions } from "@/store/AppContext";
 export const FOCUS_KNOWLEDGE_TREE_EVENT = "nowen:focus-knowledge-tree";
 export const KNOWLEDGE_TREE_CHANGED_EVENT = "nowen:knowledge-tree-changed";
 
-const ROLE_LABELS: Record<KnowledgeRolePreset, string> = {
-  readonly: "只读成员",
-  editor: "编辑成员",
-  maintainer: "维护成员",
-  admin: "管理员",
-};
-
 function buildChildren(nodes: KnowledgeTreeNode[]) {
   const result = new Map<string | null, KnowledgeTreeNode[]>();
   for (const node of nodes) {
@@ -65,7 +65,12 @@ function buildChildren(nodes: KnowledgeTreeNode[]) {
     result.set(node.parentId, siblings);
   }
   for (const siblings of result.values()) {
-    siblings.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+    siblings.sort((a, b) => (
+      compareKnowledgeTreePinnedPriority(a, b)
+      || a.sortOrder - b.sortOrder
+      || a.title.localeCompare(b.title)
+      || a.id.localeCompare(b.id)
+    ));
   }
   return result;
 }
@@ -118,135 +123,6 @@ function useActiveSidebarSurface(variant: "desktop" | "mobile") {
   }, [mediaQuery]);
 
   return active;
-}
-
-function PermissionsPanel({ node, onClose }: { node: KnowledgeTreeNode; onClose: () => void }) {
-  const [rows, setRows] = useState<KnowledgePermissionRow[]>([]);
-  const [inheritsFromParent, setInheritsFromParent] = useState<string | null>(null);
-  const [subject, setSubject] = useState("");
-  const [role, setRole] = useState<KnowledgeRolePreset>("readonly");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await knowledgeTreeApi.getPermissions(node.id);
-      setRows(response.direct);
-      setInheritsFromParent(response.inheritsFromParent);
-    } catch (error: any) {
-      toast.error(error?.message || "读取权限失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [node.id]);
-
-  useEffect(() => { void reload(); }, [reload]);
-
-  const addMember = async () => {
-    if (!subject.trim() || saving) return;
-    setSaving(true);
-    try {
-      await knowledgeTreeApi.setPermission(node.id, subject.trim(), role);
-      setSubject("");
-      await reload();
-      emitTreeChanged("permission-updated");
-      toast.success("成员权限已更新");
-    } catch (error: any) {
-      toast.error(error?.message || "更新权限失败");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const restoreInheritance = async (row: KnowledgePermissionRow) => {
-    const ok = await confirm({
-      title: "恢复继承权限？",
-      description: `${row.displayName || row.username} 将改为继承上级节点的权限。`,
-      confirmText: "恢复继承",
-    });
-    if (!ok) return;
-    try {
-      await knowledgeTreeApi.clearPermission(node.id, row.userId);
-      await reload();
-      emitTreeChanged("permission-inheritance-restored");
-      toast.success("已恢复继承");
-    } catch (error: any) {
-      toast.error(error?.message || "操作失败");
-    }
-  };
-
-  return (
-    <div className="absolute inset-0 z-[220] flex flex-col bg-app-sidebar">
-      <header className="flex h-11 items-center gap-2 border-b border-app-border px-3">
-        <ShieldCheck size={16} className="text-accent-primary" />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold text-tx-primary">成员与权限</div>
-          <div className="truncate text-[10px] text-tx-tertiary">{node.title}</div>
-        </div>
-        <button type="button" onClick={onClose} className="rounded-md p-1.5 text-tx-tertiary hover:bg-app-hover" aria-label="关闭权限面板"><X size={16} /></button>
-      </header>
-
-      <div className="border-b border-app-border p-3">
-        <div className="mb-2 flex items-center gap-1.5 text-xs text-tx-secondary"><UserPlus size={13} />添加成员</div>
-        <div className="flex gap-2">
-          <input
-            value={subject}
-            onChange={(event) => setSubject(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter") void addMember(); }}
-            placeholder="用户名、邮箱或用户 ID"
-            className="min-w-0 flex-1 rounded-md border border-app-border bg-app-bg px-2.5 py-1.5 text-sm text-tx-primary outline-none focus:border-accent-primary"
-          />
-          <select
-            value={role}
-            onChange={(event) => setRole(event.target.value as KnowledgeRolePreset)}
-            className="rounded-md border border-app-border bg-app-bg px-2 text-xs text-tx-primary"
-          >
-            {(Object.keys(ROLE_LABELS) as KnowledgeRolePreset[]).map((preset) => (
-              <option key={preset} value={preset}>{ROLE_LABELS[preset]}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            disabled={!subject.trim() || saving}
-            onClick={() => void addMember()}
-            className="rounded-md bg-accent-primary px-3 text-xs font-medium text-white disabled:opacity-40"
-          >
-            {saving ? <Loader2 size={13} className="animate-spin" /> : "添加"}
-          </button>
-        </div>
-        <p className="mt-2 text-[10px] leading-relaxed text-tx-tertiary">
-          编辑成员不能移动或删除；维护成员可移动和删除；管理员可以管理成员与再次分享。
-        </p>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {inheritsFromParent && (
-          <div className="mb-2 rounded-md border border-app-border bg-app-hover/50 px-2.5 py-2 text-xs text-tx-tertiary">
-            没有直接设置的成员将继承上级节点权限。
-          </div>
-        )}
-        {loading ? (
-          <div className="flex justify-center py-10"><Loader2 size={18} className="animate-spin text-tx-tertiary" /></div>
-        ) : rows.length === 0 ? (
-          <div className="py-10 text-center text-xs text-tx-tertiary">当前节点全部继承上级权限。</div>
-        ) : rows.map((row) => (
-          <div key={row.userId} className="mb-1 flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-app-hover/60">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-primary/10 text-xs font-semibold text-accent-primary">
-              {(row.displayName || row.username || "?").slice(0, 1).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm text-tx-primary">{row.displayName || row.username}</div>
-              <div className="truncate text-[10px] text-tx-tertiary">直接设置 · {ROLE_LABELS[row.rolePreset]}</div>
-            </div>
-            <button type="button" onClick={() => void restoreInheritance(row)} className="rounded-md px-2 py-1 text-[10px] text-tx-tertiary hover:bg-app-active hover:text-tx-primary">
-              恢复继承
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function MovePanel({
@@ -324,17 +200,36 @@ function MovePanel({
 export interface KnowledgeTreePanelProps {
   variant?: "desktop" | "mobile";
   className?: string;
+  createRequest?: KnowledgeTreeInlineCreateRequest;
+  importRequest?: KnowledgeTreeImportRequest;
+}
+
+export interface KnowledgeTreeInlineCreateRequest {
+  requestId: number;
+  parentId: string | null;
+  kind: KnowledgeTreeInlineCreateKind;
+}
+
+export interface KnowledgeTreeImportRequest {
+  requestId: number;
+  parentId: string | null;
+  kind: "word" | "wechat";
 }
 
 export function KnowledgeTreePanel({
   variant = "desktop",
   className,
+  createRequest,
+  importRequest,
 }: KnowledgeTreePanelProps) {
   const { state } = useApp();
   const actions = useAppActions();
   const surfaceActive = useActiveSidebarSurface(variant);
+  const rootRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const draftInputRef = useRef<HTMLInputElement>(null);
+  const handledCreateRequestRef = useRef<number | null>(null);
+  const handledImportRequestRef = useRef<number | null>(null);
   const [nodes, setNodes] = useState<KnowledgeTreeNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -417,6 +312,45 @@ export function KnowledgeTreePanel({
   const children = useMemo(() => buildChildren(filteredNodes), [filteredNodes]);
   const effectiveExpanded = query.trim() ? new Set(filteredNodes.map((node) => node.id)) : expanded;
 
+  useEffect(() => {
+    if (variant !== "desktop" || !surfaceActive || nodes.length === 0 || !state.activeNote?.id) return;
+
+    const activeNode = nodes.find(
+      (node) => node.resourceType === "note" && node.resourceId === state.activeNote?.id,
+    );
+    if (!activeNode) return;
+
+    const nodesById = new Map(nodes.map((node) => [node.id, node]));
+    const ancestorIds = new Set<string>();
+    let parent = activeNode.parentId ? nodesById.get(activeNode.parentId) : undefined;
+    while (parent) {
+      ancestorIds.add(parent.id);
+      parent = parent.parentId ? nodesById.get(parent.parentId) : undefined;
+    }
+
+    setExpanded((current) => {
+      const next = new Set(current);
+      let changed = false;
+      ancestorIds.forEach((id) => {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const nodeElement = Array.from(
+          rootRef.current?.querySelectorAll<HTMLElement>("[data-knowledge-tree-node-id]") ?? [],
+        ).find((element) => element.dataset.knowledgeTreeNodeId === activeNode.id);
+        nodeElement?.scrollIntoView({ block: "nearest" });
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [nodes, state.activeNote?.id, surfaceActive, variant]);
+
   const activateNote = useCallback((note: Awaited<ReturnType<typeof api.getNote>>) => {
     actions.setActiveNote(note);
     actions.setSelectedNotebook(note.notebookId);
@@ -435,6 +369,11 @@ export function KnowledgeTreePanel({
     if (variant === "mobile") actions.setMobileSidebar(false);
   }, [actions, variant]);
 
+  const rememberOpened = useCallback((nodeId: string) => {
+    const next = upsertMobileKnowledgeTreeRecentEntry(loadMobileKnowledgeTreeRecentEntries(), nodeId);
+    saveMobileKnowledgeTreeRecentEntries(next);
+  }, []);
+
   const toggle = async (node: KnowledgeTreeNode) => {
     const next = new Set(expanded);
     const opening = !next.has(node.id);
@@ -452,6 +391,7 @@ export function KnowledgeTreePanel({
       return;
     }
     if (node.resourceType !== "note") return;
+    rememberOpened(node.id);
     try {
       activateNote(await api.getNote(node.resourceId));
     } catch (requestError: any) {
@@ -461,6 +401,7 @@ export function KnowledgeTreePanel({
 
   const openSplit = (node: KnowledgeTreeNode, direction: "right" | "down") => {
     if (node.resourceType !== "note") return;
+    rememberOpened(node.id);
     actions.splitEditor({ noteId: node.resourceId, direction });
     closeMenu();
   };
@@ -476,7 +417,6 @@ export function KnowledgeTreePanel({
 
   const startInlineCreate = useCallback((parent: KnowledgeTreeNode | null, kind: KnowledgeTreeInlineCreateKind) => {
     if (parent && !parent.access.capabilities.canCreate) return;
-    if (!parent && kind !== "folder") return;
     closeMenu();
     setQuery("");
     if (parent) {
@@ -491,6 +431,47 @@ export function KnowledgeTreePanel({
       error: null,
     });
   }, [closeMenu]);
+
+  useEffect(() => {
+    if (!createRequest || handledCreateRequestRef.current === createRequest.requestId) return;
+    const parent = createRequest.parentId
+      ? nodes.find((node) => node.id === createRequest.parentId) || null
+      : null;
+    if (createRequest.parentId && !parent) return;
+    handledCreateRequestRef.current = createRequest.requestId;
+    startInlineCreate(parent, createRequest.kind);
+  }, [createRequest, nodes, startInlineCreate]);
+
+  useEffect(() => {
+    if (!importRequest || handledImportRequestRef.current === importRequest.requestId) return;
+    const parent = importRequest.parentId
+      ? nodes.find((node) => node.id === importRequest.parentId) || null
+      : null;
+    if (importRequest.parentId && !parent) return;
+    handledImportRequestRef.current = importRequest.requestId;
+
+    const runImport = async () => {
+      try {
+        const options = {
+          parent,
+          nodes,
+          fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId || state.notebooks[0]?.id || null,
+        };
+        const imported = importRequest.kind === "word"
+          ? await importWordIntoKnowledgeTree(options)
+          : await importWeChatArticleIntoKnowledgeTree(options);
+        if (!imported) return;
+        activateNote(imported);
+        emitTreeChanged("node-imported-plus-menu");
+        await reload();
+        actions.refreshNotes();
+        actions.refreshNotebooks();
+      } catch (requestError: any) {
+        toast.error(requestError?.message || "导入失败，请重试");
+      }
+    };
+    void runImport();
+  }, [actions, activateNote, importRequest, nodes, reload, state.activeNote?.notebookId, state.notebooks, state.selectedNotebookId]);
 
   const commitDraft = async () => {
     if (!draft || draft.saving) return;
@@ -822,7 +803,7 @@ export function KnowledgeTreePanel({
   const hasRootDraft = draft?.parentId === null;
 
   return (
-    <section className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col", className)} data-nowen-knowledge-tree="embedded" data-sidebar-surface-active={surfaceActive ? "true" : "false"}>
+    <section ref={rootRef} className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col", className)} data-nowen-knowledge-tree="embedded" data-sidebar-surface-active={surfaceActive ? "true" : "false"}>
       <div className="flex items-center gap-1.5 px-2 pb-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-app-border bg-app-bg px-2 py-1.5">
           <Search size={13} className="shrink-0 text-tx-tertiary" />
@@ -885,7 +866,13 @@ export function KnowledgeTreePanel({
             )}
           </>
         )}
-        {permissionsNode && <PermissionsPanel node={permissionsNode} onClose={() => setPermissionsNode(null)} />}
+        {permissionsNode && (
+          <KnowledgeTreePermissionsDialog
+            node={permissionsNode}
+            onChanged={emitTreeChanged}
+            onClose={() => setPermissionsNode(null)}
+          />
+        )}
         {movingNode && <MovePanel node={movingNode} nodes={nodes} children={allChildren} onMoved={() => void reload()} onClose={() => setMovingNode(null)} />}
       </div>
       <KnowledgeTreeNodeMenu
