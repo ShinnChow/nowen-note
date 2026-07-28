@@ -19,8 +19,7 @@ const CALLOUT_MARKER_RE = /^\s*\[!(TIP|NOTE|IMPORTANT|WARNING|CAUTION)\]([+-])?(
 // Tiptap's editorProps replaces the default root class with `prose ...`, so the
 // production editor does not necessarily expose `.ProseMirror`. Keep the latter
 // as a compatibility fallback for older shells and tests.
-const RICH_TEXT_EDITOR_SELECTOR = '.prose[contenteditable="true"], .ProseMirror';
-const CALLOUT_SELECTOR = `${RICH_TEXT_EDITOR_SELECTOR} blockquote`;
+const CALLOUT_SELECTOR = ':is(.prose[contenteditable="true"], .ProseMirror) blockquote';
 const CALLOUT_CLASS = "nowen-siyuan-callout";
 const HEADER_CLASS = "nowen-siyuan-callout-header";
 
