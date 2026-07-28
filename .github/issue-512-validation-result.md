@@ -2,7 +2,7 @@
 
 - backend install: success
 - backend typecheck: success
-- root document regression: failure
+- root document regression: success
 - frontend install: success
 - frontend build: success
 
@@ -35,6 +35,8 @@ Run `npm audit` for details.
 
 ## backend-test
 ```text
+TAP version 13
+# [migrations] applied v1 (init-migration-table-anchor)
 # [migrations] applied v2 (workspace-data-isolation-phase1)
 # [migrations] applied v3 (workspace-data-isolation-phase2-y1-favorites)
 # [migrations] applied v4 (workspace-data-isolation-phase2-y4-mindmaps)
@@ -97,31 +99,27 @@ Run `npm audit` for details.
 # ⚠️  [SECURITY] JWT_SECRET 未设置（或长度 < 16），正在使用开发期默认密钥。
 #    上线前请务必配置强随机密钥：openssl rand -base64 48
 # Subtest: knowledge tree creates rich-text and Markdown documents at root
-not ok 1 - knowledge tree creates rich-text and Markdown documents at root
+ok 1 - knowledge tree creates rich-text and Markdown documents at root
   ---
-  duration_ms: 508.39065
+  duration_ms: 630.421907
   type: 'test'
-  location: '/home/runner/work/nowen-note/nowen-note/backend/tests/knowledge-tree-root-documents.test.ts:2:1419'
-  failureType: 'testCodeFailure'
-  error: 'no such table: mindmaps'
-  code: 'SQLITE_ERROR'
   ...
 1..1
 # tests 1
 # suites 0
-# pass 0
-# fail 1
+# pass 1
+# fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 865.868573
+# duration_ms 1022.359608
 ```
 
 ## frontend-install
 ```text
 npm warn deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
-added 871 packages, and audited 872 packages in 18s
+added 871 packages, and audited 872 packages in 17s
 
 263 packages are looking for funding
   run `npm fund` for details
@@ -218,5 +216,5 @@ Run `npm audit` for details.
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 32.66s[39m
+[32m✓ built in 34.04s[39m
 ```
