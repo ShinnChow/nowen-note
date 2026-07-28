@@ -44,7 +44,10 @@ import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
-import { countOwnedNotebooks } from "@/lib/knowledgeTreeStats";
+import {
+  countDescendantNotebooks,
+  countOwnedNotebooks,
+} from "@/lib/knowledgeTreeStats";
 import { toast } from "@/lib/toast";
 import { compareKnowledgeTreePinnedPriority } from "@/lib/knowledgeTreeSort";
 import { cn } from "@/lib/utils";
@@ -698,6 +701,9 @@ export function KnowledgeTreePanel({
     const isExpanded = effectiveExpanded.has(node.id);
     const active = node.resourceType === "note" && state.activeNote?.id === node.resourceId;
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
+    const firstLevelNotebookCount = depth === 0 && node.nodeType === "folder" && !node.sharedRootId
+      ? countDescendantNotebooks(nodes, node.id)
+      : null;
     return (
       <div key={node.id}>
         <div
@@ -742,6 +748,15 @@ export function KnowledgeTreePanel({
           >
             {nodeIcon(node)}
             <span className="min-w-0 flex-1 truncate">{node.title}</span>
+            {firstLevelNotebookCount !== null && (
+              <span
+                className="min-w-4 shrink-0 rounded-full bg-app-hover px-1.5 text-center text-[10px] leading-4 tabular-nums text-tx-tertiary"
+                aria-label={`“${node.title}”下共 ${firstLevelNotebookCount} 个笔记本`}
+                data-knowledge-tree-first-level-notebook-count=""
+              >
+                {firstLevelNotebookCount}
+              </span>
+            )}
             {node.resourceType === "note" && node.isPinned === 1 && (
               <span
                 className="flex shrink-0 items-center text-accent-primary"

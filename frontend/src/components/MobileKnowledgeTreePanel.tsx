@@ -42,7 +42,10 @@ import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
-import { countOwnedNotebooks } from "@/lib/knowledgeTreeStats";
+import {
+  countDescendantNotebooks,
+  countOwnedNotebooks,
+} from "@/lib/knowledgeTreeStats";
 import {
   buildMobileKnowledgeTreePath,
   buildMobileKnowledgeTreeRecentNodes,
@@ -642,6 +645,9 @@ export default function MobileKnowledgeTreePanel({
     const path = showPath ? buildMobileKnowledgeTreePath(node, nodes) : "";
     const updatedAt = formatUpdatedAt(node.updatedAt);
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
+    const firstLevelNotebookCount = parentId === null && !showPath && node.nodeType === "folder" && !node.sharedRootId
+      ? countDescendantNotebooks(nodes, node.id)
+      : null;
     return (
       <div
         key={node.id}
@@ -671,6 +677,15 @@ export default function MobileKnowledgeTreePanel({
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
               <span className={cn("min-w-0 flex-1 truncate", variant === "mobile" ? "text-sm" : "text-xs")}>{node.title}</span>
+              {firstLevelNotebookCount !== null && (
+                <span
+                  className="min-w-4 shrink-0 rounded-full bg-app-hover px-1.5 text-center text-[10px] leading-4 tabular-nums text-tx-tertiary"
+                  aria-label={`“${node.title}”下共 ${firstLevelNotebookCount} 个笔记本`}
+                  data-mobile-knowledge-tree-first-level-notebook-count=""
+                >
+                  {firstLevelNotebookCount}
+                </span>
+              )}
               {node.resourceType === "note" && node.isPinned === 1 && <Pin size={11} className="shrink-0 fill-current text-accent-primary" />}
               {node.resourceType === "note" && node.isFavorite === 1 && <Star size={11} className="shrink-0 fill-current text-amber-400" />}
               {isSharedRoot(node) && <span className="shrink-0 rounded bg-accent-primary/10 px-1 text-[9px] text-accent-primary">共享</span>}

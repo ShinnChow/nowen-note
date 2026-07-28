@@ -66,4 +66,11 @@ describe("desktop knowledge tree browsing mode", () => {
     expect(treePanelSource).toContain('aria-label={`当前空间共 ${ownedNotebookCount} 个笔记本`}');
     expect(quickPanelSource).toContain('aria-label={`当前空间共 ${ownedNotebookCount} 个笔记本`}');
   });
+
+  it("shows descendant notebook counts on first-level directory rows", () => {
+    expect(treePanelSource).toContain('data-knowledge-tree-first-level-notebook-count=""');
+    expect(quickPanelSource).toContain('data-mobile-knowledge-tree-first-level-notebook-count=""');
+    expect(treePanelSource).toContain("countDescendantNotebooks(nodes, node.id)");
+    expect(quickPanelSource).toContain("countDescendantNotebooks(nodes, node.id)");
+  });
 });

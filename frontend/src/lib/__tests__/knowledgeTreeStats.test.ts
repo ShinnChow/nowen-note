@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { countOwnedNotebooks } from "@/lib/knowledgeTreeStats";
+import {
+  countDescendantNotebooks,
+  countOwnedNotebooks,
+} from "@/lib/knowledgeTreeStats";
 import type { KnowledgeTreeNode } from "@/lib/knowledgeTreeApi";
 
 const node = (
@@ -53,5 +56,16 @@ describe("knowledge tree stats", () => {
       node("folder", "file"),
       node("note", "note"),
     ])).toBe(2);
+  });
+
+  it("统计一级目录下所有层级的笔记本并排除其他目录和共享内容", () => {
+    expect(countDescendantNotebooks([
+      node("root", "file"),
+      node("child-notebook", "notebook", { parentId: "root" }),
+      node("nested-notebook", "notebook", { parentId: "child-notebook" }),
+      node("shared-notebook", "notebook", { parentId: "root", sharedRootId: "shared-notebook" }),
+      node("deleted-notebook", "notebook", { parentId: "root", isDeleted: 1 }),
+      node("other-root-notebook", "notebook"),
+    ], "root")).toBe(2);
   });
 });
