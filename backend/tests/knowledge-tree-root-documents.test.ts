@@ -16,6 +16,7 @@ test.after(() => {
 
 test("knowledge tree creates rich-text and Markdown documents at root", async () => {
   await import("../src/runtime/knowledge-tree-migration-bootstrap.js");
+  await import("../src/runtime/knowledge-tree.js");
   const { getDb, closeDb } = await import("../src/db/schema.js");
   closeDatabase = closeDb;
   const {
