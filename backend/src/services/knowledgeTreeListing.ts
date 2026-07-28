@@ -5,6 +5,9 @@ import { ensureKnowledgeTreeTables } from "../db/knowledgeTreeMigration.js";
 import { resolveKnowledgeNodeAccess } from "./knowledgeCapabilities.js";
 import type { KnowledgeTreeNode } from "./knowledgeTreeCore.js";
 
+const ROOT_DOCUMENT_NOTEBOOK_PREFIX = "__nowen_root_documents__:";
+const ROOT_DOCUMENT_NODE_PREFIX = `notebook:${ROOT_DOCUMENT_NOTEBOOK_PREFIX}`;
+
 type ListedNodeRow = Omit<KnowledgeTreeNode, "access">;
 
 function scopeKey(userId: string, workspaceId: string | null): string {
@@ -63,6 +66,11 @@ export function listKnowledgeTree(input: {
   `).all(input.userId, key) as ListedNodeRow[];
 
   return rows
-    .map((row) => ({ ...row, access: resolveKnowledgeNodeAccess(row.id, input.userId, db) }))
+    .filter((row) => !(row.resourceType === "notebook" && row.resourceId.startsWith(ROOT_DOCUMENT_NOTEBOOK_PREFIX)))
+    .map((row) => ({
+      ...row,
+      parentId: row.parentId?.startsWith(ROOT_DOCUMENT_NODE_PREFIX) ? null : row.parentId,
+      access: resolveKnowledgeNodeAccess(row.id, input.userId, db),
+    }))
     .filter((row) => row.access.capabilities.canView);
 }
