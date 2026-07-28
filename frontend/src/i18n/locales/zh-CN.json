@@ -86,6 +86,8 @@
       "title": "登录过的账号",
       "shortTitle": "账号",
       "recentAccounts": "最近登录",
+      "showAll": "查看全部",
+      "collapse": "收起",
       "addAccount": "登录其他账号",
       "reauth": "需重登",
       "sessionExpired": "该账号的登录已失效，请重新输入密码。",

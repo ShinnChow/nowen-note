@@ -36,7 +36,6 @@ import {
   type AppInfo,
 } from "@/lib/desktopBridge";
 import { clearLocalIdMap, clearQueue, getQueueLength } from "@/lib/offlineQueue";
-import { clearRememberedCredentials } from "@/lib/rememberLogin";
 import { openMobileNoteSearch } from "@/lib/mobileNoteSearch";
 import { AccountLoginHistoryDialog } from "@/components/AccountLoginHistory";
 import { isAccountLoginHistorySupported } from "@/lib/accountLoginHistory";
@@ -187,7 +186,6 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
   }, [canSwitchBackToLocal, t]);
 
   const handleLogout = useCallback(async () => {
-    await clearRememberedCredentials();
     if (isDesktopApp() && !canSwitchBackToLocal) {
       await clearDesktopLocalAuth().catch(() => ({ ok: false }));
       try {

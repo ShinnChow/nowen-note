@@ -17,15 +17,17 @@ import { useKeyboardLayout } from "@/hooks/useCapacitor";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { AccountLoginHistoryList } from "@/components/AccountLoginHistory";
-import { consumePendingAccountReauth } from "@/lib/accountLoginHistory";
+import { consumePendingAccountReauth, type AccountLoginHistoryItem } from "@/lib/accountLoginHistory";
 import {
   canPersistPassword,
   loadRememberedCredentials,
   saveRememberedCredentials,
 } from "@/lib/rememberLogin";
+import type { User as AuthUser } from "@/types";
 
 interface LoginPageProps {
   onLogin: (token: string, user: any) => void;
+  onAccountLogin?: (token: string, user: AuthUser) => void;
   /** 是否为客户端模式（Electron / Android / 曾配置过服务器地址） */
   isClientMode?: boolean;
   onDisconnect?: () => void;
@@ -49,7 +51,7 @@ function storeLoginToken(token: string) {
   try { window.dispatchEvent(new CustomEvent("nowen:token-changed")); } catch { }
 }
 
-export default function LoginPage({ onLogin, isClientMode = false, onDisconnect }: LoginPageProps) {
+export default function LoginPage({ onLogin, onAccountLogin, isClientMode = false, onDisconnect }: LoginPageProps) {
   const { t } = useTranslation();
   const { siteConfig } = useSiteSettings();
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -90,6 +92,27 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
   const showIcpBeian = !!icpBeianText && !isMobileNativeClientRuntime();
   const isRegister = mode === "register";
   const isTwoFactorStep = loginStep === "twoFactor";
+
+  const handleHistoryReauth = (account: AccountLoginHistoryItem, message?: string) => {
+    pendingReauthRef.current = { serverUrl: account.serverUrl, username: account.username };
+    setServerParts(parseServerUrl(account.serverUrl));
+    setServerUrl(account.serverUrl);
+    setServerStatus("ok");
+    setUsername(account.username);
+    setPassword("");
+    setMode("login");
+    setLoginStep("password");
+    setError(message || t("auth.loginHistory.sessionExpired"));
+
+    // 仅回填与所选历史账号完全匹配的安全存储密码，绝不把其它账号密码带过来。
+    void loadRememberedCredentials().then((saved) => {
+      const sameServer = saved?.serverUrl.replace(/\/+$/, "").toLowerCase()
+        === account.serverUrl.replace(/\/+$/, "").toLowerCase();
+      if (!saved?.hasPassword || !saved.password || !sameServer || saved.username !== account.username) return;
+      setPassword(saved.password);
+      setRememberMe(true);
+    }).catch(() => {});
+  };
 
   useEffect(() => {
     if (!isClientMode) return;
@@ -482,6 +505,8 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
             <AccountLoginHistoryList
               className="mb-5"
               title={t("auth.loginHistory.recentAccounts")}
+              onSwitched={(token, switchedUser) => (onAccountLogin || onLogin)(token, switchedUser)}
+              onRequiresReauth={handleHistoryReauth}
             />
           )}
 

@@ -86,6 +86,8 @@
       "title": "Signed-in accounts",
       "shortTitle": "Accounts",
       "recentAccounts": "Recent accounts",
+      "showAll": "View all",
+      "collapse": "Collapse",
       "addAccount": "Sign in to another account",
       "reauth": "Sign in again",
       "sessionExpired": "This session has expired. Please enter the password again.",

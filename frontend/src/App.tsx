@@ -902,7 +902,8 @@ function AuthGate() {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
 
-    fetch(`${baseUrl}/auth/verify`, {
+    // /me 经过服务端完整的 session 校验；旧版 /auth/verify 不检查已撤销 jti。
+    fetch(`${baseUrl}/me`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
     })
@@ -932,7 +933,7 @@ function AuthGate() {
         throw err;
       })
       .then((data) => {
-        const verifiedUser = data.user as User;
+        const verifiedUser = data as User;
         saveCachedAuthUser(authScope, token, verifiedUser);
         setUser(verifiedUser);
         setIsAuthenticated(true);
@@ -1215,6 +1216,7 @@ function AuthGate() {
     return (
       <LoginPage
         onLogin={handlePasswordLogin}
+        onAccountLogin={handleLogin}
         isClientMode={isClientMode}
         onDisconnect={isClientMode ? handleDisconnect : undefined}
       />
