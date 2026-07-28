@@ -9,14 +9,18 @@ type ResolveFunction = (
   optionsOrCallback: unknown,
   callback?: ResolveCallback,
 ) => void;
-type LookupFunction = typeof dns.lookup;
+type LookupAddress = { address: string; family: number };
+type LookupFunction = (
+  hostname: string,
+  options: { all: true; family: DnsFamily; verbatim: true },
+  callback: (error: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void,
+) => void;
 
-const INSTALL_MARKER = Symbol.for("nowen.urlImport.systemDnsLookupCompat");
+const INSTALL_MARKER = "__nowenSystemDnsLookupCompat";
 
 function noDataError(hostname: string, family: DnsFamily): NodeJS.ErrnoException {
   const error = new Error(`No IPv${family} addresses found for ${hostname}`) as NodeJS.ErrnoException;
   error.code = "ENODATA";
-  error.hostname = hostname;
   return error;
 }
 
@@ -26,13 +30,13 @@ function noDataError(hostname: string, family: DnsFamily): NodeJS.ErrnoException
  * dns.resolve* uses c-ares directly. In Docker, WSL, VPN and split-DNS
  * environments it can fail even though the operating-system resolver used by
  * fetch can resolve the same host. dns.lookup follows the system resolver, so
- * the first successful public-address list is returned to the existing SSRF
- * checker without weakening its private-IP rejection.
+ * the first successful address list is returned to the existing SSRF checker
+ * without weakening its private-IP rejection.
  */
 export function createSystemLookupResolver(
   family: DnsFamily,
   originalResolve: ResolveFunction,
-  lookup: LookupFunction = dns.lookup,
+  lookup: LookupFunction = dns.lookup as unknown as LookupFunction,
 ): ResolveFunction {
   return function resolveWithSystemLookup(
     hostname: string,
@@ -60,7 +64,7 @@ export function createSystemLookupResolver(
       firstError ||= error;
       if (failures >= 2) {
         settled = true;
-        done(firstError);
+        done(firstError || error);
       }
     };
 
