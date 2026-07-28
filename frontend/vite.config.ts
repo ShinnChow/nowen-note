@@ -22,6 +22,12 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      // Issue #512：内容树快捷“+”统一选择富文本、Markdown 或文件夹。
+      // Runtime 壳通过相对路径加载原面板，避免精确别名递归。
+      {
+        find: /^@\/components\/KnowledgeTreePanel$/,
+        replacement: path.resolve(__dirname, "./src/components/KnowledgeTreeCreateMenuRuntime.tsx"),
+      },
       // Issue #218：只替换 App / SettingsModal 使用的绝对导入。
       // 壳组件内部通过相对路径导入原组件，因此不会发生递归别名。
       {
