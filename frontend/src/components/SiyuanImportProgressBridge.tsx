@@ -5,6 +5,7 @@ import { AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
 const SIYUAN_IMPORT_ENDPOINT = "/export/import/siyuan-package";
 const NORMALIZED_INPUT_FLAG = "nowenSiyuanPackageNormalized";
+const PROGRESS_HOST_ATTRIBUTE = "data-nowen-siyuan-import-progress-host";
 
 export interface SiyuanZipInspection {
   isSiyuanWorkspace: boolean;
@@ -71,6 +72,22 @@ function isSharedImportInput(input: HTMLInputElement): boolean {
   return input.type === "file" && input.multiple && accept.includes(".md") && accept.includes(".zip");
 }
 
+export function findSiyuanImportPanel(input: HTMLInputElement): HTMLElement | null {
+  let current = input.parentElement;
+  while (current) {
+    if (
+      current.classList.contains("rounded-xl")
+      && current.classList.contains("border")
+      && current.classList.contains("p-3")
+      && current.classList.contains("sm:p-4")
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
 function replaceInputFile(input: HTMLInputElement, file: File): void {
   if (typeof DataTransfer !== "undefined") {
     const transfer = new DataTransfer();
@@ -93,26 +110,39 @@ function ProgressCard({ state }: { state: FeedbackState }) {
     : state.tone === "error"
       ? "text-red-500"
       : "animate-spin text-emerald-500";
+  const cardClass = state.tone === "error"
+    ? "border-red-200/70 bg-red-50/50 dark:border-red-900/50 dark:bg-red-500/5"
+    : "border-emerald-200/70 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-500/5";
+  const progress = Math.max(0, Math.min(100, state.percent || 0));
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 8, scale: 0.98 }}
-      className="fixed bottom-6 left-1/2 z-[100] w-[min(92vw,460px)] -translate-x-1/2 rounded-xl border border-zinc-200 bg-white p-4 shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 4 }}
+      className={`mt-3 w-full rounded-xl border p-3 shadow-sm ${cardClass}`}
       role="status"
       aria-live="polite"
+      aria-atomic="true"
     >
       <div className="flex items-start gap-3">
         <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${iconClass}`} />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{state.title}</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{state.title}</div>
+            {!state.indeterminate && typeof state.percent === "number" && (
+              <span className="shrink-0 text-xs font-medium tabular-nums text-zinc-500 dark:text-zinc-400">
+                {Math.round(progress)}%
+              </span>
+            )}
+          </div>
           <div className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">{state.detail}</div>
           <div
-            className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800"
+            className="mt-3 h-2 overflow-hidden rounded-full bg-white/80 dark:bg-zinc-800"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={state.indeterminate ? undefined : Math.round(state.percent || 0)}
+            aria-valuenow={state.indeterminate ? undefined : Math.round(progress)}
             aria-valuetext={state.indeterminate ? "处理中" : undefined}
           >
             {state.indeterminate ? (
@@ -126,7 +156,7 @@ function ProgressCard({ state }: { state: FeedbackState }) {
               <motion.div
                 className={`h-full rounded-full ${state.tone === "error" ? "bg-red-500" : "bg-emerald-500"}`}
                 initial={false}
-                animate={{ width: `${Math.max(0, Math.min(100, state.percent || 0))}%` }}
+                animate={{ width: `${progress}%` }}
                 transition={{ duration: 0.25 }}
               />
             )}
@@ -139,18 +169,51 @@ function ProgressCard({ state }: { state: FeedbackState }) {
 
 export default function SiyuanImportProgressBridge() {
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
   const nextId = useRef(1);
   const hideTimer = useRef<number | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const hostRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const clearHideTimer = () => {
       if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
       hideTimer.current = null;
     };
-    const show = (patch: Omit<FeedbackState, "id">) => {
-      clearHideTimer();
-      setFeedback({ id: nextId.current++, ...patch });
+
+    const findLiveSharedInput = (): HTMLInputElement | null => {
+      const inputs = document.querySelectorAll<HTMLInputElement>('input[type="file"][multiple]');
+      return Array.from(inputs).find(isSharedImportInput) || null;
     };
+
+    const ensureProgressHost = (input?: HTMLInputElement | null): HTMLElement | null => {
+      const directPanel = input ? findSiyuanImportPanel(input) : null;
+      const rememberedPanel = panelRef.current?.isConnected ? panelRef.current : null;
+      const liveInput = directPanel || rememberedPanel ? null : findLiveSharedInput();
+      const panel = directPanel || rememberedPanel || (liveInput ? findSiyuanImportPanel(liveInput) : null);
+      if (!panel) return null;
+
+      panelRef.current = panel;
+      let host = hostRef.current;
+      if (!host) {
+        host = document.createElement("div");
+        host.setAttribute(PROGRESS_HOST_ATTRIBUTE, "true");
+        hostRef.current = host;
+        setPortalHost(host);
+      }
+      if (host.parentElement !== panel) panel.appendChild(host);
+      return host;
+    };
+
+    const show = (patch: Omit<FeedbackState, "id">, input?: HTMLInputElement | null) => {
+      clearHideTimer();
+      if (!ensureProgressHost(input)) return;
+      setFeedback({ id: nextId.current++, ...patch });
+      window.requestAnimationFrame(() => {
+        ensureProgressHost(input);
+      });
+    };
+
     const hideLater = (delay: number) => {
       clearHideTimer();
       hideTimer.current = window.setTimeout(() => setFeedback(null), delay);
@@ -159,6 +222,8 @@ export default function SiyuanImportProgressBridge() {
     const onChangeCapture = (event: Event) => {
       const input = event.target instanceof HTMLInputElement ? event.target : null;
       if (!input || !isSharedImportInput(input)) return;
+
+      ensureProgressHost(input);
       if (input.dataset[NORMALIZED_INPUT_FLAG] === "1") {
         delete input.dataset[NORMALIZED_INPUT_FLAG];
         return;
@@ -174,7 +239,7 @@ export default function SiyuanImportProgressBridge() {
         title: "正在检查思源导入包",
         detail: `正在读取 ${file.name} 的目录结构…`,
         percent: 18,
-      });
+      }, input);
 
       void (async () => {
         try {
@@ -185,7 +250,7 @@ export default function SiyuanImportProgressBridge() {
               title: "已识别为思源工作空间",
               detail: `发现 ${inspection.syFileCount} 个 .sy 文档，正在准备导入列表…`,
               percent: 78,
-            });
+            }, input);
             const renamed = new File([file], normalizeSiyuanPackageName(file.name, inspection.rootName), {
               type: file.type || "application/zip",
               lastModified: file.lastModified,
@@ -201,7 +266,7 @@ export default function SiyuanImportProgressBridge() {
               ? "请确认导入格式与目标目录，然后点击导入按钮。"
               : "已按通用 ZIP 导入流程继续处理。",
             percent: 100,
-          });
+          }, input);
           hideLater(1400);
         } catch (error) {
           input.dataset[NORMALIZED_INPUT_FLAG] = "1";
@@ -211,7 +276,7 @@ export default function SiyuanImportProgressBridge() {
             title: "思源导入包检查失败",
             detail: error instanceof Error ? error.message : String(error),
             percent: 100,
-          });
+          }, input);
           hideLater(4000);
         }
       })();
@@ -274,12 +339,15 @@ export default function SiyuanImportProgressBridge() {
       document.removeEventListener("change", onChangeCapture, true);
       if (window.fetch === patchedFetch) window.fetch = originalFetch;
       clearHideTimer();
+      hostRef.current?.remove();
+      hostRef.current = null;
+      panelRef.current = null;
     };
   }, []);
 
-  if (typeof document === "undefined") return null;
+  if (typeof document === "undefined" || !portalHost) return null;
   return createPortal(
     <AnimatePresence>{feedback ? <ProgressCard key={feedback.id} state={feedback} /> : null}</AnimatePresence>,
-    document.body,
+    portalHost,
   );
 }
