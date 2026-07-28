@@ -2,7 +2,7 @@ name: Apply DingTalk-style permission management
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: write
@@ -185,7 +185,6 @@ jobs:
           dialog_source = dialog.read_text(encoding='utf-8')
           dialog_source = dialog_source.replace('  Gear,\n', '  Settings2,\n')
           dialog_source = dialog_source.replace('<Gear size={20}', '<Settings2 size={20}')
-          dialog_source = dialog_source.replace('toast.info("该目录已从原父目录中分离，并成为新所有者个人空间的根目录");', 'toast.warning("该目录已从原父目录中分离，并成为新所有者个人空间的根目录");')
           dialog.write_text(dialog_source, encoding='utf-8')
           PY
 
