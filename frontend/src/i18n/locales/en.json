@@ -45,7 +45,7 @@
     "usernamePlaceholder": "Enter username",
     "password": "Password",
     "loginButton": "Sign In",
-    "rememberMe": "Remember me",
+    "rememberMe": "Remember account and password",
     "autoLogin": "Sign in automatically next time",
     "defaultCredentials": "Default: admin / admin123",
     "serverAddress": "Server Address",

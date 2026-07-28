@@ -18,6 +18,11 @@ import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { AccountLoginHistoryList } from "@/components/AccountLoginHistory";
 import { consumePendingAccountReauth } from "@/lib/accountLoginHistory";
+import {
+  canPersistPassword,
+  loadRememberedCredentials,
+  saveRememberedCredentials,
+} from "@/lib/rememberLogin";
 
 interface LoginPageProps {
   onLogin: (token: string, user: any) => void;
@@ -75,8 +80,11 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [allowRegistration, setAllowRegistration] = useState(true);
   const [hasUsers, setHasUsers] = useState(false);
+  const [canSavePassword, setCanSavePassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(isClientMode);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const pendingReauthRef = useRef<{ serverUrl: string; username: string } | null>(null);
 
   const icpBeianText = siteConfig.icpBeian?.trim() || "";
   const showIcpBeian = !!icpBeianText && !isMobileNativeClientRuntime();
@@ -101,6 +109,7 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
     if (!isClientMode) return;
     const pending = consumePendingAccountReauth();
     if (!pending) return;
+    pendingReauthRef.current = pending;
     setServerParts(parseServerUrl(pending.serverUrl));
     setServerUrl(pending.serverUrl);
     setServerStatus("ok");
@@ -108,6 +117,43 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
     setMode("login");
     setError(t("auth.loginHistory.sessionExpired"));
   }, [isClientMode, t]);
+
+  useEffect(() => {
+    if (!isClientMode) return;
+    let cancelled = false;
+    void Promise.all([canPersistPassword(), loadRememberedCredentials()]).then(([supported, saved]) => {
+      if (cancelled) return;
+      setCanSavePassword(supported);
+      if (!supported) {
+        setRememberMe(false);
+        return;
+      }
+
+      // 账号历史要求重登时，只允许同一服务器、同一用户名的密码回填，
+      // 避免异步读取安全存储后覆盖用户刚刚选择的账号。
+      const pending = pendingReauthRef.current;
+      const matchesPending = !pending || (
+        saved?.serverUrl.replace(/\/+$/, "").toLowerCase() === pending.serverUrl.replace(/\/+$/, "").toLowerCase()
+        && saved?.username === pending.username
+      );
+      if (!saved || !matchesPending) {
+        setRememberMe(true);
+        return;
+      }
+
+      if (saved.serverUrl) {
+        setServerParts(parseServerUrl(saved.serverUrl));
+        setServerUrl(saved.serverUrl);
+        setServerStatus("ok");
+      }
+      if (saved.username) setUsername(saved.username);
+      if (saved.password) setPassword(saved.password);
+      setRememberMe(saved.hasPassword);
+    }).catch(() => {
+      if (!cancelled) setRememberMe(false);
+    });
+    return () => { cancelled = true; };
+  }, [isClientMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,6 +244,20 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
     return url;
   };
 
+  const persistRememberedLogin = async (baseUrl: string) => {
+    const supported = canSavePassword || await canPersistPassword();
+    const result = await saveRememberedCredentials({
+      remember: supported && rememberMe,
+      autoLogin: false,
+      serverUrl: baseUrl,
+      username: username.trim(),
+      password,
+    });
+    if (!result.ok) {
+      console.warn("[LoginPage] save remembered credentials failed:", result.error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -260,6 +320,7 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
         return;
       }
 
+      await persistRememberedLogin(baseUrl || "");
       storeLoginToken(data.token);
       onLogin(data.token, data.user);
     } catch (err: any) {
@@ -325,6 +386,7 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
         return;
       }
 
+      await persistRememberedLogin(baseUrl || "");
       storeLoginToken(data.token);
       onLogin(data.token, data.user);
     } catch (err: any) {
@@ -601,6 +663,18 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {!isRegister && canSavePassword && (
+              <label className="flex cursor-pointer select-none items-center gap-2.5 pt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                  className="h-4 w-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500/40 dark:border-zinc-600"
+                />
+                <span>{t("auth.rememberMe")}</span>
+              </label>
+            )}
 
             <AnimatePresence>
               {error && (

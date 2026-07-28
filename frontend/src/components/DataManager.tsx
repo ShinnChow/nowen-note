@@ -19,6 +19,7 @@ import {
 } from "@/lib/importService";
 import { useApp, useAppActions } from "@/store/AppContext";
 import { api, withSudo, getCurrentWorkspace, setCurrentWorkspace, getBaseUrl } from "@/lib/api";
+import { emitKnowledgeTreeRefresh } from "@/lib/workspaceRefreshBridge";
 import { toast } from "@/lib/toast";
 import { scheduleObjectUrlRevocation } from "@/lib/reliableExportDownloadBridge";
 import {
@@ -766,6 +767,7 @@ export default function DataManager() {
         // 的错觉。这里在 HTTP 调用的 happy path 里补一次显式 refresh，把
         // ws 当作"加固通道"而不是"唯一通道"。
         actions.refreshNotes();
+        emitKnowledgeTreeRefresh("notes-imported-http");
       }
       setTimeout(() => {
         setImportFiles([]);

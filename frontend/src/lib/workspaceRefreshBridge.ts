@@ -27,6 +27,7 @@ type RefreshReason =
   | "sync-snapshot";
 
 let refreshPromise: Promise<RefreshResult> | null = null;
+let activeRefreshReason: RefreshReason | null = null;
 let lastAutomaticRefreshAt = 0;
 let lastSnapshotAnnouncementAt = 0;
 let backgroundedAt = 0;
@@ -67,7 +68,7 @@ function resolveCopy() {
       };
 }
 
-function emitKnowledgeTreeRefresh(reason: string): void {
+export function emitKnowledgeTreeRefresh(reason: string): void {
   window.dispatchEvent(new CustomEvent(KNOWLEDGE_TREE_CHANGED_EVENT, {
     detail: { reason, at: Date.now() },
   }));
@@ -123,7 +124,9 @@ export async function refreshWorkspaceCollections(
   if (automatic) lastAutomaticRefreshAt = now;
 
   const copy = resolveCopy();
-  setButtonsBusy(true);
+  const showBusy = reason === "manual";
+  if (showBusy) setButtonsBusy(true);
+  activeRefreshReason = reason;
   refreshPromise = syncNow()
     .then(async (result) => {
       // syncNow normally dispatches SYNC_SNAPSHOT_APPLIED_EVENT. Keep this direct
@@ -145,7 +148,8 @@ export async function refreshWorkspaceCollections(
     })
     .finally(() => {
       refreshPromise = null;
-      setButtonsBusy(false);
+      activeRefreshReason = null;
+      if (showBusy) setButtonsBusy(false);
     });
 
   return refreshPromise;
@@ -214,11 +218,18 @@ export function installWorkspaceRefreshBridge(): void {
 
   const onSnapshotApplied = () => {
     lastSnapshotAnnouncementAt = Date.now();
-    emitCollectionRefresh("sync-snapshot");
+    emitCollectionRefresh(activeRefreshReason || "sync-snapshot");
   };
   const onNotesImported = (payload: unknown) => {
-    const reason = typeof payload === "object" && payload !== null && "reason" in payload
-      ? String((payload as { reason?: unknown }).reason || "notes-imported")
+    const detail = typeof payload === "object" && payload !== null
+      ? payload as { reason?: unknown; source?: unknown }
+      : null;
+    // The desktop poll emits a synthetic notes:imported event so NoteList can
+    // reuse its existing invalidation path. It is not an actual import and must
+    // not make the knowledge tree visibly reload every polling interval.
+    if (detail?.source === "workspace-refresh-bridge" && detail.reason === "poll") return;
+    const reason = detail && "reason" in detail
+      ? String(detail.reason || "notes-imported")
       : "notes-imported";
     emitKnowledgeTreeRefresh(reason);
   };
