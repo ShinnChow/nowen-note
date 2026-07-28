@@ -1,0 +1,388 @@
+name: Fix issue 512 create dropdown
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/issue-512-dropdown-trigger
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-issue-512-create-dropdown
+  cancel-in-progress: false
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply anchored dropdown implementation
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              source = file.read_text(encoding="utf-8")
+              if old not in source:
+                  raise SystemExit(f"anchor not found in {path}: {old[:160]!r}")
+              file.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          panel = "frontend/src/components/KnowledgeTreePanel.tsx"
+
+          replace_once(
+              panel,
+              '''export interface KnowledgeTreePanelProps {
+  variant?: "desktop" | "mobile";
+  className?: string;
+}
+''',
+              '''type KnowledgeTreeCreateMenuState = {
+  parentId: string | null;
+  left: number;
+  top: number;
+};
+
+export interface KnowledgeTreePanelProps {
+  variant?: "desktop" | "mobile";
+  className?: string;
+}
+''',
+          )
+
+          replace_once(
+              panel,
+              '''  const searchRef = useRef<HTMLInputElement>(null);
+  const draftInputRef = useRef<HTMLInputElement>(null);
+  const [nodes, setNodes] = useState<KnowledgeTreeNode[]>([]);''',
+              '''  const searchRef = useRef<HTMLInputElement>(null);
+  const draftInputRef = useRef<HTMLInputElement>(null);
+  const createMenuRef = useRef<HTMLDivElement>(null);
+  const [nodes, setNodes] = useState<KnowledgeTreeNode[]>([]);''',
+          )
+
+          replace_once(
+              panel,
+              '''  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [draft, setDraft] = useState<KnowledgeTreeInlineDraft | null>(null);
+  const [permissionsNode, setPermissionsNode] = useState<KnowledgeTreeNode | null>(null);''',
+              '''  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [draft, setDraft] = useState<KnowledgeTreeInlineDraft | null>(null);
+  const [createMenu, setCreateMenu] = useState<KnowledgeTreeCreateMenuState | null>(null);
+  const [permissionsNode, setPermissionsNode] = useState<KnowledgeTreeNode | null>(null);''',
+          )
+
+          replace_once(
+              panel,
+              '''  useEffect(() => {
+    if (!draft) return;
+    requestAnimationFrame(() => {
+      draftInputRef.current?.focus({ preventScroll: true });
+      draftInputRef.current?.scrollIntoView({ block: "nearest" });
+      draftInputRef.current?.select();
+    });
+  }, [draft?.kind, draft?.parentId]);
+''',
+              '''  useEffect(() => {
+    if (!draft) return;
+    requestAnimationFrame(() => {
+      draftInputRef.current?.focus({ preventScroll: true });
+      draftInputRef.current?.scrollIntoView({ block: "nearest" });
+      draftInputRef.current?.select();
+    });
+  }, [draft?.kind, draft?.parentId]);
+
+  useEffect(() => {
+    if (!createMenu) return;
+    const closeCreateMenu = () => setCreateMenu(null);
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!createMenuRef.current?.contains(event.target as Node)) closeCreateMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeCreateMenu();
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", closeCreateMenu);
+    window.addEventListener("scroll", closeCreateMenu, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", closeCreateMenu);
+      window.removeEventListener("scroll", closeCreateMenu, true);
+    };
+  }, [createMenu]);
+''',
+          )
+
+          replace_once(
+              panel,
+              '''  const startInlineCreate = useCallback((parent: KnowledgeTreeNode | null, kind: KnowledgeTreeInlineCreateKind) => {
+    if (parent && !parent.access.capabilities.canCreate) return;
+    if (!parent && kind !== "folder") return;
+    closeMenu();
+    setQuery("");
+    if (parent) {
+      setExpanded((current) => new Set(current).add(parent.id));
+      if (!parent.sharedRootId) void knowledgeTreeApi.update(parent.id, { isExpanded: true }).catch(() => {});
+    }
+    setDraft({
+      parentId: parent?.id || null,
+      kind,
+      title: defaultInlineCreateTitle(kind),
+      saving: false,
+      error: null,
+    });
+  }, [closeMenu]);
+
+  const commitDraft = async () => {''',
+              '''  const startInlineCreate = useCallback((parent: KnowledgeTreeNode | null, kind: KnowledgeTreeInlineCreateKind) => {
+    if (parent && !parent.access.capabilities.canCreate) return;
+    closeMenu();
+    setCreateMenu(null);
+    setQuery("");
+    if (parent) {
+      setExpanded((current) => new Set(current).add(parent.id));
+      if (!parent.sharedRootId) void knowledgeTreeApi.update(parent.id, { isExpanded: true }).catch(() => {});
+    }
+    setDraft({
+      parentId: parent?.id || null,
+      kind,
+      title: defaultInlineCreateTitle(kind),
+      saving: false,
+      error: null,
+    });
+  }, [closeMenu]);
+
+  const openCreateMenu = useCallback((event: React.MouseEvent<HTMLButtonElement>, parentId: string | null) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuWidth = 176;
+    const menuHeight = 116;
+    const gap = 4;
+    const viewportPadding = 8;
+    const left = Math.min(
+      Math.max(viewportPadding, rect.right - menuWidth),
+      Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+    );
+    const preferredTop = rect.bottom + gap;
+    const top = preferredTop + menuHeight <= window.innerHeight - viewportPadding
+      ? preferredTop
+      : Math.max(viewportPadding, rect.top - menuHeight - gap);
+    setCreateMenu({ parentId, left, top });
+  }, []);
+
+  const selectCreateKind = useCallback((kind: KnowledgeTreeInlineCreateKind) => {
+    if (!createMenu) return;
+    const parent = createMenu.parentId
+      ? nodes.find((candidate) => candidate.id === createMenu.parentId) || null
+      : null;
+    if (createMenu.parentId && !parent) {
+      setCreateMenu(null);
+      return;
+    }
+    startInlineCreate(parent, kind);
+  }, [createMenu, nodes, startInlineCreate]);
+
+  const commitDraft = async () => {''',
+          )
+
+          replace_once(
+              panel,
+              '''          {node.access.capabilities.canCreate && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                startInlineCreate(node, "note");
+              }}
+              className={cn("h-6 w-6 items-center justify-center rounded text-tx-tertiary hover:bg-app-active", actionVisibility)}
+              title="新建文档"
+              aria-label={`在“${node.title}”下新建文档`}
+            >
+              <Plus size={13} />
+            </button>
+          )}''',
+              '''          {node.access.capabilities.canCreate && (
+            <button
+              type="button"
+              onClick={(event) => openCreateMenu(event, node.id)}
+              className={cn("h-6 w-6 items-center justify-center rounded text-tx-tertiary hover:bg-app-active", actionVisibility)}
+              title="新建"
+              aria-label={`在“${node.title}”下新建`}
+              aria-haspopup="menu"
+              aria-expanded={createMenu?.parentId === node.id}
+            >
+              <Plus size={13} />
+            </button>
+          )}''',
+          )
+
+          replace_once(
+              panel,
+              '''        <button
+          type="button"
+          onClick={() => startInlineCreate(null, "folder")}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
+          title="新建根文件夹"
+        ><Plus size={14} /></button>''',
+              '''        <button
+          type="button"
+          onClick={(event) => openCreateMenu(event, null)}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
+          title="新建"
+          aria-label="在根目录新建"
+          aria-haspopup="menu"
+          aria-expanded={createMenu?.parentId === null && Boolean(createMenu)}
+        ><Plus size={14} /></button>''',
+          )
+
+          replace_once(
+              panel,
+              '点击上方加号创建根文件夹，再在树中直接创建文档。',
+              '点击上方加号，可在根目录创建富文本文档、Markdown 文档或文件夹。',
+          )
+
+          replace_once(
+              panel,
+              '''      <KnowledgeTreeNodeMenu
+        menu={menu}
+        menuRef={menuRef}
+        node={menuNode}
+        nodes={nodes}
+        onClose={closeMenu}
+        onOpen={openDocument}
+        onSplit={openSplit}
+        onCreate={startInlineCreate}
+        onRename={rename}
+        onMove={setMovingNode}
+        onPermissions={setPermissionsNode}
+        onDelete={remove}
+        onReload={reload}
+        onNotePatched={patchNoteStatus}
+      />
+    </section>''',
+              '''      <KnowledgeTreeNodeMenu
+        menu={menu}
+        menuRef={menuRef}
+        node={menuNode}
+        nodes={nodes}
+        onClose={closeMenu}
+        onOpen={openDocument}
+        onSplit={openSplit}
+        onCreate={startInlineCreate}
+        onRename={rename}
+        onMove={setMovingNode}
+        onPermissions={setPermissionsNode}
+        onDelete={remove}
+        onReload={reload}
+        onNotePatched={patchNoteStatus}
+      />
+      {createMenu && (
+        <div
+          ref={createMenuRef}
+          role="menu"
+          aria-label="新建内容"
+          data-knowledge-tree-create-menu=""
+          className="fixed z-[260] w-44 rounded-lg border border-app-border bg-app-bg p-1 shadow-2xl"
+          style={{ left: `${createMenu.left}px`, top: `${createMenu.top}px` }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => selectCreateKind("note")}
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
+          >
+            <FileText size={14} className="text-accent-primary" />
+            <span>富文本文档</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => selectCreateKind("markdown")}
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
+          >
+            <FileCode size={14} className="text-emerald-500" />
+            <span>Markdown 文档</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => selectCreateKind("folder")}
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
+          >
+            <Folder size={14} className="text-amber-500" />
+            <span>文件夹</span>
+          </button>
+        </div>
+      )}
+    </section>''',
+          )
+
+          Path("frontend/src/components/KnowledgeTreeCreateMenuRuntime.tsx").write_text(
+              '''export {
+  FOCUS_KNOWLEDGE_TREE_EVENT,
+  KNOWLEDGE_TREE_CHANGED_EVENT,
+  KnowledgeTreePanel,
+  type KnowledgeTreePanelProps,
+} from "./KnowledgeTreePanel";
+export { KnowledgeTreePanel as default } from "./KnowledgeTreePanel";
+''',
+              encoding="utf-8",
+          )
+
+          test_file = "frontend/src/lib/__tests__/knowledgeTreeInlineCreateContract.test.ts"
+          replace_once(
+              test_file,
+              '''  it("uses the row plus button for direct document creation", () => {
+    const panel = source("../../components/KnowledgeTreePanel.tsx");
+    expect(panel).toContain('startInlineCreate(node, "note")');
+    expect(panel).toContain('data-knowledge-tree-inline-create=""');
+    expect(panel).toContain('title="新建文档"');
+    expect(panel).not.toContain('title: parent ? `在“${parent.title}”下新建`');
+  });''',
+              '''  it("opens an anchored create dropdown and keeps naming inline", () => {
+    const panel = source("../../components/KnowledgeTreePanel.tsx");
+    const runtime = source("../../components/KnowledgeTreeCreateMenuRuntime.tsx");
+    expect(panel).toContain('data-knowledge-tree-create-menu=""');
+    expect(panel).toContain('onClick={() => selectCreateKind("note")}');
+    expect(panel).toContain('onClick={() => selectCreateKind("markdown")}');
+    expect(panel).toContain('onClick={() => selectCreateKind("folder")}');
+    expect(panel).toContain('onClick={(event) => openCreateMenu(event, node.id)}');
+    expect(panel).toContain('onClick={(event) => openCreateMenu(event, null)}');
+    expect(panel).toContain('data-knowledge-tree-inline-create=""');
+    expect(panel).not.toContain('if (!parent && kind !== "folder") return;');
+    expect(runtime).not.toContain("choose(");
+    expect(runtime).not.toContain("prompt(");
+  });''',
+          )
+          PY
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Run create dropdown contract
+        run: npm --prefix frontend run test:run -- src/lib/__tests__/knowledgeTreeInlineCreateContract.test.ts
+
+      - name: Build frontend
+        run: npm --prefix frontend run build
+
+      - name: Commit implementation and clean temporary CI
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-issue-512-create-dropdown.yml .github/issue-512-dropdown-trigger
+          git add frontend/src/components/KnowledgeTreePanel.tsx \
+                  frontend/src/components/KnowledgeTreeCreateMenuRuntime.tsx \
+                  frontend/src/lib/__tests__/knowledgeTreeInlineCreateContract.test.ts
+          git commit -m "fix(tree): replace create modal with anchored dropdown"
+          git pull --rebase origin main
+          git push origin HEAD:main
