@@ -42,6 +42,7 @@ import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
+import { countOwnedNotebooks } from "@/lib/knowledgeTreeStats";
 import {
   buildMobileKnowledgeTreePath,
   buildMobileKnowledgeTreeRecentNodes,
@@ -320,6 +321,7 @@ export default function MobileKnowledgeTreePanel({
   );
   const rootOwned = useMemo(() => currentChildren.filter((node) => !node.sharedRootId), [currentChildren]);
   const rootShared = useMemo(() => currentChildren.filter((node) => Boolean(node.sharedRootId)), [currentChildren]);
+  const ownedNotebookCount = useMemo(() => countOwnedNotebooks(nodes), [nodes]);
 
   const activateNote = useCallback((note: Awaited<ReturnType<typeof api.getNote>>) => {
     actions.setActiveNote(note);
@@ -756,7 +758,16 @@ export default function MobileKnowledgeTreePanel({
       <>
         {(draft || rootOwned.length > 0) && (
           <section data-mobile-knowledge-tree-section="owned">
-            <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-tx-tertiary">当前空间</div>
+            <div className="flex items-center justify-between px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-tx-tertiary">
+              <span>当前空间</span>
+              <span
+                className="min-w-4 rounded-full bg-app-hover px-1.5 text-center leading-4"
+                aria-label={`当前空间共 ${ownedNotebookCount} 个笔记本`}
+                data-mobile-knowledge-tree-notebook-count=""
+              >
+                {ownedNotebookCount}
+              </span>
+            </div>
             {draft && renderDraft()}
             {rootOwned.map((node) => renderNode(node))}
           </section>

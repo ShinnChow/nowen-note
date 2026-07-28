@@ -59,4 +59,11 @@ describe("desktop knowledge tree browsing mode", () => {
   it("applies pinned priority while building recursive tree sibling groups", () => {
     expect(treePanelSource).toContain("compareKnowledgeTreePinnedPriority(a, b)");
   });
+
+  it("shows the current workspace notebook count in both desktop tree modes", () => {
+    expect(treePanelSource).toContain('data-knowledge-tree-notebook-count=""');
+    expect(quickPanelSource).toContain('data-mobile-knowledge-tree-notebook-count=""');
+    expect(treePanelSource).toContain('aria-label={`当前空间共 ${ownedNotebookCount} 个笔记本`}');
+    expect(quickPanelSource).toContain('aria-label={`当前空间共 ${ownedNotebookCount} 个笔记本`}');
+  });
 });

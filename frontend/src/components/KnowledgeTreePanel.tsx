@@ -44,6 +44,7 @@ import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
+import { countOwnedNotebooks } from "@/lib/knowledgeTreeStats";
 import { toast } from "@/lib/toast";
 import { compareKnowledgeTreePinnedPriority } from "@/lib/knowledgeTreeSort";
 import { cn } from "@/lib/utils";
@@ -800,6 +801,7 @@ export function KnowledgeTreePanel({
   const rootNodes = children.get(null) || [];
   const ownedRoots = rootNodes.filter((node) => !node.sharedRootId);
   const sharedRoots = rootNodes.filter((node) => Boolean(node.sharedRootId));
+  const ownedNotebookCount = countOwnedNotebooks(nodes);
   const hasRootDraft = draft?.parentId === null;
 
   return (
@@ -847,7 +849,16 @@ export function KnowledgeTreePanel({
           <>
             {(ownedRoots.length > 0 || hasRootDraft) && (
               <div data-knowledge-tree-section="owned">
-                <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-tx-tertiary">当前空间</div>
+                <div className="flex items-center justify-between px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-tx-tertiary">
+                  <span>当前空间</span>
+                  <span
+                    className="min-w-4 rounded-full bg-app-hover px-1.5 text-center leading-4"
+                    aria-label={`当前空间共 ${ownedNotebookCount} 个笔记本`}
+                    data-knowledge-tree-notebook-count=""
+                  >
+                    {ownedNotebookCount}
+                  </span>
+                </div>
                 {ownedRoots.map((node) => renderNode(node, 0))}
                 {hasRootDraft && renderDraft(0)}
               </div>
