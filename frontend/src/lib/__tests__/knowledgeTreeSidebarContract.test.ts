@@ -71,6 +71,12 @@ describe("knowledge tree sidebar contract", () => {
     expect(compactCss).toContain("@media (max-width: 767px)");
     expect(compactCss).toContain("--nowen-mobile-tree-row-height: 26px");
     expect(compactCss).toContain("--nowen-mobile-tree-indent: 10px");
+    expect(compactCss).toContain("--nowen-mobile-tree-expander-width: 8px");
+    expect(compactCss).toContain("--nowen-mobile-tree-content-gap: 3px");
+    expect(compactCss).toContain("min-width: var(--nowen-mobile-tree-expander-width) !important");
+    expect(compactCss).toContain("max-width: var(--nowen-mobile-tree-expander-width) !important");
+    expect(compactCss).toContain("flex: 0 0 var(--nowen-mobile-tree-expander-width) !important");
+    expect(compactCss).toContain("padding-left: 0 !important");
     expect(compactCss).toContain('button[aria-label$="下新建文档"]');
     expect(compactCss).toMatch(/button\[aria-label\$="下新建文档"\][\s\S]*display:\s*none\s*!important/);
     expect(compactCss).toContain('button[title="更多"]');
