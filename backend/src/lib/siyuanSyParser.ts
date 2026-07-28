@@ -238,7 +238,6 @@ function normalizeHeadingAttributeSuffixes(markdown: string): string {
  */
 export function siyuanSyToMarkdown(doc: SiyuanNode): SiyuanSyMarkdownResult {
     const iframeCount = countNodeType(doc, "NodeIFrame");
-    const calloutCount = countNodeType(doc, "NodeCallout");
     const prepared = prepareNode(doc);
     const result = legacySiyuanSyToMarkdown(prepared);
     const images = new Set(result.stats.images);
@@ -251,12 +250,6 @@ export function siyuanSyToMarkdown(doc: SiyuanNode): SiyuanSyMarkdownResult {
     if (iframeCount > 0) {
         unsupportedNodes.NodeIFrame = (unsupportedNodes.NodeIFrame || 0) + iframeCount;
         warnings.push("Siyuan iframe is preserved in Markdown; rich text uses a supported video or a downgraded safe link.");
-    }
-    if (calloutCount > 0) {
-        // Retain an import-report entry because rich text represents the alert with
-        // supported blockquote/paragraph nodes rather than a native callout schema.
-        unsupportedNodes.NodeCallout = (unsupportedNodes.NodeCallout || 0) + calloutCount;
-        warnings.push("Siyuan callout was mapped to a styled blockquote with its type, title, fold state and body preserved.");
     }
 
     return {
