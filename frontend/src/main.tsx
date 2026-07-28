@@ -45,6 +45,7 @@ import "./space-actions.css";
 import "./settings-switches.css";
 import "./sidebar-search-experience.css";
 import "./siyuan-rich-text-callout.css";
+import "./knowledge-tree-markdown-drop.css";
 import { initCodeBlockTheme } from "./lib/codeBlockTheme";
 import { installAndroidNativeHttpBridge } from "./lib/androidNativeHttpBridge";
 import { installMobileStartupBridge } from "./lib/mobileStartupBridge";
@@ -67,6 +68,7 @@ import { installEditorPerformanceGlobal } from "./lib/editorPerformanceHarness";
 import { installIssue210SignoffRuntime } from "./lib/issue210Signoff";
 import { cleanupRemovedServerProfiles } from "./lib/removedServerProfileCleanup";
 import { installKnowledgeTreeScrollbarBridge } from "./lib/knowledgeTreeScrollbarBridge";
+import { installKnowledgeTreeMarkdownDrop } from "./lib/knowledgeTreeMarkdownDrop";
 
 void cleanupRemovedServerProfiles();
 
@@ -90,6 +92,7 @@ function BootSplashRemover() {
 }
 
 installKnowledgeTreeScrollbarBridge();
+installKnowledgeTreeMarkdownDrop();
 installNodeViewMutationGuard();
 installEditorMediaScopeGuard();
 installAndroidNativeHttpBridge();
