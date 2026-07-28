@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import dns from "node:dns";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { createSystemLookupResolver } from "../src/lib/dnsSystemLookupCompat";
+import { createSystemLookupResolver, installSystemDnsLookupCompat } from "../src/lib/dnsSystemLookupCompat";
 
 function runResolver(resolver: any, hostname: string, options?: unknown): Promise<any[]> {
   return new Promise((resolve, reject) => {
@@ -58,6 +59,25 @@ test("reports failure only when both c-ares and the system resolver fail", async
 
   const resolver = createSystemLookupResolver(4, original as any, lookup as any);
   await assert.rejects(runResolver(resolver, "invalid.example"), /c-ares failed/);
+});
+
+test("installer patches both resolver families once and can execute in Node", () => {
+  const original4 = dns.resolve4;
+  const original6 = dns.resolve6;
+  try {
+    installSystemDnsLookupCompat();
+    const installed4 = dns.resolve4;
+    const installed6 = dns.resolve6;
+    assert.notEqual(installed4, original4);
+    assert.notEqual(installed6, original6);
+
+    installSystemDnsLookupCompat();
+    assert.equal(dns.resolve4, installed4, "repeated installation must be idempotent");
+    assert.equal(dns.resolve6, installed6, "repeated installation must be idempotent");
+  } finally {
+    dns.resolve4 = original4;
+    dns.resolve6 = original6;
+  }
 });
 
 test("installs the compatibility layer before the legacy URL-import route is evaluated", () => {
