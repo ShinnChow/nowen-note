@@ -23,6 +23,18 @@ import { isDesktop, checkForUpdates, onUpdaterStatus, getReleaseChannel, isPorta
 import { CustomFont } from "@/types";
 import { cn } from "@/lib/utils";
 import { detectShortcutSurface } from "@/lib/shortcutRegistry";
+import {
+  DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT,
+  DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY,
+  loadDesktopKnowledgeTreeViewMode,
+  loadMobileKnowledgeTreeViewMode,
+  MOBILE_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT,
+  MOBILE_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY,
+  saveDesktopKnowledgeTreeViewMode,
+  saveMobileKnowledgeTreeViewMode,
+  type DesktopKnowledgeTreeViewMode,
+  type MobileKnowledgeTreeViewMode,
+} from "@/lib/mobileKnowledgeTreeViewMode";
 
 type TabId = "appearance" | "switches" | "shortcuts" | "ai" | "security" | "tokens" | "data" | "folderSync" | "users" | "workspaces" | "download" | "about";
 
@@ -630,6 +642,12 @@ function SwitchesPanel() {
   const [desktopHideMenuBar, setDesktopHideMenuBar] = useState(true);
   const [desktopPlatform, setDesktopPlatform] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [mobileKnowledgeTreeMode, setMobileKnowledgeTreeMode] = useState<MobileKnowledgeTreeViewMode>(
+    () => loadMobileKnowledgeTreeViewMode(),
+  );
+  const [desktopKnowledgeTreeMode, setDesktopKnowledgeTreeMode] = useState<DesktopKnowledgeTreeViewMode>(
+    () => loadDesktopKnowledgeTreeViewMode(),
+  );
   const desktop = isDesktop();
   const supportsDesktopMenuBarToggle = desktop && desktopPlatform !== "darwin";
   const markdownDefaultModes = [
@@ -657,6 +675,44 @@ function SwitchesPanel() {
     }
     return () => { cancelled = true; };
   }, [desktop]);
+
+  useEffect(() => {
+    const syncMode = () => setMobileKnowledgeTreeMode(loadMobileKnowledgeTreeViewMode());
+    const syncStorage = (event: StorageEvent) => {
+      if (event.key === MOBILE_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY) syncMode();
+    };
+    window.addEventListener(MOBILE_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT, syncMode);
+    window.addEventListener("storage", syncStorage);
+    return () => {
+      window.removeEventListener(MOBILE_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT, syncMode);
+      window.removeEventListener("storage", syncStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncMode = () => setDesktopKnowledgeTreeMode(loadDesktopKnowledgeTreeViewMode());
+    const syncStorage = (event: StorageEvent) => {
+      if (event.key === DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY) syncMode();
+    };
+    window.addEventListener(DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT, syncMode);
+    window.addEventListener("storage", syncStorage);
+    return () => {
+      window.removeEventListener(DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT, syncMode);
+      window.removeEventListener("storage", syncStorage);
+    };
+  }, []);
+
+  const handleToggleMobileKnowledgeTreeMode = (treeEnabled: boolean) => {
+    const nextMode: MobileKnowledgeTreeViewMode = treeEnabled ? "tree" : "navigator";
+    setMobileKnowledgeTreeMode(nextMode);
+    saveMobileKnowledgeTreeViewMode(nextMode);
+  };
+
+  const handleToggleDesktopKnowledgeTreeMode = (quickEnabled: boolean) => {
+    const nextMode: DesktopKnowledgeTreeViewMode = quickEnabled ? "quick" : "tree";
+    setDesktopKnowledgeTreeMode(nextMode);
+    saveDesktopKnowledgeTreeViewMode(nextMode);
+  };
 
   const handleToggleWebUi = async (next: boolean) => {
     const prev = webUiEnabled;
@@ -767,6 +823,46 @@ function SwitchesPanel() {
             </div>
           </label>
         ))}
+
+        <label
+          data-settings-switch="mobile-knowledge-tree"
+          className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-white/60 dark:hover:bg-zinc-900/25 transition-colors"
+        >
+          <input
+            type="checkbox"
+            checked={mobileKnowledgeTreeMode === "tree"}
+            onChange={(event) => handleToggleMobileKnowledgeTreeMode(event.target.checked)}
+            className="mt-0.5 w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-zinc-800 dark:text-zinc-200 leading-none">
+              {t("settings.mobileKnowledgeTreeMode")}
+            </div>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 leading-snug">
+              {t("settings.mobileKnowledgeTreeModeDesc")}
+            </p>
+          </div>
+        </label>
+
+        <label
+          data-settings-switch="desktop-knowledge-tree"
+          className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-white/60 dark:hover:bg-zinc-900/25 transition-colors"
+        >
+          <input
+            type="checkbox"
+            checked={desktopKnowledgeTreeMode === "quick"}
+            onChange={(event) => handleToggleDesktopKnowledgeTreeMode(event.target.checked)}
+            className="mt-0.5 w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-zinc-800 dark:text-zinc-200 leading-none">
+              {t("settings.desktopKnowledgeTreeMode")}
+            </div>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 leading-snug">
+              {t("settings.desktopKnowledgeTreeModeDesc")}
+            </p>
+          </div>
+        </label>
 
         {supportsDesktopMenuBarToggle && (
           <label className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-white/60 dark:hover:bg-zinc-900/25 transition-colors">

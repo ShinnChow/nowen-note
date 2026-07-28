@@ -48,6 +48,7 @@ import UpdateNotifier from "@/components/common/UpdateNotifier";
 import FolderSyncScheduler from "@/components/FolderSyncScheduler";
 import { PhaseAPerfProfiler } from "@/components/PhaseAPerfProfiler";
 import { isAccountLoginHistorySupported, saveAccountLoginHistory } from "@/lib/accountLoginHistory";
+import SidebarSearchExperienceBridge from "@/components/SidebarSearchExperienceBridge";
 
 const AUTH_USER_CACHE_PREFIX = "nowen-auth-user:";
 
@@ -1223,6 +1224,7 @@ function AuthGate() {
   // 已登录
   return (
     <AppProvider>
+      <SidebarSearchExperienceBridge />
       <TooltipProvider>
         <PhaseAPerfProfiler id="AppLayout"><AppLayout /></PhaseAPerfProfiler>
         {/* Phase 7: 客户端模式下，密码登录成功后引导启用快速登录。

@@ -17,7 +17,6 @@ import NoteIconBridge from "./components/NoteIconBridge";
 import AIProfileSwitcherBridge from "./components/AIProfileSwitcherBridge";
 import EmbeddingIndexTaskCopyBridge from "./components/EmbeddingIndexTaskCopyBridge";
 import MarkdownExperienceBridge from "./components/MarkdownExperienceBridge";
-import SidebarSearchExperienceBridge from "./components/SidebarSearchExperienceBridge";
 import MindMapAppearanceBridge from "./components/MindMapAppearanceBridge";
 import EmbedPasswordBridge from "./components/EmbedPasswordBridge";
 import ImageExperienceBridge from "./components/ImageExperienceBridge";
@@ -159,7 +158,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <AIProfileSwitcherBridge />
           <EmbeddingIndexTaskCopyBridge />
           <MarkdownExperienceBridge />
-          <SidebarSearchExperienceBridge />
           <MindMapAppearanceBridge />
           <EmbedPasswordBridge />
           <ImageExperienceBridge />

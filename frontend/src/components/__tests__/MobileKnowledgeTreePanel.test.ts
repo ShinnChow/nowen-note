@@ -7,16 +7,18 @@ const sidebarSource = readFileSync(path.resolve(__dirname, "../Sidebar.tsx"), "u
 const helperSource = readFileSync(path.resolve(__dirname, "../../lib/mobileKnowledgeTree.ts"), "utf8");
 
 describe("MobileKnowledgeTreePanel product contract", () => {
-  it("uses a dedicated mobile navigator while desktop keeps the recursive tree", () => {
+  it("uses the quick navigator on mobile while desktop chooses its saved mode", () => {
     expect(sidebarSource).toContain('import MobileKnowledgeTreePanel from "@/components/MobileKnowledgeTreePanel"');
-    expect(sidebarSource).toContain('variant === "mobile" ? <MobileKnowledgeTreePanel /> : <KnowledgeTreePanel variant="desktop" />');
+    expect(sidebarSource).toContain('variant === "mobile" ? (');
+    expect(sidebarSource).toContain('<MobileKnowledgeTreePanel />');
+    expect(sidebarSource).toContain('desktopKnowledgeTreeMode === "quick"');
   });
 
   it("defaults to recent and offers a one-level browse mode", () => {
     expect(mobileSource).toContain('type MobileView = "recent" | "browse"');
     expect(mobileSource).toContain('useState<MobileView>("recent")');
     expect(mobileSource).toContain('getMobileKnowledgeTreeChildren(nodes, parentId, sortMode)');
-    expect(mobileSource).toContain('data-nowen-mobile-knowledge-tree="flat-navigation"');
+    expect(mobileSource).toContain('data-nowen-mobile-knowledge-tree={variant === "mobile" ? "flat-navigation" : undefined}');
     expect(mobileSource).toContain('data-mobile-knowledge-tree-breadcrumb');
     expect(mobileSource).not.toContain("setExpanded(");
   });
@@ -31,17 +33,19 @@ describe("MobileKnowledgeTreePanel product contract", () => {
   it("keeps global search, mobile sorting, creation and the full node menu", () => {
     expect(mobileSource).toContain("filterMobileKnowledgeTreeNodes(nodes, query, sortMode)");
     expect(mobileSource).toContain("saveMobileKnowledgeTreeSortMode(next)");
-    expect(mobileSource).toContain("openCreateMenu");
+    expect(mobileSource).toContain("openCreateDropdown");
+    expect(mobileSource).toContain("<KnowledgeTreeCreateDropdown");
     expect(mobileSource).toContain("<KnowledgeTreeNodeMenu");
     expect(mobileSource).toContain("onPermissions={setPermissionsNode}");
     expect(mobileSource).toContain("onMove={setMovingNode}");
   });
 
-  it("keeps opened documents before updatedAt-only fallback documents", () => {
+  it("keeps pinned documents first, then opened documents before updatedAt-only fallback documents", () => {
     expect(mobileSource).toContain("upsertMobileKnowledgeTreeRecentEntry");
+    expect(helperSource).toContain("const pinnedDocuments = documents");
     expect(helperSource).toContain("const openedDocuments = documents");
     expect(helperSource).toContain("const fallbackDocuments = documents");
-    expect(helperSource).toContain("return [...openedDocuments, ...fallbackDocuments]");
+    expect(helperSource).toContain("return [...pinnedDocuments, ...openedDocuments, ...fallbackDocuments]");
     expect(helperSource).toContain('return "updated-desc"');
   });
 });

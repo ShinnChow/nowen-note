@@ -1,9 +1,13 @@
 export type MobileKnowledgeTreeViewMode = "navigator" | "tree";
+export type DesktopKnowledgeTreeViewMode = "quick" | "tree";
 
 export const MOBILE_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY = "nowen.mobileKnowledgeTree.viewMode.v1";
 export const MOBILE_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT = "nowen:mobile-knowledge-tree-view-mode-changed";
+export const DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY = "nowen.desktopKnowledgeTree.viewMode.v1";
+export const DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT = "nowen:desktop-knowledge-tree-view-mode-changed";
 
 const VALID_MODES = new Set<MobileKnowledgeTreeViewMode>(["navigator", "tree"]);
+const DESKTOP_VALID_MODES = new Set<DesktopKnowledgeTreeViewMode>(["quick", "tree"]);
 
 function storage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -27,5 +31,21 @@ export function saveMobileKnowledgeTreeViewMode(mode: MobileKnowledgeTreeViewMod
   }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(MOBILE_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT, { detail: { mode } }));
+  }
+}
+
+export function loadDesktopKnowledgeTreeViewMode(): DesktopKnowledgeTreeViewMode {
+  const value = storage()?.getItem(DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY) as DesktopKnowledgeTreeViewMode | null;
+  return value && DESKTOP_VALID_MODES.has(value) ? value : "tree";
+}
+
+export function saveDesktopKnowledgeTreeViewMode(mode: DesktopKnowledgeTreeViewMode): void {
+  try {
+    storage()?.setItem(DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY, mode);
+  } catch {
+    // 存储不可用时，当前 React 状态仍会立即完成切换。
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT, { detail: { mode } }));
   }
 }
