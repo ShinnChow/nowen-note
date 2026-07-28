@@ -1,15 +1,15 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { FileCode, FileText, Folder } from "lucide-react";
 
 import KnowledgeTreePanelBase, {
   FOCUS_KNOWLEDGE_TREE_EVENT,
   KNOWLEDGE_TREE_CHANGED_EVENT,
   type KnowledgeTreePanelProps,
 } from "./KnowledgeTreePanel";
-import { choose, prompt } from "@/components/ui/confirm";
 import { api } from "@/lib/api";
 import {
   defaultInlineCreateTitle,
-  normalizeInlineCreateTitle,
   type KnowledgeTreeInlineCreateKind,
 } from "@/lib/knowledgeTreeInlineCreate";
 import { knowledgeTreeApi } from "@/lib/knowledgeTreeApi";
@@ -20,12 +20,26 @@ export { FOCUS_KNOWLEDGE_TREE_EVENT, KNOWLEDGE_TREE_CHANGED_EVENT };
 export type { KnowledgeTreePanelProps };
 
 const CREATE_SCOPE_ATTR = "data-nowen-create-scope";
+const CREATE_MENU_WIDTH = 184;
+const CREATE_MENU_HEIGHT = 116;
+
+const CREATE_ITEMS = [
+  { kind: "note", label: "富文本文档", icon: FileText },
+  { kind: "markdown", label: "Markdown 文档", icon: FileCode },
+  { kind: "folder", label: "文件夹", icon: Folder },
+] as const;
+
+interface CreateMenuState {
+  parentId: string | null;
+  anchor: DOMRect;
+}
 
 function markCreateButtons(root: HTMLElement): void {
   for (const button of root.querySelectorAll<HTMLButtonElement>('button[title="新建根文件夹"]')) {
     button.setAttribute(CREATE_SCOPE_ATTR, "root");
     button.title = "新建";
     button.setAttribute("aria-label", "在根目录新建");
+    button.setAttribute("aria-haspopup", "menu");
   }
   for (const button of root.querySelectorAll<HTMLButtonElement>('button[title="新建文档"]')) {
     button.setAttribute(CREATE_SCOPE_ATTR, "node");
@@ -33,6 +47,7 @@ function markCreateButtons(root: HTMLElement): void {
     const row = button.closest<HTMLElement>("[data-knowledge-tree-node-id]");
     const title = row?.querySelector<HTMLButtonElement>('button[title]:not([data-nowen-create-scope])')?.title;
     button.setAttribute("aria-label", title ? `在“${title}”下新建` : "在当前节点下新建");
+    button.setAttribute("aria-haspopup", "menu");
   }
 }
 
@@ -42,10 +57,26 @@ function emitTreeChanged(): void {
   }));
 }
 
+function menuPosition(anchor: DOMRect): React.CSSProperties {
+  const viewportWidth = typeof window === "undefined" ? 1024 : window.innerWidth;
+  const viewportHeight = typeof window === "undefined" ? 768 : window.innerHeight;
+  const below = anchor.bottom + 6;
+  const top = below + CREATE_MENU_HEIGHT <= viewportHeight - 8
+    ? below
+    : Math.max(8, anchor.top - CREATE_MENU_HEIGHT - 6);
+  const left = Math.min(
+    Math.max(8, anchor.right - CREATE_MENU_WIDTH),
+    Math.max(8, viewportWidth - CREATE_MENU_WIDTH - 8),
+  );
+  return { top, left, width: CREATE_MENU_WIDTH };
+}
+
 export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
   const actions = useAppActions();
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const creatingRef = useRef(false);
+  const [createMenu, setCreateMenu] = useState<CreateMenuState | null>(null);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -56,6 +87,33 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
     observer.observe(root, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!createMenu) return;
+
+    const closeFromPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
+      setCreateMenu(null);
+    };
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setCreateMenu(null);
+    };
+    const closeFromViewport = () => setCreateMenu(null);
+
+    window.addEventListener("pointerdown", closeFromPointer, true);
+    window.addEventListener("keydown", closeFromKeyboard, true);
+    window.addEventListener("resize", closeFromViewport);
+    window.addEventListener("scroll", closeFromViewport, true);
+    return () => {
+      window.removeEventListener("pointerdown", closeFromPointer, true);
+      window.removeEventListener("keydown", closeFromKeyboard, true);
+      window.removeEventListener("resize", closeFromViewport);
+      window.removeEventListener("scroll", closeFromViewport, true);
+    };
+  }, [createMenu]);
 
   const activateCreatedNote = useCallback(async (noteId: string) => {
     const note = await api.getNote(noteId);
@@ -77,38 +135,18 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
     if (props.variant === "mobile") actions.setMobileSidebar(false);
   }, [actions, props.variant]);
 
-  const createFromPlus = useCallback(async (parentId: string | null) => {
+  const createFromMenu = useCallback(async (
+    parentId: string | null,
+    kind: KnowledgeTreeInlineCreateKind,
+  ) => {
     if (creatingRef.current) return;
     creatingRef.current = true;
+    setCreateMenu(null);
     try {
-      const kind = await choose({
-        title: parentId ? "在当前节点下新建" : "在根目录新建",
-        description: "选择要创建的内容类型",
-        choices: [
-          { value: "note", label: "富文本文档" },
-          { value: "markdown", label: "Markdown 文档" },
-          { value: "folder", label: "文件夹" },
-        ],
-      });
-      if (kind !== "note" && kind !== "markdown" && kind !== "folder") return;
-
-      const createKind = kind as KnowledgeTreeInlineCreateKind;
-      const rawTitle = await prompt({
-        title: kind === "folder" ? "新建文件夹" : kind === "markdown" ? "新建 Markdown 文档" : "新建富文本文档",
-        defaultValue: defaultInlineCreateTitle(createKind),
-        confirmText: "创建",
-      });
-      if (rawTitle == null) return;
-      const title = normalizeInlineCreateTitle(rawTitle);
-      if (!title) {
-        toast.error("名称不能为空");
-        return;
-      }
-
       const created = await knowledgeTreeApi.create({
         parentId,
-        nodeType: createKind,
-        title,
+        nodeType: kind,
+        title: defaultInlineCreateTitle(kind),
       });
       emitTreeChanged();
       actions.refreshNotebooks();
@@ -138,13 +176,54 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
     const parentId = scope === "node"
       ? button.closest<HTMLElement>("[data-knowledge-tree-node-id]")?.dataset.knowledgeTreeNodeId || null
       : null;
-    void createFromPlus(parentId);
-  }, [createFromPlus]);
+    const anchor = button.getBoundingClientRect();
+    setCreateMenu((current) => current?.parentId === parentId ? null : { parentId, anchor });
+  }, []);
+
+  const dropdown = createMenu && typeof document !== "undefined"
+    ? createPortal(
+      <div
+        ref={menuRef}
+        role="menu"
+        aria-label={createMenu.parentId ? "在当前节点下新建" : "在根目录新建"}
+        className="fixed z-[420] overflow-hidden rounded-lg border border-app-border bg-app-bg p-1 shadow-xl"
+        style={menuPosition(createMenu.anchor)}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {CREATE_ITEMS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.kind}
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-tx-secondary transition-colors hover:bg-app-hover hover:text-tx-primary focus:bg-app-hover focus:text-tx-primary focus:outline-none"
+              onClick={() => void createFromMenu(createMenu.parentId, item.kind)}
+            >
+              <Icon
+                size={15}
+                className={item.kind === "folder"
+                  ? "text-amber-500"
+                  : item.kind === "markdown"
+                    ? "text-emerald-500"
+                    : "text-accent-primary"}
+              />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>,
+      document.body,
+    )
+    : null;
 
   return (
-    <div ref={rootRef} className="contents" onClickCapture={handleClickCapture}>
-      <KnowledgeTreePanelBase {...props} />
-    </div>
+    <>
+      <div ref={rootRef} className="contents" onClickCapture={handleClickCapture}>
+        <KnowledgeTreePanelBase {...props} />
+      </div>
+      {dropdown}
+    </>
   );
 }
 
