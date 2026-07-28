@@ -76,6 +76,12 @@ import {
   shouldSkipUnchangedTitleOnlyUpdate,
 } from "@/lib/editorSyncGuards";
 import { canWriteNote } from "@/lib/notePermissions";
+import {
+  DEFAULT_OUTLINE_WIDTH,
+  clampOutlineWidth,
+  getSavedOutlineWidth,
+  persistOutlineWidth,
+} from "@/lib/outlinePanelWidth";
 
 // ---------------------------------------------------------------------------
 // 编辑器模式切换（MD vs Tiptap）
@@ -116,6 +122,7 @@ export default function EditorPane({
   // 因为长期使用极少的用户来说，每次新笔记都反向丢失偏好会很不习惯。
   const { prefs: userPrefs, setPref: setUserPref } = useUserPreferences();
   const [showOutline, setShowOutline] = useState<boolean>(() => userPrefs.outlineDefaultOpen);
+  const [outlineWidth, setOutlineWidth] = useState(getSavedOutlineWidth);
   // 视图级只读：除了 DB 的 isLocked，还有用户偏好带来的"会话锁"。
   // 新笔记打开时如果启用了 lockOnOpen 偏好，就把当前笔记 id 加入集合，
   // 编辑器变为只读，用户需要点解锁按钮移除，从而恢复编辑能力。
@@ -148,6 +155,35 @@ export default function EditorPane({
   const canEditActiveNote = canWriteNote(activeNote);
   const showDesktopOutline = showOutline && !state.editorFullscreen;
   const compactMobileEditing = keyboardVisible && canEditActiveNote && !effectiveLocked;
+
+  const handleOutlineResizeStart = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = outlineWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const nextWidth = clampOutlineWidth(startWidth - (moveEvent.clientX - startX));
+      setOutlineWidth(nextWidth);
+      persistOutlineWidth(nextWidth);
+    };
+
+    const handleMouseUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, [outlineWidth]);
+
+  const handleOutlineWidthReset = useCallback(() => {
+    setOutlineWidth(DEFAULT_OUTLINE_WIDTH);
+    persistOutlineWidth(DEFAULT_OUTLINE_WIDTH);
+  }, []);
 
   useEffect(() => {
     const handleOfflineConflict = (event: Event) => {
@@ -3572,8 +3608,11 @@ const moveToTrash = useCallback(async () => {
       {showDesktopOutline && (
           <OutlinePanel
             headings={headings}
+            width={outlineWidth}
             onSelect={(pos) => scrollToRef.current?.(pos)}
             onClose={() => setShowOutline(false)}
+            onResizeStart={handleOutlineResizeStart}
+            onResetWidth={handleOutlineWidthReset}
           />
         )}
       </div>
@@ -3584,16 +3623,33 @@ const moveToTrash = useCallback(async () => {
 /* ===== ������ ===== */
 function OutlinePanel({
   headings,
+  width,
   onSelect,
   onClose,
+  onResizeStart,
+  onResetWidth,
 }: {
   headings: NoteEditorHeading[];
+  width: number;
   onSelect: (pos: number) => void;
   onClose: () => void;
+  onResizeStart: (event: React.MouseEvent) => void;
+  onResetWidth: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="hidden md:flex flex-col w-56 min-w-[200px] border-l border-app-border bg-app-surface/50 transition-colors">
+    <div
+      className="relative hidden md:flex flex-none flex-col border-l border-app-border bg-app-surface/50 transition-colors"
+      style={{ width: `${width}px` }}
+    >
+      <div
+        onMouseDown={onResizeStart}
+        onDoubleClick={onResetWidth}
+        className="absolute inset-y-0 left-0 z-10 flex w-1 -translate-x-1/2 cursor-col-resize items-center justify-center hover:bg-accent-primary/30 active:bg-accent-primary/50 transition-colors group"
+        title="拖拽调整大纲宽度 / 双击恢复默认"
+      >
+        <div className="h-8 w-[2px] rounded-full bg-transparent group-hover:bg-accent-primary/60 transition-colors" />
+      </div>
       <div className="flex items-center justify-between px-3 py-2 border-b border-app-border">
         <div className="flex items-center gap-1.5 text-xs font-medium text-tx-secondary">
           <ListTree size={13} className="text-accent-primary" />
