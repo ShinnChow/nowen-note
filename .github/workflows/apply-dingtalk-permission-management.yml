@@ -1,0 +1,216 @@
+name: Apply DingTalk-style permission management
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.issue.number == 511 && github.event.comment.body == '/apply-dingtalk-permission-management'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/dingtalk-permission-management
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Wire owner transfer route and frontend API
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          service = Path('backend/src/services/notebookOwnershipTransfer.ts')
+          service_source = service.read_text(encoding='utf-8')
+          service_source = service_source.replace('import { v4 as uuid } from "uuid";\n', '')
+          service.write_text(service_source, encoding='utf-8')
+
+          route = Path('backend/src/routes/notebooks.ts')
+          source = route.read_text(encoding='utf-8')
+
+          import_anchor = '''import {
+            copyPersonalNotebookToWorkspace,
+            WorkspaceNotebookTransferError,
+          } from "../services/workspaceNotebookTransfer";
+          '''
+          import_block = '''import {
+            transferNotebookOwnership,
+            NotebookOwnershipTransferError,
+          } from "../services/notebookOwnershipTransfer";
+          '''
+          if import_block not in source:
+            if import_anchor not in source:
+              raise SystemExit('workspace transfer import anchor not found')
+            source = source.replace(import_anchor, import_anchor + import_block, 1)
+
+          old_members = '''app.get("/:id/members", (c) => {
+            const db = getDb();
+            const userId = c.req.header("X-User-Id") || "";
+            const id = c.req.param("id");
+
+            const { permission } = resolveNotebookPermission(id, userId);
+            if (!hasPermission(permission, "manage")) {
+              return c.json({ error: "forbidden" }, 403);
+            }
+
+            const members = notebookMembersRepository.listByNotebook(id);
+
+            return c.json(members);
+          });
+          '''
+          new_members = '''app.get("/:id/members", (c) => {
+            const db = getDb();
+            const userId = c.req.header("X-User-Id") || "";
+            const id = c.req.param("id");
+
+            const { permission } = resolveNotebookPermission(id, userId);
+            if (!hasPermission(permission, "manage")) {
+              return c.json({ error: "forbidden" }, 403);
+            }
+
+            const notebook = db.prepare(`
+              SELECT nb.id, nb.userId, nb.createdAt, nb.updatedAt,
+                     u.username, u.email, u.displayName, u.avatarUrl
+                FROM notebooks nb
+                JOIN users u ON u.id = nb.userId
+               WHERE nb.id = ? AND nb.isDeleted = 0
+            `).get(id) as {
+              id: string;
+              userId: string;
+              createdAt: string;
+              updatedAt: string;
+              username: string;
+              email: string | null;
+              displayName: string | null;
+              avatarUrl: string | null;
+            } | undefined;
+            if (!notebook) return c.json({ error: "notebook not found" }, 404);
+
+            const members = notebookMembersRepository
+              .listByNotebook(id)
+              .filter((member) => member.userId !== notebook.userId);
+            const owner = {
+              id: notebookMemberId(id, notebook.userId),
+              notebookId: id,
+              userId: notebook.userId,
+              role: "owner",
+              status: "active",
+              allowDownload: 1,
+              allowReshare: 1,
+              source: "manual",
+              sourceId: null,
+              invitedBy: null,
+              createdAt: notebook.createdAt,
+              updatedAt: notebook.updatedAt,
+              username: notebook.username,
+              email: notebook.email,
+              displayName: notebook.displayName,
+              avatarUrl: notebook.avatarUrl,
+            };
+
+            return c.json([owner, ...members]);
+          });
+          '''
+          if new_members not in source:
+            if old_members not in source:
+              raise SystemExit('members route anchor not found')
+            source = source.replace(old_members, new_members, 1)
+
+          transfer_route = '''app.post("/:id/transfer-owner", async (c) => {
+            const actorUserId = c.req.header("X-User-Id") || "";
+            const notebookId = c.req.param("id");
+            const body = await c.req.json().catch(() => ({}));
+
+            try {
+              const result = transferNotebookOwnership({
+                notebookId,
+                actorUserId,
+                targetUserId: String(body.targetUserId || ""),
+              });
+              return c.json(result);
+            } catch (error) {
+              if (error instanceof NotebookOwnershipTransferError) {
+                return c.json({ error: error.message, code: error.code }, error.status as any);
+              }
+              console.error("[notebooks.transfer-owner] failed:", error);
+              return c.json({ error: "转交所有者失败", code: "TRANSFER_OWNER_FAILED" }, 500);
+            }
+          });
+
+          '''
+          create_anchor = '// 创建笔记本\n'
+          if transfer_route not in source:
+            if create_anchor not in source:
+              raise SystemExit('create notebook anchor not found')
+            source = source.replace(create_anchor, transfer_route + create_anchor, 1)
+
+          route.write_text(source, encoding='utf-8')
+
+          api = Path('frontend/src/lib/api.impl.ts')
+          api_source = api.read_text(encoding='utf-8')
+          api_anchor = '''  removeNotebookMember: (id: string, userId: string) =>
+            request<{ success: boolean }>(`/notebooks/${id}/members/${userId}`, { method: "DELETE" }),
+          '''
+          api_method = '''  transferNotebookOwnership: (id: string, targetUserId: string) =>
+            request<{
+              notebookId: string;
+              previousOwnerId: string;
+              newOwnerId: string;
+              notebookCount: number;
+              noteCount: number;
+              attachmentCount: number;
+              detachedFromParent: boolean;
+            }>(`/notebooks/${id}/transfer-owner`, {
+              method: "POST",
+              body: JSON.stringify({ targetUserId }),
+            }),
+          '''
+          if api_method not in api_source:
+            if api_anchor not in api_source:
+              raise SystemExit('frontend notebook member API anchor not found')
+            api_source = api_source.replace(api_anchor, api_anchor + api_method, 1)
+          api.write_text(api_source, encoding='utf-8')
+          PY
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run owner transfer backend test
+        working-directory: backend
+        run: node --import tsx --import ./tests/setup-db-isolation.ts --test tests/notebook-owner-transfer.test.ts
+
+      - name: Backend typecheck
+        working-directory: backend
+        run: npx tsc --noEmit
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run permission management frontend tests
+        working-directory: frontend
+        run: npm run test:run -- src/components/__tests__/NotebookPermissionManagement.test.ts src/components/__tests__/NotebookShareDialogClipboard.test.ts
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/src/routes/notebooks.ts backend/src/services/notebookOwnershipTransfer.ts backend/tests/notebook-owner-transfer.test.ts frontend/src/lib/api.impl.ts frontend/src/components/NotebookShareDialog.tsx frontend/src/components/__tests__/NotebookPermissionManagement.test.ts
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "feat(permissions): add DingTalk-style notebook access management"
+          git push origin HEAD:feat/dingtalk-permission-management
