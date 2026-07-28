@@ -9,7 +9,6 @@ import {
   markOfflineNoteSnapshot,
 } from "@/lib/offlineRead";
 import {
-  OFFLINE_QUEUE_CONFLICT_EVENT,
   enqueue,
   getQueue,
   updateItem,
@@ -151,26 +150,6 @@ function syncError(code: string, message: string, status?: number): Error {
   return error;
 }
 
-function dispatchConflict(record: NoteSyncConflictRecord, localPayload: NoteMutation): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(OFFLINE_QUEUE_CONFLICT_EVENT, {
-    detail: {
-      noteId: record.noteId,
-      localVersion: record.baseVersion,
-      serverVersion: record.serverVersion,
-      localPayload,
-      serverSnapshot: {
-        title: record.serverTitle,
-        content: record.serverContent,
-        contentText: record.serverContentText,
-        updatedAt: record.serverUpdatedAt,
-      },
-      reason: record.reason,
-      message: "检测到多端版本冲突，已停止自动覆盖，并保留本地草稿。",
-    },
-  }));
-}
-
 function buildConflictRecord(
   noteId: string,
   data: NoteMutation,
@@ -264,8 +243,7 @@ function preserveConflict(
   const record = buildConflictRecord(noteId, data, baseVersion, server, reason);
   persistLocalDraft(noteId, data, baseVersion, { serverVersion: record.serverVersion });
   upsertConflictQueueItem(noteId, data, record.serverVersion);
-  const shouldNotify = recordNoteSyncConflict(record);
-  if (shouldNotify) dispatchConflict(record, data);
+  recordNoteSyncConflict(record);
   return record;
 }
 

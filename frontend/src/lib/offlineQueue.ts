@@ -9,8 +9,6 @@
 
 export type OfflineMutationType = "createNote" | "updateNote" | "deleteNote";
 
-export const OFFLINE_QUEUE_CONFLICT_EVENT = "offlineQueue:conflict";
-
 export interface OfflineQueueItem {
   id: string;
   type: OfflineMutationType;
@@ -315,17 +313,6 @@ function markVersionConflict(item: OfflineQueueItem, currentVersion?: number): v
     localVersion: item.body?.version,
     serverVersion: currentVersion,
   });
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent(OFFLINE_QUEUE_CONFLICT_EVENT, {
-      detail: {
-        noteId: item.noteId,
-        localVersion: item.body?.version,
-        serverVersion: currentVersion,
-        localPayload,
-        message,
-      },
-    }));
-  }
 }
 
 function messageFromResponse(status: number, data: any): string {

@@ -3,7 +3,6 @@ import type { OfflineQueueItem } from "@/lib/offlineQueue";
 import {
   getQueueItemNotePreview,
   getQueueItemNoteTitle,
-  getQueueItemStatusMessage,
   getSyncIndicatorPresentation,
 } from "../common/OfflineIndicator";
 
@@ -55,12 +54,6 @@ describe("OfflineIndicator conflict presentation", () => {
 
   it("shows a readable content preview instead of the note id", () => {
     expect(getQueueItemNotePreview(conflictItem())).toBe("同步冲突处理方案");
-  });
-
-  it("explains the two explicit resolution choices", () => {
-    expect(getQueueItemStatusMessage(conflictItem())).toBe(
-      "两个版本均已保留。请选择保留此设备内容，或使用服务器内容。",
-    );
   });
 
   it("falls back safely when old queue data has no title or content", () => {
@@ -133,19 +126,29 @@ describe("OfflineIndicator status information architecture", () => {
     });
   });
 
-  it("opens the real conflict resolution flow instead of a dead-end queue state", () => {
+  it("keeps version conflicts silent while background resolution is pending", () => {
     expect(getSyncIndicatorPresentation({
       ...basePresentationInput,
       pendingCount: 3,
       failedCount: 3,
       conflictCount: 3,
       queueCount: 3,
+    })).toBeNull();
+  });
+
+  it("still reports non-conflict failures when conflicts are also pending", () => {
+    expect(getSyncIndicatorPresentation({
+      ...basePresentationInput,
+      pendingCount: 4,
+      failedCount: 4,
+      conflictCount: 3,
+      queueCount: 1,
+      lastError: "network failure",
     })).toMatchObject({
       tone: "error",
-      label: "3 篇笔记存在版本冲突",
-      description: "本地和服务器内容都已保留，请选择最终版本。",
+      label: "1 项修改尚未同步",
       action: "details",
-      actionLabel: "处理冲突",
+      actionLabel: "查看并重试",
     });
   });
 

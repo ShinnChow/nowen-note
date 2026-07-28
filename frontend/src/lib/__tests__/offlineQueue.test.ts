@@ -41,6 +41,8 @@ describe("offlineQueue reliability", () => {
 
   it("marks a VERSION_CONFLICT update as conflict without replaying currentVersion", async () => {
     enqueueUpdate("note-1", 1);
+    const conflictEvents = vi.fn();
+    window.addEventListener("offlineQueue:conflict", conflictEvents);
     const fetchFn = vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 409,
@@ -49,6 +51,7 @@ describe("offlineQueue reliability", () => {
 
     const result = await flushQueue(fetchFn);
     const queue = getQueue();
+    window.removeEventListener("offlineQueue:conflict", conflictEvents);
 
     expect(result).toEqual({ success: 0, failed: 1, remaining: 1 });
     expect(fetchFn).toHaveBeenCalledTimes(1);
@@ -67,6 +70,7 @@ describe("offlineQueue reliability", () => {
       retryCount: 0,
     }));
     expect(queue[0].localPayload).toEqual(expect.objectContaining({ version: 1, title: "offline title" }));
+    expect(conflictEvents).not.toHaveBeenCalled();
   });
 
   it("does not automatically process an existing conflict item", async () => {

@@ -78,13 +78,11 @@ function describePendingQueue(pending: number): string {
   const failed = getFailedQueueItems();
   const conflicts = countVersionConflicts(failed);
   const blocked = failed.filter((item) => item.blocked && !item.conflict).length;
-  if (conflicts > 0) {
-    return `仍有 ${pending} 条待同步操作，其中 ${conflicts} 条存在版本冲突；本地内容已保留，请在同步状态面板处理。`;
-  }
+  const visiblePending = Math.max(0, pending - conflicts);
   if (blocked > 0) {
-    return `仍有 ${pending} 条待同步操作，其中 ${blocked} 条已暂停自动重试；请查看失败原因后重试或导出诊断。`;
+    return `仍有 ${visiblePending} 条待同步操作，其中 ${blocked} 条已暂停自动重试；请查看失败原因后重试或导出诊断。`;
   }
-  return `仍有 ${pending} 条待同步操作，服务器尚未确认完成，请稍后重试。`;
+  return `仍有 ${visiblePending} 条待同步操作，服务器尚未确认完成，请稍后重试。`;
 }
 
 export function countVersionConflicts(
@@ -96,7 +94,7 @@ export function countVersionConflicts(
 async function resolveConfiguredVersionConflicts(): Promise<void> {
   const result = await resolveQueuedNoteConflicts(getOfflineQueue());
   if (result.failed > 0) {
-    console.warn("[syncEngine] automatic latest-write conflict resolution incomplete", {
+    console.warn("[syncEngine] automatic server-version conflict resolution incomplete", {
       attempted: result.attempted,
       resolved: result.resolved,
       failures: result.failures,

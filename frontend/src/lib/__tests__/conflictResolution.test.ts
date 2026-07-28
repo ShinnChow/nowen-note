@@ -21,10 +21,8 @@ vi.mock("@/lib/noteSyncSafety", () => ({ clearNoteSyncConflict }));
 
 import {
   getConflictCopyId,
-  getConflictResolutionStrategy,
   resolveNoteConflict,
   resolveQueuedNoteConflicts,
-  setConflictResolutionStrategy,
 } from "@/lib/conflictResolution";
 
 function remoteNote(overrides: Partial<Note> = {}): Note {
@@ -91,14 +89,6 @@ describe("resolveNoteConflict", () => {
     apiMock.getNote.mockResolvedValue(remoteNote());
   });
 
-  it("defaults to latest-write-wins and allows opting back into manual handling", () => {
-    expect(getConflictResolutionStrategy()).toBe("latest-wins");
-    setConflictResolutionStrategy("ask");
-    expect(getConflictResolutionStrategy()).toBe("ask");
-    setConflictResolutionStrategy("latest-wins");
-    expect(getConflictResolutionStrategy()).toBe("latest-wins");
-  });
-
   it("keeps the local version using a non-queued confirmed write and clears only after ACK", async () => {
     const updated = remoteNote({
       title: "本地标题",
@@ -127,7 +117,7 @@ describe("resolveNoteConflict", () => {
     expect(discardNoteQueueItems).not.toHaveBeenCalled();
   });
 
-  it("automatically rebases only the newest queued write for each conflicted note", async () => {
+  it("automatically preserves only the newest queued write as a copy before accepting the server version", async () => {
     const older = conflictItem({ id: "queue-old", enqueuedAt: 100 });
     const newer = conflictItem({
       id: "queue-new",
@@ -147,15 +137,16 @@ describe("resolveNoteConflict", () => {
         version: 4,
       },
     });
-    const updated = remoteNote({
-      title: "最后提交的标题",
+    const copy = remoteNote({
+      id: getConflictCopyId(newer.id),
+      title: "最后提交的标题（冲突副本 2026-07-28 17:30）",
       content: "最后提交的正文",
       contentText: "最后提交的正文",
-      version: 9,
+      version: 1,
     });
-    apiMock.updateNoteConfirmed.mockResolvedValue(updated);
+    apiMock.createNoteConfirmed.mockResolvedValue(copy);
 
-    await expect(resolveQueuedNoteConflicts([older, newer], "latest-wins")).resolves.toEqual({
+    await expect(resolveQueuedNoteConflicts([older, newer])).resolves.toEqual({
       attempted: 1,
       resolved: 1,
       failed: 0,
@@ -163,21 +154,11 @@ describe("resolveNoteConflict", () => {
     });
 
     expect(apiMock.getNote).toHaveBeenCalledTimes(1);
-    expect(apiMock.updateNoteConfirmed).toHaveBeenCalledWith("note-1", expect.objectContaining({
-      title: "最后提交的标题",
+    expect(apiMock.createNoteConfirmed).toHaveBeenCalledWith(expect.objectContaining({
+      id: getConflictCopyId(newer.id),
+      title: expect.stringContaining("最后提交的标题（冲突副本"),
       content: "最后提交的正文",
-      version: 8,
     }));
-  });
-
-  it("leaves conflicts untouched when manual handling is selected", async () => {
-    await expect(resolveQueuedNoteConflicts([conflictItem()], "ask")).resolves.toEqual({
-      attempted: 0,
-      resolved: 0,
-      failed: 0,
-      failures: [],
-    });
-    expect(apiMock.getNote).not.toHaveBeenCalled();
     expect(apiMock.updateNoteConfirmed).not.toHaveBeenCalled();
   });
 

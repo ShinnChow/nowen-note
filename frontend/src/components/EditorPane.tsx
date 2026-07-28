@@ -60,7 +60,7 @@ import {
   is409Error,
   isAborted,
 } from "@/lib/optimisticLockApi";
-import { enqueue as enqueueOfflineMutation, OFFLINE_QUEUE_CONFLICT_EVENT } from "@/lib/offlineQueue";
+import { enqueue as enqueueOfflineMutation } from "@/lib/offlineQueue";
 import {
   saveDraft,
   loadDraft,
@@ -148,24 +148,6 @@ export default function EditorPane({
   const canEditActiveNote = canWriteNote(activeNote);
   const showDesktopOutline = showOutline && !state.editorFullscreen;
   const compactMobileEditing = keyboardVisible && canEditActiveNote && !effectiveLocked;
-
-  useEffect(() => {
-    const handleOfflineConflict = (event: Event) => {
-      const detail = (event as CustomEvent<{ noteId?: string; serverVersion?: number }>).detail || {};
-      console.warn("[EditorPane] offline queue version conflict:", detail);
-      if (detail.noteId && detail.noteId === activeNote?.id) {
-        actions.setSyncStatus("error");
-      }
-      toast.error(
-        t("editor.offlineVersionConflict", {
-          defaultValue: "检测到多端冲突，已停止自动覆盖，请刷新或打开版本历史处理。",
-        })
-      );
-    };
-
-    window.addEventListener(OFFLINE_QUEUE_CONFLICT_EVENT, handleOfflineConflict);
-    return () => window.removeEventListener(OFFLINE_QUEUE_CONFLICT_EVENT, handleOfflineConflict);
-  }, [activeNote?.id, actions, t]);
 
   useEffect(() => subscribeOpenInternalNoteLink(async ({ noteId }) => {
     await loadNote({
