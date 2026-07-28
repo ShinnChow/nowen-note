@@ -20,7 +20,7 @@ describe("Android image preview tap close contract", () => {
     const runtime = source("../../components/TiptapEditorInitializationRuntime.tsx");
 
     expect(runtime).toContain('event.pointerType === "touch"');
-    expect(runtime).toContain('window.matchMedia("(pointer: coarse)").matches');
+    expect(runtime).toContain('event.pointerType === "" && window.matchMedia("(pointer: coarse)").matches');
     expect(runtime).toContain("distance > TAP_MOVE_TOLERANCE_PX");
     expect(runtime).toContain('event.preventDefault()');
   });
