@@ -11,6 +11,8 @@
   [data-nowen-knowledge-tree="embedded"] {
     --nowen-mobile-tree-row-height: 26px;
     --nowen-mobile-tree-indent: 10px;
+    --nowen-mobile-tree-expander-width: 8px;
+    --nowen-mobile-tree-content-gap: 3px;
   }
 
   [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] {
@@ -18,21 +20,36 @@
     border-radius: 6px;
   }
 
+  /*
+   * Lock every part of the flex item, not only width. Some Android WebViews kept
+   * the original w-5 flex footprint even after width was overridden, leaving a
+   * visibly large gap between the chevron and the node icon.
+   */
   [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:first-child {
-    width: 14px !important;
+    width: var(--nowen-mobile-tree-expander-width) !important;
+    min-width: var(--nowen-mobile-tree-expander-width) !important;
+    max-width: var(--nowen-mobile-tree-expander-width) !important;
     height: var(--nowen-mobile-tree-row-height) !important;
+    flex: 0 0 var(--nowen-mobile-tree-expander-width) !important;
+    margin-right: -1px !important;
+    padding: 0 !important;
   }
 
   [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:first-child > svg {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
+    flex: 0 0 10px;
   }
 
   [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:nth-child(2) {
     min-height: var(--nowen-mobile-tree-row-height);
-    gap: 4px !important;
+    justify-content: flex-start;
+    gap: var(--nowen-mobile-tree-content-gap) !important;
+    margin-left: 0 !important;
     padding-top: 2px !important;
+    padding-right: 0 !important;
     padding-bottom: 2px !important;
+    padding-left: 0 !important;
     font-size: 12px !important;
     line-height: 18px !important;
   }
