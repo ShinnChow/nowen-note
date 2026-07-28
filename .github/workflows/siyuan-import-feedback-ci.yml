@@ -74,13 +74,18 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - name: SiYuan rich-text and Markdown Callout tests
+      - name: SiYuan import and rich-text Callout tests
         run: >-
           npm run test:run --
           src/components/__tests__/SiyuanImportProgressBridge.test.ts
           src/components/__tests__/SiyuanRichTextCalloutBridge.test.tsx
-          src/components/__tests__/MarkdownPreview.calloutTypes.test.tsx
           src/lib/__tests__/siyuanRichTextCallout.test.ts
-          src/lib/__tests__/markdownLivePreview.calloutTypes.test.tsx
+      - name: Markdown complete-preview five Callouts
+        if: always()
+        run: npm run test:run -- src/components/__tests__/MarkdownPreview.calloutTypes.test.tsx
+      - name: Markdown live-preview five Callouts
+        if: always()
+        run: npm run test:run -- src/lib/__tests__/markdownLivePreview.calloutTypes.test.tsx
       - name: Frontend typecheck
+        if: always()
         run: npx tsc -b
