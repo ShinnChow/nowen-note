@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("SiyuanRichTextCalloutBridge", () => {
-  it("decorates Callouts inserted after the editor mounts", async () => {
+  it("decorates Callouts inserted into the actual Tiptap editor root after mount", async () => {
     const callbacks: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callbacks.push(callback);
@@ -31,7 +31,7 @@ describe("SiyuanRichTextCalloutBridge", () => {
 
     document.body.insertAdjacentHTML(
       "beforeend",
-      '<div class="ProseMirror"><blockquote><p>[!TIP] Tip</p><p>正文</p></blockquote></div>',
+      '<div class="prose prose-sm max-w-none" contenteditable="true" spellcheck="false"><blockquote><p>[!TIP] Tip 💡</p><p>正文</p></blockquote></div>',
     );
 
     await act(async () => {
@@ -39,7 +39,10 @@ describe("SiyuanRichTextCalloutBridge", () => {
       callbacks.splice(0).forEach((callback) => callback(0));
     });
 
-    expect(document.querySelector("blockquote")?.classList.contains("nowen-siyuan-callout")).toBe(true);
+    const blockquote = document.querySelector("blockquote");
+    expect(blockquote?.classList.contains("nowen-siyuan-callout")).toBe(true);
+    expect(blockquote?.getAttribute("data-callout-type")).toBe("tip");
+    expect(blockquote?.querySelector("p")?.getAttribute("data-callout-title")).toBe("Tip");
 
     await act(async () => {
       root.unmount();
