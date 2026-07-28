@@ -46,6 +46,9 @@ jobs:
           grep -q "mobile-knowledge-tree-compact.css" frontend/src/main.tsx
           grep -q -- "--nowen-mobile-tree-row-height: 26px" frontend/src/mobile-knowledge-tree-compact.css
           grep -q -- "--nowen-mobile-tree-indent: 10px" frontend/src/mobile-knowledge-tree-compact.css
+          grep -q -- "--nowen-mobile-tree-expander-width: 8px" frontend/src/mobile-knowledge-tree-compact.css
+          grep -q -- "--nowen-mobile-tree-content-gap: 3px" frontend/src/mobile-knowledge-tree-compact.css
+          grep -q -- "flex: 0 0 var(--nowen-mobile-tree-expander-width) !important" frontend/src/mobile-knowledge-tree-compact.css
 
       - name: Install frontend dependencies
         working-directory: frontend
