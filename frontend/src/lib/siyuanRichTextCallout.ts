@@ -16,9 +16,26 @@ const CALLOUT_PRESENTATION: Record<SiyuanRichTextCalloutType, { title: string; i
 };
 
 const CALLOUT_MARKER_RE = /^\s*\[!(TIP|NOTE|IMPORTANT|WARNING|CAUTION)\]([+-])?(?:[ \t]+([^\r\n]+?))?\s*$/i;
-const CALLOUT_SELECTOR = ".ProseMirror blockquote";
+// Tiptap's editorProps replaces the default root class with `prose ...`, so the
+// production editor does not necessarily expose `.ProseMirror`. Keep the latter
+// as a compatibility fallback for older shells and tests.
+const CALLOUT_SELECTOR = ':is(.prose[contenteditable="true"], .ProseMirror) blockquote';
 const CALLOUT_CLASS = "nowen-siyuan-callout";
 const HEADER_CLASS = "nowen-siyuan-callout-header";
+
+function normalizeDefaultTitleWithIcon(
+  value: string,
+  presentation: { title: string; icon: string },
+): string {
+  const title = value.trim();
+  if (
+    title === `${presentation.title} ${presentation.icon}`
+    || title === `${presentation.icon} ${presentation.title}`
+  ) {
+    return presentation.title;
+  }
+  return title;
+}
 
 export function parseSiyuanRichTextCalloutMarker(value: string): SiyuanRichTextCalloutMarker | null {
   const match = CALLOUT_MARKER_RE.exec(String(value || ""));
@@ -26,7 +43,7 @@ export function parseSiyuanRichTextCalloutMarker(value: string): SiyuanRichTextC
 
   const type = match[1].toLowerCase() as SiyuanRichTextCalloutType;
   const presentation = CALLOUT_PRESENTATION[type];
-  const customTitle = (match[3] || "").trim();
+  const customTitle = normalizeDefaultTitleWithIcon(match[3] || "", presentation);
 
   return {
     type,

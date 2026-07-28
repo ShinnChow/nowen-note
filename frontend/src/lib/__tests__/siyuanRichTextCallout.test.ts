@@ -7,6 +7,8 @@ import {
   parseSiyuanRichTextCalloutMarker,
 } from "@/lib/siyuanRichTextCallout";
 
+const PRODUCTION_EDITOR_ROOT = 'div.prose[contenteditable="true"]';
+
 describe("SiYuan rich-text Callout compatibility", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -20,10 +22,16 @@ describe("SiYuan rich-text Callout compatibility", () => {
     expect(parseSiyuanRichTextCalloutMarker("[!CAUTION] Caution")).toMatchObject({ type: "caution", icon: "🚨", title: "Caution" });
   });
 
-  it("decorates imported blockquotes without rewriting their native marker text", () => {
+  it("normalizes SiYuan default titles that repeat their icon", () => {
+    expect(parseSiyuanRichTextCalloutMarker("[!TIP] Tip 💡")).toMatchObject({ title: "Tip", icon: "💡" });
+    expect(parseSiyuanRichTextCalloutMarker("[!NOTE] ✏️ Note")).toMatchObject({ title: "Note", icon: "✏️" });
+    expect(parseSiyuanRichTextCalloutMarker("[!WARNING] 自定义警告 ⚠️")).toMatchObject({ title: "自定义警告 ⚠️" });
+  });
+
+  it("decorates all five blockquotes in the actual Tiptap editor root", () => {
     document.body.innerHTML = `
-      <div class="ProseMirror">
-        <blockquote><p>[!TIP] Tip</p><p>这是Tip类型Callout</p></blockquote>
+      <div class="prose prose-sm max-w-none" contenteditable="true" spellcheck="false">
+        <blockquote><p>[!TIP] Tip 💡</p><p>这是Tip类型Callout</p></blockquote>
         <blockquote><p>[!NOTE] Note</p><p>这是Note类型Callout</p></blockquote>
         <blockquote><p>[!IMPORTANT] Important</p><p>这是Important类型Callout</p></blockquote>
         <blockquote><p>[!WARNING] Warning</p><p>这是Warning类型Callout</p></blockquote>
@@ -33,7 +41,7 @@ describe("SiYuan rich-text Callout compatibility", () => {
 
     expect(decorateSiyuanRichTextCallouts(document)).toBe(5);
 
-    const blocks = Array.from(document.querySelectorAll<HTMLQuoteElement>(".ProseMirror blockquote"));
+    const blocks = Array.from(document.querySelectorAll<HTMLQuoteElement>(`${PRODUCTION_EDITOR_ROOT} blockquote`));
     expect(blocks.map((block) => block.dataset.calloutType)).toEqual([
       "tip",
       "note",
@@ -42,27 +50,33 @@ describe("SiYuan rich-text Callout compatibility", () => {
       "caution",
     ]);
     expect(blocks[0].classList.contains("nowen-siyuan-callout")).toBe(true);
-    expect(blocks[0].firstElementChild?.textContent).toBe("[!TIP] Tip");
+    expect(blocks[0].firstElementChild?.textContent).toBe("[!TIP] Tip 💡");
     expect((blocks[0].firstElementChild as HTMLElement).dataset.calloutIcon).toBe("💡");
     expect((blocks[0].firstElementChild as HTMLElement).dataset.calloutTitle).toBe("Tip");
+  });
+
+  it("keeps the legacy ProseMirror root as a compatibility fallback", () => {
+    document.body.innerHTML = '<div class="ProseMirror"><blockquote><p>[!TIP] Tip</p><p>正文</p></blockquote></div>';
+    expect(decorateSiyuanRichTextCallouts(document)).toBe(1);
+    expect(document.querySelector("blockquote")?.classList.contains("nowen-siyuan-callout")).toBe(true);
   });
 
   it("leaves Markdown source and ordinary rich-text blockquotes untouched", () => {
     document.body.innerHTML = `
       <pre data-editor="markdown">&gt; [!TIP] Tip\n&gt; Markdown source</pre>
-      <div class="ProseMirror">
+      <div class="prose prose-sm" contenteditable="true">
         <blockquote><p>普通引用</p></blockquote>
       </div>
     `;
 
     expect(decorateSiyuanRichTextCallouts(document)).toBe(0);
     expect(document.querySelector("pre")?.textContent).toContain("[!TIP] Tip");
-    expect(document.querySelector(".ProseMirror blockquote")?.classList.contains("nowen-siyuan-callout")).toBe(false);
+    expect(document.querySelector(`${PRODUCTION_EDITOR_ROOT} blockquote`)?.classList.contains("nowen-siyuan-callout")).toBe(false);
   });
 
   it("removes presentation metadata when the marker is edited into a normal quote", () => {
     document.body.innerHTML = `
-      <div class="ProseMirror">
+      <div class="prose prose-sm" contenteditable="true">
         <blockquote><p>[!WARNING]- 自定义警告</p><p>正文</p></blockquote>
       </div>
     `;
