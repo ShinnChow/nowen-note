@@ -31,7 +31,7 @@ describe("SiyuanRichTextCalloutBridge", () => {
 
     document.body.insertAdjacentHTML(
       "beforeend",
-      '<div class="prose prose-sm max-w-none" contenteditable="true" spellcheck="false"><blockquote><p>[!TIP] Tip 💡</p><p>正文</p></blockquote></div>',
+      '<div class="prose prose-sm max-w-none focus:outline-none min-h-[300px] px-1" contenteditable="true" spellcheck="false"><blockquote><p>[!TIP] Tip 💡</p><p>正文</p></blockquote></div>',
     );
 
     await act(async () => {
@@ -39,7 +39,9 @@ describe("SiyuanRichTextCalloutBridge", () => {
       callbacks.splice(0).forEach((callback) => callback(0));
     });
 
-    const blockquote = document.querySelector("blockquote");
+    const editorRoot = document.querySelector('.prose[contenteditable="true"]');
+    const blockquote = editorRoot?.querySelector("blockquote");
+    expect(editorRoot?.classList.contains("ProseMirror")).toBe(false);
     expect(blockquote?.classList.contains("nowen-siyuan-callout")).toBe(true);
     expect(blockquote?.getAttribute("data-callout-type")).toBe("tip");
     expect(blockquote?.querySelector("p")?.getAttribute("data-callout-title")).toBe("Tip");
