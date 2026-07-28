@@ -9,6 +9,7 @@ on:
       - "frontend/src/components/SiyuanImportProgressBridge.tsx"
       - "frontend/src/components/SiyuanRichTextCalloutBridge.tsx"
       - "frontend/src/components/__tests__/SiyuanImportProgressBridge.test.ts"
+      - "frontend/src/components/__tests__/SiyuanRichTextCalloutBridge.test.tsx"
       - "frontend/src/lib/siyuanRichTextCallout.ts"
       - "frontend/src/lib/__tests__/siyuanRichTextCallout.test.ts"
       - "frontend/src/siyuan-rich-text-callout.css"
@@ -22,6 +23,7 @@ on:
       - "frontend/src/components/SiyuanImportProgressBridge.tsx"
       - "frontend/src/components/SiyuanRichTextCalloutBridge.tsx"
       - "frontend/src/components/__tests__/SiyuanImportProgressBridge.test.ts"
+      - "frontend/src/components/__tests__/SiyuanRichTextCalloutBridge.test.tsx"
       - "frontend/src/lib/siyuanRichTextCallout.ts"
       - "frontend/src/lib/__tests__/siyuanRichTextCallout.test.ts"
       - "frontend/src/siyuan-rich-text-callout.css"
@@ -68,6 +70,7 @@ jobs:
         run: >-
           npm run test:run --
           src/components/__tests__/SiyuanImportProgressBridge.test.ts
+          src/components/__tests__/SiyuanRichTextCalloutBridge.test.tsx
           src/lib/__tests__/siyuanRichTextCallout.test.ts
       - name: Frontend typecheck
         run: npx tsc -b
