@@ -1,15 +1,16 @@
 name: Apply Edge share copy fallback fix
 
 on:
-  issue_comment:
-    types: [created]
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.issue.number == 505 && github.event.comment.body == '/apply-edge-share-copy-fix'
+    if: github.head_ref == 'fix/edge-share-copy-fallback' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
