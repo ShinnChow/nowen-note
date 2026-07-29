@@ -1,0 +1,28 @@
+/*
+ * Desktop knowledge-tree density.
+ *
+ * Keep top-level folders at the existing comfortable height, while compacting
+ * second-level and deeper rows. These descendants are the document-heavy part
+ * of the tree, so a 24px row keeps related notes visually grouped without
+ * shrinking the primary navigation headings.
+ */
+@media (min-width: 768px) {
+  [data-nowen-knowledge-tree="embedded"] {
+    --nowen-desktop-tree-descendant-row-height: 24px;
+  }
+
+  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] {
+    min-height: var(--nowen-desktop-tree-descendant-row-height);
+  }
+
+  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button:first-child {
+    height: var(--nowen-desktop-tree-descendant-row-height) !important;
+  }
+
+  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button:nth-child(2) {
+    min-height: var(--nowen-desktop-tree-descendant-row-height);
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    line-height: 16px;
+  }
+}
