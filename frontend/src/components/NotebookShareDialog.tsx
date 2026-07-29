@@ -8,7 +8,6 @@ import {
   Link2,
   LockKeyhole,
   MessageCircle,
-  Plus,
   RefreshCw,
   RotateCcw,
   Search,
@@ -23,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { confirm } from "@/components/ui/confirm";
+import UserPickerCombobox from "@/components/UserPickerCombobox";
 import { api } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { buildPublicWebUrl } from "@/lib/publicWebOrigin";
@@ -83,16 +83,6 @@ function memberSource(member: NotebookMember): string {
   return "直接添加";
 }
 
-function permissionLabel(permission: NotebookDirectoryPermission): string {
-  return {
-    none: "不可见",
-    read: "可查看",
-    comment: "可评论",
-    write: "可编辑",
-    manage: "可管理",
-  }[permission];
-}
-
 function Avatar({ member }: { member: NotebookMember }) {
   const name = memberName(member);
   return member.avatarUrl ? (
@@ -147,8 +137,7 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
   const [memberSearch, setMemberSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showAddMember, setShowAddMember] = useState(false);
-  const [userQuery, setUserQuery] = useState("");
-  const [userCandidates, setUserCandidates] = useState<UserPublicInfo[]>([]);
+  const [memberSelectedUser, setMemberSelectedUser] = useState<UserPublicInfo | null>(null);
   const [newMemberRole, setNewMemberRole] = useState<MemberRole>("viewer");
 
   const [transferOpen, setTransferOpen] = useState(false);
@@ -169,8 +158,7 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
     allowReshare: false,
   });
 
-  const [aclQuery, setAclQuery] = useState("");
-  const [aclCandidates, setAclCandidates] = useState<UserPublicInfo[]>([]);
+  const [aclSelectedUser, setAclSelectedUser] = useState<UserPublicInfo | null>(null);
   const [aclPermission, setAclPermission] = useState<NotebookDirectoryPermission>("read");
   const [aclAllowDownload, setAclAllowDownload] = useState(true);
   const [aclAllowReshare, setAclAllowReshare] = useState(false);
@@ -216,6 +204,18 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
       : "未被添加的用户无法访问此目录";
   const copyUrl = publicationUrl || inviteUrl;
   const canTransfer = !notebook.workspaceId && owner?.userId === me?.id && collaborators.length > 0;
+  const memberDisabledUserLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    members.forEach((member) => { labels[member.userId] = "已是协作者"; });
+    if (me?.id) labels[me.id] = "你自己";
+    return labels;
+  }, [me?.id, members]);
+  const aclDisabledUserLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    if (me?.id) labels[me.id] = "你自己";
+    overrides.forEach((entry) => { labels[entry.userId] = "已设置独立权限"; });
+    return labels;
+  }, [me?.id, overrides]);
 
   function applyInvite(next: NotebookShareLink | null) {
     setInvite(next);
@@ -276,31 +276,19 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
     else toast.error("复制失败");
   }
 
-  async function searchUsers(kind: "member" | "acl") {
-    const query = (kind === "member" ? userQuery : aclQuery).trim();
-    if (!query) return;
+  async function addMember() {
+    if (!memberSelectedUser || saving) return;
+    setSaving(true);
     try {
-      const rows = await api.searchUsers(query);
-      if (kind === "member") {
-        setUserCandidates(rows.filter((user) => !members.some((member) => member.userId === user.id)));
-      } else {
-        setAclCandidates(rows.filter((user) => !overrides.some((entry) => entry.userId === user.id)));
-      }
-    } catch (error: any) {
-      toast.error(error?.message || "搜索用户失败");
-    }
-  }
-
-  async function addMember(userId: string) {
-    try {
-      await api.addNotebookMember(notebook.id, { userId, role: newMemberRole });
+      await api.addNotebookMember(notebook.id, { userId: memberSelectedUser.id, role: newMemberRole });
       setShowAddMember(false);
-      setUserQuery("");
-      setUserCandidates([]);
+      setMemberSelectedUser(null);
       toast.success("协作者已添加");
       await reload();
     } catch (error: any) {
       toast.error(error?.message || "添加协作者失败");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -547,19 +535,22 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
     await loadComments();
   }
 
-  async function addOverride(userId: string) {
+  async function addOverride() {
+    if (!aclSelectedUser || saving) return;
+    setSaving(true);
     try {
-      await notebookPublicationApi.setPermissionOverride(notebook.id, userId, {
+      await notebookPublicationApi.setPermissionOverride(notebook.id, aclSelectedUser.id, {
         permission: aclPermission,
         allowDownload: aclAllowDownload,
         allowReshare: aclAllowReshare,
       });
-      setAclQuery("");
-      setAclCandidates([]);
+      setAclSelectedUser(null);
       toast.success("独立权限已添加");
       await reload();
     } catch (error: any) {
       toast.error(error?.message || "权限添加失败");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -635,31 +626,38 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
                     <h3 className="text-base font-medium text-tx-secondary">所有协作者</h3>
                     <span className="rounded-full bg-app-hover px-2 py-0.5 text-[11px] text-tx-tertiary">{members.length}</span>
                   </div>
-                  <button onClick={() => setShowAddMember((current) => !current)} className="flex items-center gap-1 text-sm font-medium text-accent-primary">
-                    <Plus size={18} />添加协作者
+                  <button
+                    onClick={() => {
+                      setMemberSelectedUser(null);
+                      setShowAddMember((current) => !current);
+                    }}
+                    className="flex items-center gap-1 text-sm font-medium text-accent-primary"
+                  >
+                    <UserPlus size={17} />添加协作者
                   </button>
                 </div>
 
                 {showAddMember && (
                   <div className="mb-3 rounded-xl border border-accent-primary/25 bg-accent-primary/[0.04] p-3">
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <select value={newMemberRole} onChange={(event) => setNewMemberRole(event.target.value as MemberRole)} className="h-9 rounded-lg border border-app-border bg-app-bg px-3 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <UserPickerCombobox
+                          value={memberSelectedUser}
+                          onChange={setMemberSelectedUser}
+                          disabledUserLabels={memberDisabledUserLabels}
+                          placeholder="搜索用户名、显示名或邮箱"
+                          autoFocus
+                          idPrefix="notebook-member-user"
+                        />
+                      </div>
+                      <select value={newMemberRole} onChange={(event) => setNewMemberRole(event.target.value as MemberRole)} className="h-10 rounded-lg border border-app-border bg-app-bg px-3 text-sm sm:w-28">
                         <option value="viewer">可查看</option>
                         <option value="editor">可编辑</option>
                       </select>
-                      <Input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void searchUsers("member")} placeholder="搜索用户名或邮箱" className="h-9 flex-1" autoFocus />
-                      <Button variant="outline" onClick={() => searchUsers("member")}><Search size={14} className="mr-1" />搜索</Button>
+                      <Button disabled={!memberSelectedUser || saving} onClick={() => void addMember()}>
+                        {saving ? "添加中..." : "添加"}
+                      </Button>
                     </div>
-                    {userCandidates.length > 0 && (
-                      <div className="mt-2 overflow-hidden rounded-lg border border-app-border bg-app-surface">
-                        {userCandidates.map((user) => (
-                          <button key={user.id} onClick={() => addMember(user.id)} className="flex w-full items-center justify-between border-b border-app-border px-3 py-2.5 text-left last:border-b-0 hover:bg-app-hover">
-                            <span className="text-sm">{user.displayName || user.username}</span>
-                            <span className="flex items-center gap-1 text-xs text-accent-primary"><UserPlus size={13} />添加</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -814,9 +812,26 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
                 <div className="flex items-start gap-3"><AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-500" /><div><h3 className="text-sm font-semibold">目录级权限继承</h3><p className="mt-1 text-xs leading-5 text-tx-tertiary">最近的显式规则优先，并向全部子目录继承。{inheritsFromParent ? "当前存在父级规则，可添加覆盖或删除覆盖恢复继承。" : "当前目录是权限树根节点。"}</p></div></div>
               </section>
               <section>
-                <div className="grid gap-2 sm:grid-cols-[140px_1fr_auto]"><select value={aclPermission} onChange={(event) => setAclPermission(event.target.value as NotebookDirectoryPermission)} className="h-9 rounded-lg border border-app-border bg-app-bg px-2 text-sm"><option value="none">不可见</option><option value="read">可查看</option><option value="comment">可评论</option><option value="write">可编辑</option><option value="manage">可管理</option></select><Input value={aclQuery} onChange={(event) => setAclQuery(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void searchUsers("acl")} placeholder="搜索要设置独立权限的用户" className="h-9" /><Button variant="outline" onClick={() => searchUsers("acl")}><Search size={14} className="mr-1" />搜索</Button></div>
+                <div className="grid gap-2 sm:grid-cols-[140px_1fr_auto]">
+                  <select value={aclPermission} onChange={(event) => setAclPermission(event.target.value as NotebookDirectoryPermission)} className="h-10 rounded-lg border border-app-border bg-app-bg px-2 text-sm">
+                    <option value="none">不可见</option>
+                    <option value="read">可查看</option>
+                    <option value="comment">可评论</option>
+                    <option value="write">可编辑</option>
+                    <option value="manage">可管理</option>
+                  </select>
+                  <UserPickerCombobox
+                    value={aclSelectedUser}
+                    onChange={setAclSelectedUser}
+                    disabledUserLabels={aclDisabledUserLabels}
+                    placeholder="搜索要设置独立权限的用户"
+                    idPrefix="notebook-acl-user"
+                  />
+                  <Button disabled={!aclSelectedUser || saving} onClick={() => void addOverride()}>
+                    {saving ? "添加中..." : "添加"}
+                  </Button>
+                </div>
                 <div className="mt-2 flex gap-4 text-xs"><label className="flex items-center gap-1.5"><input type="checkbox" checked={aclAllowDownload} onChange={(event) => setAclAllowDownload(event.target.checked)} />允许下载</label><label className="flex items-center gap-1.5"><input type="checkbox" checked={aclAllowReshare} onChange={(event) => setAclAllowReshare(event.target.checked)} />允许二次分享</label></div>
-                {aclCandidates.map((user) => <button key={user.id} onClick={() => addOverride(user.id)} className="mt-2 flex w-full items-center justify-between rounded-lg border border-app-border px-3 py-2.5 text-sm hover:bg-app-hover"><span>{user.displayName || user.username}</span><span className="text-accent-primary">设为{permissionLabel(aclPermission)}</span></button>)}
               </section>
               <section>
                 <div className="mb-2 text-sm font-semibold">独立权限规则</div>
