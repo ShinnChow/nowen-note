@@ -45,7 +45,7 @@ import {
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
 import {
-  buildFirstLevelNotebookCounts,
+  buildFirstLevelNoteCounts,
   countOwnedNotebooks,
 } from "@/lib/knowledgeTreeStats";
 import { toast } from "@/lib/toast";
@@ -312,7 +312,7 @@ export function KnowledgeTreePanel({
   }, [draft?.kind, draft?.parentId]);
 
   const allChildren = useMemo(() => buildChildren(nodes), [nodes]);
-  const firstLevelNotebookCounts = useMemo(() => buildFirstLevelNotebookCounts(nodes), [nodes]);
+  const firstLevelNoteCounts = useMemo(() => buildFirstLevelNoteCounts(nodes), [nodes]);
   const filteredNodes = useMemo(() => filterKnowledgeTreeNodes(nodes, query), [nodes, query]);
   const children = useMemo(() => buildChildren(filteredNodes), [filteredNodes]);
   const effectiveExpanded = query.trim() ? new Set(filteredNodes.map((node) => node.id)) : expanded;
@@ -631,6 +631,9 @@ export function KnowledgeTreePanel({
     if (dx * dx + dy * dy > 100) cancelLongPress();
   };
 
+  const treeIndent = variant === "mobile" ? 12 : 16;
+  const treeInset = variant === "mobile" ? 0 : 2;
+
   const renderDraft = (depth: number) => {
     if (!draft) return null;
     return (
@@ -640,7 +643,7 @@ export function KnowledgeTreePanel({
           "rounded-md bg-accent-primary/5",
           draft.error && "bg-red-500/5",
         )}
-        style={{ paddingLeft: `${depth * 16 + 2}px` }}
+        style={{ paddingLeft: `${depth * treeIndent + treeInset}px` }}
         data-knowledge-tree-inline-create=""
       >
         <div className="flex min-w-0 items-center py-0.5">
@@ -702,17 +705,18 @@ export function KnowledgeTreePanel({
     const isExpanded = effectiveExpanded.has(node.id);
     const active = node.resourceType === "note" && state.activeNote?.id === node.resourceId;
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
-    const firstLevelNotebookCount = depth === 0 && node.nodeType === "folder" && !node.sharedRootId
-      ? firstLevelNotebookCounts.get(node.id) ?? 0
+    const firstLevelNoteCount = depth === 0 && node.nodeType === "folder" && !node.sharedRootId
+      ? firstLevelNoteCounts.get(node.id) ?? 0
       : null;
     return (
       <div key={node.id}>
         <div
           className={cn(
-            "group relative flex min-w-0 items-center rounded-md text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
+            "group relative flex min-w-0 items-center text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
+            variant === "mobile" ? "rounded-sm" : "rounded-md",
             active && "bg-app-active text-tx-primary",
           )}
-          style={{ paddingLeft: `${depth * 16 + 2}px` }}
+          style={{ paddingLeft: `${depth * treeIndent + treeInset}px` }}
           draggable={node.access.capabilities.canMove && !isSharedRoot(node)}
           onDragStart={(event) => {
             event.dataTransfer.effectAllowed = "move";
@@ -735,7 +739,15 @@ export function KnowledgeTreePanel({
           onTouchCancel={cancelLongPress}
           data-knowledge-tree-node-id={node.id}
         >
-          <button type="button" onClick={() => hasChildren && void toggle(node)} className="flex h-7 w-5 shrink-0 items-center justify-center text-tx-tertiary" aria-label={isExpanded ? "折叠" : "展开"}>
+          <button
+            type="button"
+            onClick={() => hasChildren && void toggle(node)}
+            className={cn(
+              "flex shrink-0 items-center justify-center text-tx-tertiary",
+              variant === "mobile" ? "h-6 w-4" : "h-7 w-5",
+            )}
+            aria-label={isExpanded ? "折叠" : "展开"}
+          >
             {hasChildren ? (isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : null}
           </button>
           <button
@@ -744,18 +756,21 @@ export function KnowledgeTreePanel({
               if ((event.ctrlKey || event.metaKey) && node.resourceType === "note") openSplit(node, "right");
               else void openDocument(node);
             }}
-            className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left text-xs"
+            className={cn(
+              "flex min-w-0 flex-1 items-center text-left",
+              variant === "mobile" ? "gap-1 py-0.5 text-[11px] leading-4" : "gap-1.5 py-1.5 text-xs",
+            )}
             title={node.title}
           >
             {nodeIcon(node)}
             <span className="min-w-0 flex-1 truncate">{node.title}</span>
-            {firstLevelNotebookCount !== null && (
+            {firstLevelNoteCount !== null && (
               <span
                 className="min-w-4 shrink-0 rounded-full bg-app-hover px-1.5 text-center text-[10px] leading-4 tabular-nums text-tx-tertiary transition-opacity [@media(hover:hover)]:group-hover:opacity-0"
-                aria-label={`“${node.title}”下共 ${firstLevelNotebookCount} 个笔记本`}
-                data-knowledge-tree-first-level-notebook-count=""
+                aria-label={`“${node.title}”下共 ${firstLevelNoteCount} 条笔记`}
+                data-knowledge-tree-first-level-note-count=""
               >
-                {firstLevelNotebookCount}
+                {firstLevelNoteCount}
               </span>
             )}
             {node.resourceType === "note" && node.isPinned === 1 && (

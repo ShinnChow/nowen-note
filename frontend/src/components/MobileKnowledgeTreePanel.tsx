@@ -43,7 +43,7 @@ import {
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
 import {
-  buildFirstLevelNotebookCounts,
+  buildFirstLevelNoteCounts,
   countOwnedNotebooks,
 } from "@/lib/knowledgeTreeStats";
 import {
@@ -305,7 +305,7 @@ export default function MobileKnowledgeTreePanel({
   }, [nodes, rememberOpened, state.activeNote?.id]);
 
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-  const firstLevelNotebookCounts = useMemo(() => buildFirstLevelNotebookCounts(nodes), [nodes]);
+  const firstLevelNoteCounts = useMemo(() => buildFirstLevelNoteCounts(nodes), [nodes]);
   const currentFolder = parentId ? byId.get(parentId) || null : null;
   const breadcrumbs = useMemo(() => {
     if (!currentFolder) return [];
@@ -647,8 +647,8 @@ export default function MobileKnowledgeTreePanel({
     const updatedAt = formatUpdatedAt(node.updatedAt);
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
     const desktopHoverHidden = variant === "desktop" ? "[@media(hover:hover)]:group-hover:hidden" : "";
-    const firstLevelNotebookCount = parentId === null && !showPath && node.nodeType === "folder" && !node.sharedRootId
-      ? firstLevelNotebookCounts.get(node.id) ?? 0
+    const firstLevelNoteCount = parentId === null && !showPath && node.nodeType === "folder" && !node.sharedRootId
+      ? firstLevelNoteCounts.get(node.id) ?? 0
       : null;
     return (
       <div
@@ -679,13 +679,13 @@ export default function MobileKnowledgeTreePanel({
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
               <span className={cn("min-w-0 flex-1 truncate", variant === "mobile" ? "text-sm" : "text-xs")}>{node.title}</span>
-              {firstLevelNotebookCount !== null && (
+              {firstLevelNoteCount !== null && (
                 <span
                   className="min-w-4 shrink-0 rounded-full bg-app-hover px-1.5 text-center text-[10px] leading-4 tabular-nums text-tx-tertiary transition-opacity [@media(hover:hover)]:group-hover:opacity-0"
-                  aria-label={`“${node.title}”下共 ${firstLevelNotebookCount} 个笔记本`}
-                  data-mobile-knowledge-tree-first-level-notebook-count=""
+                  aria-label={`“${node.title}”下共 ${firstLevelNoteCount} 条笔记`}
+                  data-mobile-knowledge-tree-first-level-note-count=""
                 >
-                  {firstLevelNotebookCount}
+                  {firstLevelNoteCount}
                 </span>
               )}
               {node.resourceType === "note" && node.isPinned === 1 && (

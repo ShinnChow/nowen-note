@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildFirstLevelNotebookCounts,
+  buildFirstLevelNoteCounts,
   countOwnedNotebooks,
 } from "@/lib/knowledgeTreeStats";
 import type { KnowledgeTreeNode } from "@/lib/knowledgeTreeApi";
@@ -58,19 +58,21 @@ describe("knowledge tree stats", () => {
     ])).toBe(2);
   });
 
-  it("统计一级目录下所有层级的笔记本并排除其他目录和共享内容", () => {
-    const counts = buildFirstLevelNotebookCounts([
+  it("统计一级目录下所有层级的笔记并排除其他目录、共享和已删除内容", () => {
+    const counts = buildFirstLevelNoteCounts([
       node("root", "file"),
       node("child-notebook", "notebook", { parentId: "root" }),
-      node("nested-notebook", "notebook", { parentId: "child-notebook" }),
-      node("shared-notebook", "notebook", { parentId: "root", sharedRootId: "shared-notebook" }),
-      node("deleted-notebook", "notebook", { parentId: "root", isDeleted: 1 }),
+      node("direct-note", "note", { parentId: "root" }),
+      node("nested-note-1", "note", { parentId: "child-notebook" }),
+      node("nested-note-2", "note", { parentId: "child-notebook" }),
+      node("shared-note", "note", { parentId: "root", sharedRootId: "shared-note" }),
+      node("deleted-note", "note", { parentId: "root", isDeleted: 1 }),
       node("deleted-folder", "file", { parentId: "root", isDeleted: 1 }),
-      node("notebook-under-deleted-folder", "notebook", { parentId: "deleted-folder" }),
+      node("note-under-deleted-folder", "note", { parentId: "deleted-folder" }),
       node("other-root-notebook", "notebook"),
     ]);
 
-    expect(counts.get("root")).toBe(2);
+    expect(counts.get("root")).toBe(3);
     expect(counts.get("other-root-notebook")).toBe(0);
   });
 });

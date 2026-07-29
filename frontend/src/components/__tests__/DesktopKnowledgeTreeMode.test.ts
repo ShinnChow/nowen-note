@@ -72,15 +72,21 @@ describe("desktop knowledge tree browsing mode", () => {
     expect(quickPanelSource).toContain('aria-label={`当前空间共 ${ownedNotebookCount} 个笔记本`}');
   });
 
-  it("shows descendant notebook counts on first-level directory rows", () => {
-    expect(treePanelSource).toContain('data-knowledge-tree-first-level-notebook-count=""');
-    expect(quickPanelSource).toContain('data-mobile-knowledge-tree-first-level-notebook-count=""');
-    expect(treePanelSource).toContain("buildFirstLevelNotebookCounts(nodes)");
-    expect(quickPanelSource).toContain("buildFirstLevelNotebookCounts(nodes)");
+  it("shows descendant note counts on first-level directory rows", () => {
+    expect(treePanelSource).toContain('data-knowledge-tree-first-level-note-count=""');
+    expect(quickPanelSource).toContain('data-mobile-knowledge-tree-first-level-note-count=""');
+    expect(treePanelSource).toContain("buildFirstLevelNoteCounts(nodes)");
+    expect(quickPanelSource).toContain("buildFirstLevelNoteCounts(nodes)");
   });
 
-  it("hides first-level notebook counts on mouse hover only", () => {
+  it("hides first-level note counts on mouse hover only", () => {
     expect(treePanelSource).toContain("[@media(hover:hover)]:group-hover:opacity-0");
     expect(quickPanelSource).toContain("[@media(hover:hover)]:group-hover:opacity-0");
+  });
+
+  it("uses tighter spacing for the mobile recursive tree", () => {
+    expect(treePanelSource).toContain('const treeIndent = variant === "mobile" ? 12 : 16;');
+    expect(treePanelSource).toContain('variant === "mobile" ? "h-6 w-4" : "h-7 w-5"');
+    expect(treePanelSource).toContain('variant === "mobile" ? "gap-1 py-0.5 text-[11px] leading-4" : "gap-1.5 py-1.5 text-xs"');
   });
 });

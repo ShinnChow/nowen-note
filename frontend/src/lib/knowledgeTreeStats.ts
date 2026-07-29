@@ -8,7 +8,7 @@ export function countOwnedNotebooks(nodes: KnowledgeTreeNode[]): number {
   )).length;
 }
 
-export function buildFirstLevelNotebookCounts(
+export function buildFirstLevelNoteCounts(
   nodes: KnowledgeTreeNode[],
 ): Map<string, number> {
   const children = new Map<string, KnowledgeTreeNode[]>();
@@ -34,7 +34,7 @@ export function buildFirstLevelNotebookCounts(
       const child = pending.pop()!;
       if (visited.has(child.id)) continue;
       visited.add(child.id);
-      if (child.resourceType === "notebook") count += 1;
+      if (child.resourceType === "note") count += 1;
       pending.push(...(children.get(child.id) || []));
     }
     counts.set(root.id, count);
