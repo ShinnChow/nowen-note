@@ -89,17 +89,17 @@ describe("OfflineIndicator status information architecture", () => {
     });
   });
 
-  it("explains offline preservation without exposing the queue", () => {
+  it("shows desktop offline state as a compact indicator", () => {
     expect(getSyncIndicatorPresentation({
       ...basePresentationInput,
       isOnline: false,
       pendingCount: 2,
       queueCount: 2,
-    })).toMatchObject({
+    })).toEqual({
       tone: "offline",
-      label: "当前离线",
-      description: "2 项修改已保存在本机，联网后将自动同步。",
+      label: "离线",
       action: "none",
+      compact: true,
     });
   });
 
@@ -154,11 +154,11 @@ describe("OfflineIndicator status information architecture", () => {
       failedCount: 3,
       conflictCount: 3,
       queueCount: 3,
-    })).toMatchObject({
+    })).toEqual({
       tone: "offline",
-      label: "当前离线",
-      description: "联网后将自动恢复同步。",
+      label: "离线",
       action: "none",
+      compact: true,
     });
   });
 

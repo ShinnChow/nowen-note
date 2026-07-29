@@ -105,11 +105,9 @@ export function getSyncIndicatorPresentation({
     if (suppressOffline) return null;
     return {
       tone: "offline",
-      label: "当前离线",
-      description: visiblePendingCount > 0
-        ? `${visiblePendingCount} 项修改已保存在本机，联网后将自动同步。`
-        : "联网后将自动恢复同步。",
+      label: "离线",
       action: "none",
+      compact: true,
     };
   }
 
@@ -299,6 +297,11 @@ export default function OfflineIndicator() {
   if (!status) return null;
 
   if (status.compact) {
+    const CompactStatusIcon = status.tone === "offline" ? CloudOff : Loader2;
+    const compactToneClasses = status.tone === "offline"
+      ? "border-zinc-300 text-tx-secondary dark:border-zinc-700"
+      : "border-blue-200 text-tx-secondary dark:border-blue-900";
+
     return (
       <div
         className="fixed right-3 z-[95]"
@@ -306,8 +309,11 @@ export default function OfflineIndicator() {
         role="status"
         aria-live="polite"
       >
-        <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-app-elevated px-3 py-2 text-xs font-medium text-tx-secondary shadow-lg dark:border-blue-900">
-          <Loader2 size={14} className="animate-spin text-blue-600 dark:text-blue-400" />
+        <div className={`inline-flex items-center gap-2 rounded-full border bg-app-elevated px-3 py-2 text-xs font-medium shadow-lg ${compactToneClasses}`}>
+          <CompactStatusIcon
+            size={14}
+            className={status.tone === "offline" ? undefined : "animate-spin text-blue-600 dark:text-blue-400"}
+          />
           {status.label}
         </div>
       </div>
