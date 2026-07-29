@@ -32,6 +32,13 @@ function nodePositions(editor: Editor, typeName: string): number[] {
   return positions;
 }
 
+function topLevelTypes(editor: Editor): string[] {
+  return Array.from(
+    { length: editor.state.doc.childCount },
+    (_, index) => editor.state.doc.child(index).type.name,
+  );
+}
+
 function changeIndent(editor: Editor, delta: number): boolean {
   return (editor.commands as any).changeIndent(delta);
 }
@@ -111,9 +118,8 @@ describe("code block indent commands", () => {
     editor.commands.setTextSelection(codePos + 3);
 
     expect(changeIndent(editor, 1)).toBe(true);
-    console.log("issue327-nested-json", JSON.stringify(editor.getJSON()));
 
-    expect(editor.state.doc.childCount).toBe(1);
+    expect(topLevelTypes(editor)).toEqual(["orderedList", "paragraph"]);
     const list = editor.state.doc.child(0);
     expect(list.type.name).toBe("orderedList");
     expect(list.childCount).toBe(2);
@@ -159,20 +165,18 @@ describe("code block indent commands", () => {
     });
     const [codePos] = nodePositions(editor, "codeBlock");
     editor.commands.setTextSelection(codePos + 2);
-    console.log("issue327-before-outdent", JSON.stringify(editor.getJSON()));
 
     expect(changeIndent(editor, -1)).toBe(true);
-    console.log("issue327-after-first-outdent", JSON.stringify(editor.getJSON()));
     expect(editor.state.doc.nodeAt(codePos)?.attrs.indent).toBe(0);
-    expect(editor.state.doc.childCount).toBe(1);
+    expect(topLevelTypes(editor)).toEqual(["orderedList", "paragraph"]);
 
     expect(changeIndent(editor, -1)).toBe(true);
-    console.log("issue327-after-second-outdent", JSON.stringify(editor.getJSON()));
-    const topLevelTypes = Array.from(
-      { length: editor.state.doc.childCount },
-      (_, index) => editor.state.doc.child(index).type.name,
-    );
-    expect(topLevelTypes).toEqual(["orderedList", "codeBlock", "orderedList"]);
+    expect(topLevelTypes(editor)).toEqual([
+      "orderedList",
+      "codeBlock",
+      "orderedList",
+      "paragraph",
+    ]);
     expect(editor.state.selection.$from.parent.type.name).toBe("codeBlock");
   });
 
