@@ -13,6 +13,8 @@ interface Props {
   idPrefix?: string;
 }
 
+const EMPTY_DISABLED_USER_LABELS: Record<string, string> = {};
+
 function userName(user: UserPublicInfo): string {
   return user.displayName || user.username;
 }
@@ -20,7 +22,7 @@ function userName(user: UserPublicInfo): string {
 export default function UserPickerCombobox({
   value,
   onChange,
-  disabledUserLabels = {},
+  disabledUserLabels = EMPTY_DISABLED_USER_LABELS,
   placeholder = "搜索用户名、显示名或邮箱",
   autoFocus = false,
   idPrefix = "user-picker",
