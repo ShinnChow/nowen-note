@@ -71,6 +71,8 @@ function SlashMenu({ editor, items, query, position, onSelect, onClose }: SlashM
   // 被菜单和编辑器处理，造成命令执行两次或额外插入段落。
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 中文输入法确认候选词时也会触发 Enter，不能把它当作菜单选择。
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();

@@ -376,6 +376,8 @@ export const MarkdownSlashMenu: React.FC<SlashMenuProps> = ({ state, items, view
     if (!state.active || !view) return;
     const handler = (e: KeyboardEvent) => {
       if (!state.active) return;
+      // 中文输入法确认候选词时也会触发 Enter，不能把它当作菜单选择。
+      if (e.isComposing || e.keyCode === 229) return;
       if (filtered.length === 0) {
         if (e.key === "Escape") {
           onClose();
