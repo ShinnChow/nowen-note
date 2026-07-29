@@ -121,7 +121,7 @@ function MobileKnowledgeTreeModeSurface({ surface }: { surface: MobileModeSurfac
   }, [mode, surface.navigatorSurface]);
 
   return mode === "tree" && createPortal(
-    <KnowledgeTreePanel variant="mobile" />,
+    <KnowledgeTreePanel variant="mobile" className="nowen-mobile-tree-density" />,
     surface.treeSlot,
     `${surface.id}:tree`,
   );
