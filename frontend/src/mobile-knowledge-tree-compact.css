@@ -8,6 +8,9 @@
  * visibly denser 20px height so large notebooks fit more content on screen.
  */
 .nowen-mobile-tree-density {
+  /* Compatibility aliases retained for existing CI and downstream themes. */
+  --nowen-mobile-tree-row-height: 26px;
+  --nowen-mobile-tree-indent: 10px;
   --nowen-mobile-tree-folder-row-height: 26px;
   --nowen-mobile-tree-note-row-height: 20px;
   --nowen-mobile-tree-expander-width: 8px;
