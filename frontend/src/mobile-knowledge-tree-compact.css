@@ -12,8 +12,8 @@
   --nowen-mobile-tree-row-height: 26px;
   --nowen-mobile-tree-indent: 10px;
 
-  --nowen-mobile-tree-root-folder-row-height: 22px;
-  --nowen-mobile-tree-folder-row-height: 20px;
+  --nowen-mobile-tree-root-folder-row-height: 20px;
+  --nowen-mobile-tree-folder-row-height: 18px;
   --nowen-mobile-tree-note-row-height: 16px;
   --nowen-mobile-tree-expander-width: 8px;
   --nowen-mobile-tree-content-gap: 3px;
@@ -34,6 +34,7 @@
   min-width: var(--nowen-mobile-tree-expander-width) !important;
   max-width: var(--nowen-mobile-tree-expander-width) !important;
   height: var(--nowen-mobile-tree-note-row-height) !important;
+  min-height: var(--nowen-mobile-tree-note-row-height) !important;
   flex: 0 0 var(--nowen-mobile-tree-expander-width) !important;
   margin-right: 0 !important;
   padding: 0 !important;
@@ -66,11 +67,12 @@
   font-size: 12px !important;
 }
 
-.nowen-mobile-tree-density [data-knowledge-tree-node-id] > button[aria-label$="下新建文档"],
-.nowen-mobile-tree-density [data-knowledge-tree-node-id] > button[title="更多"] {
+.nowen-mobile-tree-density [data-knowledge-tree-node-id] > button:nth-child(n + 3) {
   display: flex !important;
   width: var(--nowen-mobile-tree-action-width) !important;
+  min-width: var(--nowen-mobile-tree-action-width) !important;
   height: var(--nowen-mobile-tree-note-row-height) !important;
+  min-height: var(--nowen-mobile-tree-note-row-height) !important;
   flex: 0 0 var(--nowen-mobile-tree-action-width);
   touch-action: manipulation;
 }
