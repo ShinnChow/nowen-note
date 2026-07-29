@@ -12,7 +12,7 @@ const mainSource = readFileSync(path.resolve(__dirname, "../../main.tsx"), "utf8
 
 describe("mobile knowledge tree mode switch contract", () => {
   it("keeps both mobile directory modes without a switch in the content header", () => {
-    expect(bridgeSource).toContain('<KnowledgeTreePanel variant="mobile" />');
+    expect(bridgeSource).toContain('<KnowledgeTreePanel variant="mobile" className="nowen-mobile-tree-density" />');
     expect(bridgeSource).toContain('mode === "tree" && createPortal');
     expect(bridgeSource).toContain('surface.navigatorSurface.style.display = mode === "tree" ? "none" : ""');
     expect(bridgeSource).not.toContain("MOBILE_MODE_SWITCH_SLOT_ATTRIBUTE");
