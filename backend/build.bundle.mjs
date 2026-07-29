@@ -20,10 +20,11 @@
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { rmSync, mkdirSync } from "node:fs";
+import { rmSync, mkdirSync, statSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outdir = join(__dirname, "dist");
+const outfile = join(outdir, "index.js");
 
 // 干净起步，避免上次 tsc 残留的 d.ts 等无关产物混在里面
 rmSync(outdir, { recursive: true, force: true });
@@ -49,11 +50,15 @@ await build({
   platform: "node",
   format: "cjs",
   target: "node20",
-  outfile: join(outdir, "index.js"),
+  outfile,
   external,
-  // 业务里有 require('uuid') 等 ESM 包，esbuild 自动转
-  // 保留代码可读性：不 minify（minify 会让生产环境的报错栈非常难看，体积收益也有限）
-  minify: false,
+  treeShaking: true,
+  // v1.4.2 后业务代码显著增长，完全不压缩的单文件 bundle 会放大 Windows Defender
+  // 扫描、portable 解压和 Node 解析成本。只压缩语法与空白，保留函数/类标识符，
+  // 兼顾启动速度、安装包体积和生产报错栈可读性。
+  minifySyntax: true,
+  minifyWhitespace: true,
+  minifyIdentifiers: false,
   sourcemap: false,
   legalComments: "none",
   logLevel: "info",
@@ -66,5 +71,8 @@ await build({
 });
 
 const ms = Date.now() - start;
-console.log(`[backend bundle] done in ${ms}ms -> ${join(outdir, "index.js")}`);
+const bundleBytes = statSync(outfile).size;
+console.log(
+  `[backend bundle] done in ${ms}ms -> ${outfile} (${(bundleBytes / 1024 / 1024).toFixed(2)} MB)`
+);
 console.log(`[backend bundle] external: ${external.join(", ")}`);
