@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import { getDb } from "../db/schema.js";
 import { ensureKnowledgeTreePasswordTable } from "../db/knowledgeTreePasswordMigration.js";
+import { signFolderUnlockToken } from "../lib/knowledgeTreePasswordAccess.js";
 import {
   clearKnowledgeNodeRole,
   hasKnowledgeCapability,
@@ -224,13 +225,33 @@ app.post("/nodes/:nodeId/unlock", async (c) => {
     }
     const body = await c.req.json().catch(() => ({}));
     const password = typeof body.password === "string" ? body.password : "";
-    const row = target.db.prepare("SELECT passwordHash FROM notebook_passwords WHERE notebookId = ?")
-      .get(target.notebookId) as { passwordHash: string } | undefined;
-    if (!row) return c.json({ success: true, isPasswordProtected: false });
+    const row = target.db.prepare("SELECT passwordHash, passwordVersion FROM notebook_passwords WHERE notebookId = ?")
+      .get(target.notebookId) as { passwordHash: string; passwordVersion: number } | undefined;
+    if (!row) {
+      return c.json({
+        success: true,
+        isPasswordProtected: false,
+        unlockToken: signFolderUnlockToken({
+          userId: userIdOf(c),
+          nodeId: c.req.param("nodeId"),
+          notebookId: target.notebookId,
+          passwordVersion: 0,
+        }),
+      });
+    }
     if (!password || !(await bcrypt.compare(passwordDigest(password), row.passwordHash))) {
       return c.json({ error: "密码错误", code: "FOLDER_PASSWORD_INVALID" }, 403);
     }
-    return c.json({ success: true, isPasswordProtected: true });
+    return c.json({
+      success: true,
+      isPasswordProtected: true,
+      unlockToken: signFolderUnlockToken({
+        userId: userIdOf(c),
+        nodeId: c.req.param("nodeId"),
+        notebookId: target.notebookId,
+        passwordVersion: row.passwordVersion,
+      }),
+    });
   } catch (error) {
     return mapError(c, error);
   }

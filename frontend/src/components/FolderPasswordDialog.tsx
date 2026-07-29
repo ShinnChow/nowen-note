@@ -14,7 +14,7 @@ export default function FolderPasswordDialog({
   node: KnowledgeTreeNode;
   mode: "unlock" | "manage";
   onClose: () => void;
-  onUnlocked: (nodeId: string) => void;
+  onUnlocked: (nodeId: string, unlockToken: string) => void;
   onChanged: (nodeId: string) => void;
 }) {
   const protectedFolder = node.isPasswordProtected === 1;
@@ -49,8 +49,8 @@ export default function FolderPasswordDialog({
     setSaving(true);
     try {
       if (mode === "unlock") {
-        await knowledgeTreeApi.unlockFolder(node.id, currentPassword);
-        onUnlocked(node.id);
+        const result = await knowledgeTreeApi.unlockFolder(node.id, currentPassword);
+        onUnlocked(node.id, result.unlockToken);
       } else {
         await knowledgeTreeApi.setFolderPassword(node.id, {
           currentPassword: protectedFolder ? currentPassword : undefined,

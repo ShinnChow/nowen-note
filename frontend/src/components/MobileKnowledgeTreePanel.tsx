@@ -1017,8 +1017,8 @@ export default function MobileKnowledgeTreePanel({
               setPasswordDialog(null);
               setPendingFolderOpenId(null);
             }}
-            onUnlocked={(nodeId) => {
-              setUnlockedFolderIds(rememberUnlockedFolder(nodeId));
+            onUnlocked={(nodeId, unlockToken) => {
+              setUnlockedFolderIds(rememberUnlockedFolder(nodeId, unlockToken));
               if (pendingFolderOpenId === nodeId) {
                 setView("browse");
                 setParentId(nodeId);

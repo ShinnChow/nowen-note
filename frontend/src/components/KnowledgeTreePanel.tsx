@@ -972,8 +972,8 @@ export function KnowledgeTreePanel({
               setPasswordDialog(null);
               setPendingFolderOpenId(null);
             }}
-            onUnlocked={(nodeId) => {
-              setUnlockedFolderIds(rememberUnlockedFolder(nodeId));
+            onUnlocked={(nodeId, unlockToken) => {
+              setUnlockedFolderIds(rememberUnlockedFolder(nodeId, unlockToken));
               if (pendingFolderOpenId === nodeId) {
                 setExpanded((current) => new Set(current).add(nodeId));
                 const target = nodes.find((node) => node.id === nodeId);

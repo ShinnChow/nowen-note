@@ -188,7 +188,7 @@ export const knowledgeTreeApi = {
   },
 
   unlockFolder(nodeId: string, password: string) {
-    return request<{ success: true; isPasswordProtected: boolean }>(
+    return request<{ success: true; isPasswordProtected: boolean; unlockToken: string }>(
       `/nodes/${encodeURIComponent(nodeId)}/unlock`,
       { method: "POST", body: JSON.stringify({ password }) },
     );
