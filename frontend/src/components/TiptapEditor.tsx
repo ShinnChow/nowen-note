@@ -120,6 +120,7 @@ import {
 } from "@/components/FontSizeExtension";
 import { LineHeightExtension, LINE_HEIGHT_PRESETS } from "@/components/LineHeightExtension";
 import CodeBlockView from "@/components/CodeBlockView";
+import { IndentExtension } from "@/lib/codeBlockIndent";
 import { SearchReplacePanel, createSearchReplaceExtension, searchReplacePluginKey } from "@/components/SearchReplacePanel";
 import { Video as VideoExtension, createVideoFileAttrs } from "@/components/VideoExtension";
 import { serializeProseMirrorPlainText } from "@/lib/proseMirrorPlainText";
@@ -729,61 +730,6 @@ function toggleHeadingSmart(editor: any, level: 1 | 2 | 3 | 4 | 5 | 6) {
     editor.chain().focus().toggleHeading({ level }).run();
   }
 }
-
-// 自定义缩进扩展
-// 支持段落、标题、列表（bullet / ordered / task）、引用、代码块整体做"手动缩进"调整。
-// 通过 data-indent 属性 + CSS 的 padding-left 实现纯视觉缩进，不破坏文档结构。
-const INDENT_MIN = 0;
-const INDENT_MAX = 8;
-const INDENTABLE_TYPES = [
-  "paragraph",
-  "heading",
-  "blockquote",
-  "codeBlock",
-  "bulletList",
-  "orderedList",
-  "taskList",
-] as const;
-
-const IndentExtension = Extension.create({
-  name: "indent",
-  addGlobalAttributes() {
-    return [
-      {
-        types: [...INDENTABLE_TYPES],
-        attributes: {
-          indent: {
-            default: 0,
-            parseHTML: (element) => parseInt(element.getAttribute("data-indent") || "0", 10),
-            renderHTML: (attributes) => {
-              if (!attributes.indent || attributes.indent === 0) return {};
-              return { "data-indent": attributes.indent };
-            },
-          },
-        },
-      },
-    ];
-  },
-  addCommands() {
-    return {
-      // 对选区覆盖的可缩进块按 delta 调整 indent（限制 0..INDENT_MAX）
-      changeIndent: (delta: number) => ({ state, tr, dispatch }: any) => {
-        const { from, to } = state.selection;
-        let changed = false;
-        state.doc.nodesBetween(from, to, (node: any, pos: number) => {
-          if (!(INDENTABLE_TYPES as readonly string[]).includes(node.type.name)) return;
-          const current = (node.attrs as any).indent || 0;
-          const next = Math.max(INDENT_MIN, Math.min(INDENT_MAX, current + delta));
-          if (next === current) return;
-          tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: next });
-          changed = true;
-        });
-        if (changed && dispatch) dispatch(tr);
-        return changed;
-      },
-    } as any;
-  },
-});
 
 /**
  * BLOCK-ID-01: 块 ID 扩展
@@ -5212,6 +5158,12 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
 
         <ToolbarButton
           onClick={() => {
+            // Code blocks own their indentation even when nested in a list item.
+            // Route them through changeIndent before list commands can move the surrounding item.
+            if (editor.isActive("codeBlock")) {
+              (editor.chain().focus() as any).changeIndent(1).run();
+              return;
+            }
             if (editor.isActive("taskList")) {
               if (editor.chain().focus().sinkListItem("taskItem").run()) return;
             } else if (editor.isActive("bulletList") || editor.isActive("orderedList")) {
@@ -5228,6 +5180,12 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
         </ToolbarButton>
         <ToolbarButton
           onClick={() => {
+            // Code blocks own their indentation even when nested in a list item.
+            // Route them through changeIndent before list commands can move the surrounding item.
+            if (editor.isActive("codeBlock")) {
+              (editor.chain().focus() as any).changeIndent(-1).run();
+              return;
+            }
             if (editor.isActive("taskList")) {
               if (editor.chain().focus().liftListItem("taskItem").run()) return;
             } else if (editor.isActive("bulletList") || editor.isActive("orderedList")) {
