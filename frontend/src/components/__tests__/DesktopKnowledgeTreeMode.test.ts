@@ -56,6 +56,11 @@ describe("desktop knowledge tree browsing mode", () => {
     expect(quickPanelSource.match(/actionVisibility/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
+  it("keeps desktop quick-browse hover rows limited to create and more actions", () => {
+    expect(quickPanelSource).toContain('const desktopHoverHidden = variant === "desktop" ? "[@media(hover:hover)]:group-hover:hidden" : "";');
+    expect(quickPanelSource.match(/desktopHoverHidden/g)?.length).toBeGreaterThanOrEqual(6);
+  });
+
   it("applies pinned priority while building recursive tree sibling groups", () => {
     expect(treePanelSource).toContain("compareKnowledgeTreePinnedPriority(a, b)");
   });

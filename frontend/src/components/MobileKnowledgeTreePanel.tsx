@@ -646,6 +646,7 @@ export default function MobileKnowledgeTreePanel({
     const path = showPath ? buildMobileKnowledgeTreePath(node, nodes) : "";
     const updatedAt = formatUpdatedAt(node.updatedAt);
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
+    const desktopHoverHidden = variant === "desktop" ? "[@media(hover:hover)]:group-hover:hidden" : "";
     const firstLevelNotebookCount = parentId === null && !showPath && node.nodeType === "folder" && !node.sharedRootId
       ? firstLevelNotebookCounts.get(node.id) ?? 0
       : null;
@@ -687,9 +688,15 @@ export default function MobileKnowledgeTreePanel({
                   {firstLevelNotebookCount}
                 </span>
               )}
-              {node.resourceType === "note" && node.isPinned === 1 && <Pin size={11} className="shrink-0 fill-current text-accent-primary" />}
-              {node.resourceType === "note" && node.isFavorite === 1 && <Star size={11} className="shrink-0 fill-current text-amber-400" />}
-              {isSharedRoot(node) && <span className="shrink-0 rounded bg-accent-primary/10 px-1 text-[9px] text-accent-primary">共享</span>}
+              {node.resourceType === "note" && node.isPinned === 1 && (
+                <Pin size={11} className={cn("shrink-0 fill-current text-accent-primary", desktopHoverHidden)} />
+              )}
+              {node.resourceType === "note" && node.isFavorite === 1 && (
+                <Star size={11} className={cn("shrink-0 fill-current text-amber-400", desktopHoverHidden)} />
+              )}
+              {isSharedRoot(node) && (
+                <span className={cn("shrink-0 rounded bg-accent-primary/10 px-1 text-[9px] text-accent-primary", desktopHoverHidden)}>共享</span>
+              )}
             </span>
             {(showPath || updatedAt) && (
               <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] text-tx-tertiary">
@@ -699,7 +706,7 @@ export default function MobileKnowledgeTreePanel({
               </span>
             )}
           </span>
-          {node.nodeType === "folder" && <ChevronRight size={16} className="shrink-0 text-tx-tertiary" />}
+          {node.nodeType === "folder" && <ChevronRight size={16} className={cn("shrink-0 text-tx-tertiary", desktopHoverHidden)} />}
         </button>
         {node.nodeType !== "folder" && hasChildren && (
           <button
@@ -713,6 +720,7 @@ export default function MobileKnowledgeTreePanel({
             className={cn(
               "flex shrink-0 items-center justify-center text-tx-tertiary hover:bg-app-active hover:text-tx-primary",
               variant === "mobile" ? "h-9 w-9 rounded-lg" : "h-7 w-7 rounded-md",
+              desktopHoverHidden,
             )}
             aria-label={`查看“${node.title}”的子内容`}
           >
