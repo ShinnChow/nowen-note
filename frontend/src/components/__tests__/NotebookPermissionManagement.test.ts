@@ -29,8 +29,11 @@ describe("Notebook permission management", () => {
     expect(source).toContain("batchRemove");
   });
 
-  it("uses the same searchable dropdown picker for explicit permission rules", () => {
+  it("uses the same searchable dropdown picker for collaborators and explicit rules", () => {
     expect(source).toContain('import UserPickerCombobox from "@/components/UserPickerCombobox"');
+    expect(source).toContain("memberSelectedUser");
+    expect(source).toContain('idPrefix="notebook-member-user"');
+    expect(source).toContain('disabledUserLabels={memberDisabledUserLabels}');
     expect(source).toContain("aclSelectedUser");
     expect(source).toContain('idPrefix="notebook-acl-user"');
     expect(source).toContain('disabledUserLabels={aclDisabledUserLabels}');
@@ -38,11 +41,13 @@ describe("Notebook permission management", () => {
     expect(userPickerSource).toContain('role="combobox"');
     expect(userPickerSource).toContain('role="listbox"');
     expect(userPickerSource).toContain('event.key === "ArrowDown"');
+    expect(userPickerSource).toContain('event.key === "ArrowUp"');
     expect(userPickerSource).toContain("正在加载人员");
     expect(userPickerSource).toContain("没有找到匹配人员");
   });
 
-  it("prevents selecting the current user or an existing explicit rule", () => {
+  it("prevents selecting the current user, an existing collaborator or explicit rule", () => {
+    expect(source).toContain('labels[member.userId] = "已是协作者"');
     expect(source).toContain('labels[me.id] = "你自己"');
     expect(source).toContain('labels[entry.userId] = "已设置独立权限"');
     expect(userPickerSource).toContain("disabledUserLabels[user.id]");
