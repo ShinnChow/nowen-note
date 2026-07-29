@@ -3,13 +3,15 @@
  *
  * The desktop tree intentionally keeps its current comfortable spacing. On a
  * narrow sidebar every horizontal pixel matters, so the mobile surface uses a
- * compact 26px row, a 10px hierarchy step and one visible row action. Creating
- * children remains available from the More / long-press menu, so the repeated
- * inline plus button is redundant on touch devices.
+ * compact 26px root row, a tighter 22px descendant row, a 10px hierarchy step
+ * and one visible row action. Creating children remains available from the
+ * More / long-press menu, so the repeated inline plus button is redundant on
+ * touch devices.
  */
 @media (max-width: 767px) {
   [data-nowen-knowledge-tree="embedded"] {
     --nowen-mobile-tree-row-height: 26px;
+    --nowen-mobile-tree-descendant-row-height: 22px;
     --nowen-mobile-tree-indent: 10px;
     --nowen-mobile-tree-expander-width: 8px;
     --nowen-mobile-tree-content-gap: 3px;
@@ -79,6 +81,27 @@
   [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button[title="更多"] > svg {
     width: 13px;
     height: 13px;
+  }
+
+  /*
+   * Keep root folders comfortable, but tighten second-level and deeper rows.
+   * The recursive wrapper selector starts below the root node, so desktop/Web
+   * and mobile root rows remain unchanged.
+   */
+  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] {
+    min-height: var(--nowen-mobile-tree-descendant-row-height);
+  }
+
+  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button:first-child,
+  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button[title="更多"] {
+    height: var(--nowen-mobile-tree-descendant-row-height) !important;
+  }
+
+  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button:nth-child(2) {
+    min-height: var(--nowen-mobile-tree-descendant-row-height);
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
+    line-height: 16px !important;
   }
 
   /*
