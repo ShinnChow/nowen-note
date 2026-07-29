@@ -62,40 +62,33 @@ describe("knowledge tree sidebar contract", () => {
     expect(menu).toContain("onNotePatched(node.id, patch)");
   });
 
-  it("scopes compact density to the dedicated mobile tree portal slot", () => {
+  it("applies visible compact density only to mobile note rows", () => {
     const main = source("../../main.tsx");
     const compactCss = source("../../mobile-knowledge-tree-compact.css");
     const bridge = source("../../components/SidebarSearchExperienceBridge.tsx");
-    const menu = source("../../components/KnowledgeTreeNodeMenu.tsx");
+    const panel = source("../../components/KnowledgeTreePanel.tsx");
 
     expect(main).toContain('import "./mobile-knowledge-tree-compact.css"');
     expect(main).not.toContain('import "./desktop-knowledge-tree-compact.css"');
-    expect(bridge).toContain('const MOBILE_TREE_SLOT_ATTRIBUTE = "data-mobile-knowledge-tree-classic-slot"');
-    expect(compactCss).toContain('[data-mobile-knowledge-tree-classic-slot] [data-nowen-knowledge-tree="embedded"]');
-    expect(compactCss).not.toContain('@media (max-width: 767px)');
-    expect(compactCss).not.toContain('[data-sidebar-variant="mobile"]');
-    expect(compactCss).toContain("--nowen-mobile-tree-row-height: 26px");
-    expect(compactCss).toContain("--nowen-mobile-tree-descendant-row-height: 22px");
-    expect(compactCss).toContain("--nowen-mobile-tree-indent: 10px");
-    expect(compactCss).toContain("--nowen-mobile-tree-expander-width: 8px");
-    expect(compactCss).toContain("--nowen-mobile-tree-content-gap: 3px");
-    expect(compactCss).toContain("min-width: var(--nowen-mobile-tree-expander-width) !important");
-    expect(compactCss).toContain("max-width: var(--nowen-mobile-tree-expander-width) !important");
-    expect(compactCss).toContain("flex: 0 0 var(--nowen-mobile-tree-expander-width) !important");
-    expect(compactCss).toContain("[data-knowledge-tree-section] > div > div > [data-knowledge-tree-node-id]");
-    expect(compactCss).not.toContain("[data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id]");
-    expect(compactCss).toContain("height: var(--nowen-mobile-tree-descendant-row-height) !important");
-    expect(compactCss).toContain("padding-top: 1px !important");
-    expect(compactCss).toContain("padding-bottom: 1px !important");
-    expect(compactCss).toContain("padding-left: 0 !important");
-    expect(compactCss).toContain('button[aria-label$="下新建文档"]');
-    expect(compactCss).toMatch(/button\[aria-label\$="下新建文档"\][\s\S]*display:\s*none\s*!important/);
-    expect(compactCss).toContain('button[title="更多"]');
-    expect(compactCss).toContain("width: 22px !important");
-    expect(compactCss).not.toContain('[data-sidebar-variant="desktop"]');
+    expect(bridge).toContain('<KnowledgeTreePanel variant="mobile" className="nowen-mobile-tree-density" />');
+    expect(compactCss).toContain(".nowen-mobile-tree-density");
+    expect(compactCss).toContain("--nowen-mobile-tree-folder-row-height: 26px");
+    expect(compactCss).toContain("--nowen-mobile-tree-note-row-height: 20px");
+    expect(compactCss).toContain(".lucide-file-text");
+    expect(compactCss).toContain(".lucide-file-code");
+    expect(compactCss).toContain("padding-top: 0 !important");
+    expect(compactCss).toContain("padding-bottom: 0 !important");
+    expect(compactCss).toContain("touch-action: manipulation");
+    expect(compactCss).not.toContain("data-mobile-knowledge-tree-classic-slot");
+    expect(compactCss).not.toContain("data-sidebar-variant");
+    expect(compactCss).not.toContain("@media (max-width: 767px)");
 
-    // Hiding the duplicated inline plus must not remove mobile creation access.
-    expect(menu).toContain("mobile long-press");
-    expect(menu).toContain('{ id: "create", label: "新建"');
+    // Existing interaction and title/status behavior must remain intact.
+    expect(panel).toContain("onClick={() => hasChildren && void toggle(node)}");
+    expect(panel).toContain('className="min-w-0 flex-1 truncate"');
+    expect(panel).toContain('aria-label={`在“${node.title}”下新建文档`}');
+    expect(panel).toContain('title="更多"');
+    expect(panel).toContain('aria-label="已置顶"');
+    expect(panel).toContain('aria-label="已收藏"');
   });
 });
