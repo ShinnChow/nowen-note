@@ -1,164 +1,143 @@
 /*
- * Mobile / Android knowledge-tree density.
+ * Mobile / Android tree-mode density.
  *
- * The desktop tree intentionally keeps its current comfortable spacing. On a
- * narrow sidebar every horizontal pixel matters, so the mobile surface uses a
- * compact 26px root row, a tighter 22px descendant row, a 10px hierarchy step
- * and one visible row action. Creating children remains available from the
- * More / long-press menu, so the repeated inline plus button is redundant on
- * touch devices.
+ * The mobile tree is rendered through a Portal and some Android WebViews can
+ * report a viewport wider than the CSS breakpoint. Scope the compact rules to
+ * the actual mobile Sidebar instead of relying on max-width, so Android, iOS
+ * and mobile Web all use the same density while desktop/Web stay unchanged.
  */
-@media (max-width: 767px) {
-  [data-nowen-knowledge-tree="embedded"] {
-    --nowen-mobile-tree-row-height: 26px;
-    --nowen-mobile-tree-descendant-row-height: 22px;
-    --nowen-mobile-tree-indent: 10px;
-    --nowen-mobile-tree-expander-width: 8px;
-    --nowen-mobile-tree-content-gap: 3px;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] {
+  --nowen-mobile-tree-row-height: 26px;
+  --nowen-mobile-tree-descendant-row-height: 22px;
+  --nowen-mobile-tree-indent: 10px;
+  --nowen-mobile-tree-expander-width: 8px;
+  --nowen-mobile-tree-content-gap: 3px;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] {
-    min-height: var(--nowen-mobile-tree-row-height);
-    border-radius: 6px;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] {
+  min-height: var(--nowen-mobile-tree-row-height);
+  border-radius: 6px;
+}
 
-  /*
-   * Lock every part of the flex item, not only width. Some Android WebViews kept
-   * the original w-5 flex footprint even after width was overridden, leaving a
-   * visibly large gap between the chevron and the node icon.
-   */
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:first-child {
-    width: var(--nowen-mobile-tree-expander-width) !important;
-    min-width: var(--nowen-mobile-tree-expander-width) !important;
-    max-width: var(--nowen-mobile-tree-expander-width) !important;
-    height: var(--nowen-mobile-tree-row-height) !important;
-    flex: 0 0 var(--nowen-mobile-tree-expander-width) !important;
-    margin-right: -1px !important;
-    padding: 0 !important;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:first-child {
+  width: var(--nowen-mobile-tree-expander-width) !important;
+  min-width: var(--nowen-mobile-tree-expander-width) !important;
+  max-width: var(--nowen-mobile-tree-expander-width) !important;
+  height: var(--nowen-mobile-tree-row-height) !important;
+  flex: 0 0 var(--nowen-mobile-tree-expander-width) !important;
+  margin-right: -1px !important;
+  padding: 0 !important;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:first-child > svg {
-    width: 10px;
-    height: 10px;
-    flex: 0 0 10px;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:first-child > svg {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:nth-child(2) {
-    min-height: var(--nowen-mobile-tree-row-height);
-    justify-content: flex-start;
-    gap: var(--nowen-mobile-tree-content-gap) !important;
-    margin-left: 0 !important;
-    padding-top: 2px !important;
-    padding-right: 0 !important;
-    padding-bottom: 2px !important;
-    padding-left: 0 !important;
-    font-size: 12px !important;
-    line-height: 18px !important;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:nth-child(2) {
+  min-height: var(--nowen-mobile-tree-row-height);
+  justify-content: flex-start;
+  gap: var(--nowen-mobile-tree-content-gap) !important;
+  margin-left: 0 !important;
+  padding-top: 2px !important;
+  padding-right: 0 !important;
+  padding-bottom: 2px !important;
+  padding-left: 0 !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:nth-child(2) > svg {
-    width: 14px;
-    height: 14px;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:nth-child(2) > svg {
+  width: 14px;
+  height: 14px;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:nth-child(2) > span:first-child {
-    width: 14px !important;
-    font-size: 13px !important;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button:nth-child(2) > span:first-child {
+  width: 14px !important;
+  font-size: 13px !important;
+}
 
-  /* The same Create command exists in the More / long-press menu on mobile. */
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button[aria-label$="下新建文档"] {
-    display: none !important;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button[aria-label$="下新建文档"] {
+  display: none !important;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button[title="更多"] {
-    display: flex !important;
-    width: 22px !important;
-    height: var(--nowen-mobile-tree-row-height) !important;
-    flex: 0 0 22px;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button[title="更多"] {
+  display: flex !important;
+  width: 22px !important;
+  height: var(--nowen-mobile-tree-row-height) !important;
+  flex: 0 0 22px;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button[title="更多"] > svg {
-    width: 13px;
-    height: 13px;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-node-id] > button[title="更多"] > svg {
+  width: 13px;
+  height: 13px;
+}
 
-  /*
-   * Keep root folders comfortable, but tighten second-level and deeper rows.
-   * The recursive wrapper selector starts below the root node, so desktop/Web
-   * and mobile root rows remain unchanged.
-   */
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] {
-    min-height: var(--nowen-mobile-tree-descendant-row-height);
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] {
+  min-height: var(--nowen-mobile-tree-descendant-row-height);
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button:first-child,
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button[title="更多"] {
-    height: var(--nowen-mobile-tree-descendant-row-height) !important;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button:first-child,
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button[title="更多"] {
+  height: var(--nowen-mobile-tree-descendant-row-height) !important;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button:nth-child(2) {
-    min-height: var(--nowen-mobile-tree-descendant-row-height);
-    padding-top: 1px !important;
-    padding-bottom: 1px !important;
-    line-height: 16px !important;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id] > button:nth-child(2) {
+  min-height: var(--nowen-mobile-tree-descendant-row-height);
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  line-height: 16px !important;
+}
 
-  /*
-   * KnowledgeTreePanel currently writes desktop indentation inline. Override it
-   * only on the mobile breakpoint and derive compact depth from the recursive
-   * wrapper structure. Eight levels covers the supported practical depth while
-   * keeping the document data untouched.
-   */
-  [data-knowledge-tree-section] > div > [data-knowledge-tree-node-id] {
-    padding-left: 0 !important;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div > [data-knowledge-tree-node-id] {
+  padding-left: 0 !important;
+}
 
-  [data-knowledge-tree-section] > div > div > [data-knowledge-tree-node-id] {
-    padding-left: calc(var(--nowen-mobile-tree-indent) * 1) !important;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div > div > [data-knowledge-tree-node-id] {
+  padding-left: calc(var(--nowen-mobile-tree-indent) * 1) !important;
+}
 
-  [data-knowledge-tree-section] > div > div > div > [data-knowledge-tree-node-id] {
-    padding-left: calc(var(--nowen-mobile-tree-indent) * 2) !important;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div > div > div > [data-knowledge-tree-node-id] {
+  padding-left: calc(var(--nowen-mobile-tree-indent) * 2) !important;
+}
 
-  [data-knowledge-tree-section] > div > div > div > div > [data-knowledge-tree-node-id] {
-    padding-left: calc(var(--nowen-mobile-tree-indent) * 3) !important;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div > div > div > div > [data-knowledge-tree-node-id] {
+  padding-left: calc(var(--nowen-mobile-tree-indent) * 3) !important;
+}
 
-  [data-knowledge-tree-section] > div > div > div > div > div > [data-knowledge-tree-node-id] {
-    padding-left: calc(var(--nowen-mobile-tree-indent) * 4) !important;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div > div > div > div > div > [data-knowledge-tree-node-id] {
+  padding-left: calc(var(--nowen-mobile-tree-indent) * 4) !important;
+}
 
-  [data-knowledge-tree-section] > div > div > div > div > div > div > [data-knowledge-tree-node-id] {
-    padding-left: calc(var(--nowen-mobile-tree-indent) * 5) !important;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div > div > div > div > div > div > [data-knowledge-tree-node-id] {
+  padding-left: calc(var(--nowen-mobile-tree-indent) * 5) !important;
+}
 
-  [data-knowledge-tree-section] > div > div > div > div > div > div > div > [data-knowledge-tree-node-id] {
-    padding-left: calc(var(--nowen-mobile-tree-indent) * 6) !important;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div > div > div > div > div > div > div > [data-knowledge-tree-node-id] {
+  padding-left: calc(var(--nowen-mobile-tree-indent) * 6) !important;
+}
 
-  [data-knowledge-tree-section] > div > div > div > div > div > div > div > div > [data-knowledge-tree-node-id] {
-    padding-left: calc(var(--nowen-mobile-tree-indent) * 7) !important;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div > div > div > div > div > div > div > div > [data-knowledge-tree-node-id] {
+  padding-left: calc(var(--nowen-mobile-tree-indent) * 7) !important;
+}
 
-  [data-knowledge-tree-section] > div > div > div > div > div > div > div > div > div > [data-knowledge-tree-node-id] {
-    padding-left: calc(var(--nowen-mobile-tree-indent) * 8) !important;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div > div > div > div > div > div > div > div > div > [data-knowledge-tree-node-id] {
+  padding-left: calc(var(--nowen-mobile-tree-indent) * 8) !important;
+}
 
-  [data-knowledge-tree-section] > div:first-child {
-    padding-top: 2px !important;
-    padding-bottom: 2px !important;
-    line-height: 14px;
-  }
+[data-sidebar-variant="mobile"] [data-knowledge-tree-section] > div:first-child {
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+  line-height: 14px;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-inline-create] > div {
-    min-height: 28px;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-knowledge-tree-inline-create] > div {
+  min-height: 28px;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
 
-  [data-nowen-knowledge-tree="embedded"] [data-swipe-blocker="knowledge-tree-scroll"] {
-    padding-bottom: 8px !important;
-  }
+[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"] [data-swipe-blocker="knowledge-tree-scroll"] {
+  padding-bottom: 8px !important;
 }
