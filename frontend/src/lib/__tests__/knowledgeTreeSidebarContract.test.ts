@@ -87,4 +87,17 @@ describe("knowledge tree sidebar contract", () => {
     expect(menu).toContain("mobile long-press");
     expect(menu).toContain('{ id: "create", label: "新建"');
   });
+
+  it("compacts second-level and deeper desktop rows without shrinking root rows", () => {
+    const main = source("../../main.tsx");
+    const compactCss = source("../../desktop-knowledge-tree-compact.css");
+
+    expect(main).toContain('import "./desktop-knowledge-tree-compact.css"');
+    expect(compactCss).toContain("@media (min-width: 768px)");
+    expect(compactCss).toContain("--nowen-desktop-tree-descendant-row-height: 24px");
+    expect(compactCss).toContain("[data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id]");
+    expect(compactCss).toContain("padding-top: 4px !important");
+    expect(compactCss).toContain("padding-bottom: 4px !important");
+    expect(compactCss).not.toMatch(/\[data-knowledge-tree-section\]\s*>\s*div\s*>\s*\[data-knowledge-tree-node-id\]/);
+  });
 });
