@@ -68,14 +68,20 @@ describe("knowledge tree sidebar contract", () => {
     const menu = source("../../components/KnowledgeTreeNodeMenu.tsx");
 
     expect(main).toContain('import "./mobile-knowledge-tree-compact.css"');
+    expect(main).not.toContain('import "./desktop-knowledge-tree-compact.css"');
     expect(compactCss).toContain("@media (max-width: 767px)");
     expect(compactCss).toContain("--nowen-mobile-tree-row-height: 26px");
+    expect(compactCss).toContain("--nowen-mobile-tree-descendant-row-height: 22px");
     expect(compactCss).toContain("--nowen-mobile-tree-indent: 10px");
     expect(compactCss).toContain("--nowen-mobile-tree-expander-width: 8px");
     expect(compactCss).toContain("--nowen-mobile-tree-content-gap: 3px");
     expect(compactCss).toContain("min-width: var(--nowen-mobile-tree-expander-width) !important");
     expect(compactCss).toContain("max-width: var(--nowen-mobile-tree-expander-width) !important");
     expect(compactCss).toContain("flex: 0 0 var(--nowen-mobile-tree-expander-width) !important");
+    expect(compactCss).toContain("[data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id]");
+    expect(compactCss).toContain("height: var(--nowen-mobile-tree-descendant-row-height) !important");
+    expect(compactCss).toContain("padding-top: 1px !important");
+    expect(compactCss).toContain("padding-bottom: 1px !important");
     expect(compactCss).toContain("padding-left: 0 !important");
     expect(compactCss).toContain('button[aria-label$="下新建文档"]');
     expect(compactCss).toMatch(/button\[aria-label\$="下新建文档"\][\s\S]*display:\s*none\s*!important/);
@@ -86,18 +92,5 @@ describe("knowledge tree sidebar contract", () => {
     // Hiding the duplicated inline plus must not remove mobile creation access.
     expect(menu).toContain("mobile long-press");
     expect(menu).toContain('{ id: "create", label: "新建"');
-  });
-
-  it("compacts second-level and deeper desktop rows without shrinking root rows", () => {
-    const main = source("../../main.tsx");
-    const compactCss = source("../../desktop-knowledge-tree-compact.css");
-
-    expect(main).toContain('import "./desktop-knowledge-tree-compact.css"');
-    expect(compactCss).toContain("@media (min-width: 768px)");
-    expect(compactCss).toContain("--nowen-desktop-tree-descendant-row-height: 24px");
-    expect(compactCss).toContain("[data-knowledge-tree-section] > div > div [data-knowledge-tree-node-id]");
-    expect(compactCss).toContain("padding-top: 4px !important");
-    expect(compactCss).toContain("padding-bottom: 4px !important");
-    expect(compactCss).not.toMatch(/\[data-knowledge-tree-section\]\s*>\s*div\s*>\s*\[data-knowledge-tree-node-id\]/);
   });
 });
