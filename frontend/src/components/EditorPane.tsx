@@ -60,7 +60,7 @@ import {
   is409Error,
   isAborted,
 } from "@/lib/optimisticLockApi";
-import { enqueue as enqueueOfflineMutation, OFFLINE_QUEUE_CONFLICT_EVENT } from "@/lib/offlineQueue";
+import { enqueue as enqueueOfflineMutation } from "@/lib/offlineQueue";
 import {
   saveDraft,
   loadDraft,
@@ -82,6 +82,12 @@ import {
   getSavedOutlineWidth,
   persistOutlineWidth,
 } from "@/lib/outlinePanelWidth";
+import { preserveNoteSyncConflictSnapshot } from "@/lib/noteSyncSafety";
+import {
+  NOTE_CONFLICT_AUTO_RESOLVED_EVENT,
+  shouldPersistPendingConflictSnapshot,
+  type NoteConflictAutoResolvedDetail,
+} from "@/lib/conflictResolution";
 
 // ---------------------------------------------------------------------------
 // 编辑器模式切换（MD vs Tiptap）
@@ -184,25 +190,6 @@ export default function EditorPane({
     setOutlineWidth(DEFAULT_OUTLINE_WIDTH);
     persistOutlineWidth(DEFAULT_OUTLINE_WIDTH);
   }, []);
-
-  useEffect(() => {
-    const handleOfflineConflict = (event: Event) => {
-      const detail = (event as CustomEvent<{ noteId?: string; serverVersion?: number }>).detail || {};
-      console.warn("[EditorPane] offline queue version conflict:", detail);
-      if (detail.noteId && detail.noteId === activeNote?.id) {
-        actions.setSyncStatus("error");
-      }
-      toast.error(
-        t("editor.offlineVersionConflict", {
-          defaultValue: "检测到多端冲突，已停止自动覆盖，请刷新或打开版本历史处理。",
-        })
-      );
-    };
-
-    window.addEventListener(OFFLINE_QUEUE_CONFLICT_EVENT, handleOfflineConflict);
-    return () => window.removeEventListener(OFFLINE_QUEUE_CONFLICT_EVENT, handleOfflineConflict);
-  }, [activeNote?.id, actions, t]);
-
   useEffect(() => subscribeOpenInternalNoteLink(async ({ noteId }) => {
     await loadNote({
       noteId,
@@ -725,6 +712,58 @@ export default function EditorPane({
     if (!current || (data._noteId && data._noteId !== current.id)) return;
     publishEditorSplitMirrorUpdate(current.id, data);
   }, []);
+
+  const persistPendingConflictSnapshot = useCallback((detail: NoteConflictAutoResolvedDetail): boolean => {
+    const current = activeNoteRef.current;
+    if (!current || current.id !== detail.note.id) return false;
+
+    const editorHandle = editorHandleRef.current;
+    if (editorHandle) {
+      let snapshot: ReturnType<NonNullable<NoteEditorHandle["getSnapshot"]>> = null;
+      try {
+        snapshot = editorHandle.getSnapshot?.() ?? null;
+      } catch {
+        return false;
+      }
+      if (!snapshot) return false;
+
+      const snapshotTitle = snapshot.title ?? current.title;
+      if (shouldPersistPendingConflictSnapshot(snapshot, current.title, detail)) {
+        preserveNoteSyncConflictSnapshot(current.id, {
+          version: current.version,
+          title: snapshotTitle,
+          content: snapshot.content,
+          contentText: snapshot.contentText,
+          contentFormat: current.contentFormat,
+        }, current.version, detail.note);
+        editorHandle.discardPending?.();
+        const localNote = {
+          ...current,
+          title: snapshotTitle,
+          content: snapshot.content,
+          contentText: snapshot.contentText,
+        };
+        activeNoteRef.current = localNote;
+        actions.setActiveNote(localNote);
+        return false;
+      }
+      editorHandle.discardPending?.();
+    }
+
+    activeNoteRef.current = detail.note;
+    actions.setActiveNote(detail.note);
+    return true;
+  }, [actions]);
+
+  useEffect(() => {
+    const handleAutoResolvedConflict = (event: Event) => {
+      const detail = (event as CustomEvent<NoteConflictAutoResolvedDetail>).detail;
+      if (!detail?.note || !detail.resolvedLocal) return;
+      persistPendingConflictSnapshot(detail);
+    };
+    window.addEventListener(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, handleAutoResolvedConflict);
+    return () => window.removeEventListener(NOTE_CONFLICT_AUTO_RESOLVED_EVENT, handleAutoResolvedConflict);
+  }, [persistPendingConflictSnapshot]);
 
   useEffect(() => {
     const prepareSplitClose = (event: Event) => {

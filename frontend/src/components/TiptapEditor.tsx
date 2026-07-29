@@ -3163,6 +3163,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
         return {
           content: JSON.stringify(editor.getJSON()),
           contentText: getEditorPlainTextForSave(editor, analysisCacheRef.current),
+          title: titleRef.current?.value || noteRef.current.title,
         };
       },
       acknowledgeSave: (ack) => {
