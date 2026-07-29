@@ -62,14 +62,15 @@ describe("knowledge tree sidebar contract", () => {
     expect(menu).toContain("onNotePatched(node.id, patch)");
   });
 
-  it("uses a mobile-only compact tree without changing desktop density", () => {
+  it("uses the actual mobile Sidebar as the compact-density boundary", () => {
     const main = source("../../main.tsx");
     const compactCss = source("../../mobile-knowledge-tree-compact.css");
     const menu = source("../../components/KnowledgeTreeNodeMenu.tsx");
 
     expect(main).toContain('import "./mobile-knowledge-tree-compact.css"');
     expect(main).not.toContain('import "./desktop-knowledge-tree-compact.css"');
-    expect(compactCss).toContain("@media (max-width: 767px)");
+    expect(compactCss).toContain('[data-sidebar-variant="mobile"] [data-nowen-knowledge-tree="embedded"]');
+    expect(compactCss).not.toContain("@media (max-width: 767px)");
     expect(compactCss).toContain("--nowen-mobile-tree-row-height: 26px");
     expect(compactCss).toContain("--nowen-mobile-tree-descendant-row-height: 22px");
     expect(compactCss).toContain("--nowen-mobile-tree-indent: 10px");
@@ -87,7 +88,7 @@ describe("knowledge tree sidebar contract", () => {
     expect(compactCss).toMatch(/button\[aria-label\$="下新建文档"\][\s\S]*display:\s*none\s*!important/);
     expect(compactCss).toContain('button[title="更多"]');
     expect(compactCss).toContain("width: 22px !important");
-    expect(compactCss).not.toContain("@media (min-width: 768px)");
+    expect(compactCss).not.toContain('[data-sidebar-variant="desktop"]');
 
     // Hiding the duplicated inline plus must not remove mobile creation access.
     expect(menu).toContain("mobile long-press");
