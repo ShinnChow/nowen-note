@@ -8,7 +8,6 @@ import {
   Link2,
   LockKeyhole,
   MessageCircle,
-  Plus,
   RefreshCw,
   RotateCcw,
   Search,
@@ -138,8 +137,7 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
   const [memberSearch, setMemberSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showAddMember, setShowAddMember] = useState(false);
-  const [userQuery, setUserQuery] = useState("");
-  const [userCandidates, setUserCandidates] = useState<UserPublicInfo[]>([]);
+  const [memberSelectedUser, setMemberSelectedUser] = useState<UserPublicInfo | null>(null);
   const [newMemberRole, setNewMemberRole] = useState<MemberRole>("viewer");
 
   const [transferOpen, setTransferOpen] = useState(false);
@@ -206,6 +204,12 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
       : "未被添加的用户无法访问此目录";
   const copyUrl = publicationUrl || inviteUrl;
   const canTransfer = !notebook.workspaceId && owner?.userId === me?.id && collaborators.length > 0;
+  const memberDisabledUserLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    members.forEach((member) => { labels[member.userId] = "已是协作者"; });
+    if (me?.id) labels[me.id] = "你自己";
+    return labels;
+  }, [me?.id, members]);
   const aclDisabledUserLabels = useMemo(() => {
     const labels: Record<string, string> = {};
     if (me?.id) labels[me.id] = "你自己";
@@ -272,27 +276,19 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
     else toast.error("复制失败");
   }
 
-  async function searchUsers() {
-    const query = userQuery.trim();
-    if (!query) return;
+  async function addMember() {
+    if (!memberSelectedUser || saving) return;
+    setSaving(true);
     try {
-      const rows = await api.searchUsers(query);
-      setUserCandidates(rows.filter((user) => !members.some((member) => member.userId === user.id)));
-    } catch (error: any) {
-      toast.error(error?.message || "搜索用户失败");
-    }
-  }
-
-  async function addMember(userId: string) {
-    try {
-      await api.addNotebookMember(notebook.id, { userId, role: newMemberRole });
+      await api.addNotebookMember(notebook.id, { userId: memberSelectedUser.id, role: newMemberRole });
       setShowAddMember(false);
-      setUserQuery("");
-      setUserCandidates([]);
+      setMemberSelectedUser(null);
       toast.success("协作者已添加");
       await reload();
     } catch (error: any) {
       toast.error(error?.message || "添加协作者失败");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -630,31 +626,38 @@ export default function NotebookShareDialog({ notebook, onClose }: Props) {
                     <h3 className="text-base font-medium text-tx-secondary">所有协作者</h3>
                     <span className="rounded-full bg-app-hover px-2 py-0.5 text-[11px] text-tx-tertiary">{members.length}</span>
                   </div>
-                  <button onClick={() => setShowAddMember((current) => !current)} className="flex items-center gap-1 text-sm font-medium text-accent-primary">
-                    <Plus size={18} />添加协作者
+                  <button
+                    onClick={() => {
+                      setMemberSelectedUser(null);
+                      setShowAddMember((current) => !current);
+                    }}
+                    className="flex items-center gap-1 text-sm font-medium text-accent-primary"
+                  >
+                    <UserPlus size={17} />添加协作者
                   </button>
                 </div>
 
                 {showAddMember && (
                   <div className="mb-3 rounded-xl border border-accent-primary/25 bg-accent-primary/[0.04] p-3">
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <select value={newMemberRole} onChange={(event) => setNewMemberRole(event.target.value as MemberRole)} className="h-9 rounded-lg border border-app-border bg-app-bg px-3 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <UserPickerCombobox
+                          value={memberSelectedUser}
+                          onChange={setMemberSelectedUser}
+                          disabledUserLabels={memberDisabledUserLabels}
+                          placeholder="搜索用户名、显示名或邮箱"
+                          autoFocus
+                          idPrefix="notebook-member-user"
+                        />
+                      </div>
+                      <select value={newMemberRole} onChange={(event) => setNewMemberRole(event.target.value as MemberRole)} className="h-10 rounded-lg border border-app-border bg-app-bg px-3 text-sm sm:w-28">
                         <option value="viewer">可查看</option>
                         <option value="editor">可编辑</option>
                       </select>
-                      <Input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void searchUsers()} placeholder="搜索用户名或邮箱" className="h-9 flex-1" autoFocus />
-                      <Button variant="outline" onClick={() => searchUsers()}><Search size={14} className="mr-1" />搜索</Button>
+                      <Button disabled={!memberSelectedUser || saving} onClick={() => void addMember()}>
+                        {saving ? "添加中..." : "添加"}
+                      </Button>
                     </div>
-                    {userCandidates.length > 0 && (
-                      <div className="mt-2 overflow-hidden rounded-lg border border-app-border bg-app-surface">
-                        {userCandidates.map((user) => (
-                          <button key={user.id} onClick={() => addMember(user.id)} className="flex w-full items-center justify-between border-b border-app-border px-3 py-2.5 text-left last:border-b-0 hover:bg-app-hover">
-                            <span className="text-sm">{user.displayName || user.username}</span>
-                            <span className="flex items-center gap-1 text-xs text-accent-primary"><UserPlus size={13} />添加</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
 
