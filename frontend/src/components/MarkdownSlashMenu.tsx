@@ -23,6 +23,7 @@ import {
   Heading5,
   Heading6,
   Image as ImagePlus,
+  FolderSearch,
   Italic,
   List,
   ListOrdered,
@@ -60,7 +61,11 @@ export interface MdSlashItem {
 
 export function getDefaultMdSlashItems(
   t: (key: string) => string,
-  opts: { onImageUpload?: () => void; onAIAssistant?: () => void },
+  opts: {
+    onImageUpload?: () => void;
+    onAttachmentLibrary?: () => void;
+    onAIAssistant?: () => void;
+  },
 ): MdSlashItem[] {
   const size = 16;
   return [
@@ -198,6 +203,15 @@ export function getDefaultMdSlashItems(
       category: t("slash.catInsert"),
       keywords: ["image", "picture", "photo", "图片", "插图"],
       run: () => opts.onImageUpload?.(),
+    },
+    {
+      id: "attachmentLibrary",
+      label: t("slash.attachmentLibrary"),
+      description: t("slash.attachmentLibraryDesc"),
+      icon: <FolderSearch size={size} />,
+      category: t("slash.catInsert"),
+      keywords: ["fj", "attachment", "file", "library", "附件", "文件", "文件管理"],
+      run: () => opts.onAttachmentLibrary?.(),
     },
     {
       id: "table",

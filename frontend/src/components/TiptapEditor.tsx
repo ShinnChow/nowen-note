@@ -9,6 +9,7 @@ import { Plugin, PluginKey } from "prosemirror-state";
 const DocxAttachmentPreview = lazy(() => import("@/office/word/DocxAttachmentPreview"));
 // 复用的附件详情抽屉（与 FileManager 同一份实现）
 import AttachmentDetailDrawer from "@/components/attachmentDetail/AttachmentDetailDrawer";
+import AttachmentLibraryPicker from "@/components/AttachmentLibraryPicker";
 import { posToDOMRect, type Content } from "@tiptap/core";
 import { AnimatePresence, motion } from "framer-motion";import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -81,7 +82,7 @@ import {
   Indent, Outdent, AlignLeft, AlignCenter, AlignRight, Trash2,
   FileType, Check, AlertCircle, Info, ArrowUp, Copy, Link as LinkIcon,
   ExternalLink, Unlink2, Workflow, Sigma, BookOpen, Download, Phone,
-  Type, Palette, Eraser, Paintbrush, ChevronDown, Search, Upload,
+  Type, Palette, Eraser, Paintbrush, ChevronDown, Search, Upload, FolderSearch,
   // 表格气泡菜单图标
   Rows3, Columns3, Merge, Split, Heading, Network,
 } from "lucide-react";
@@ -98,7 +99,7 @@ import { copyText } from "@/lib/clipboard";
 import { saveAs } from "file-saver";
 import { findTextAction, type TextAction } from "@/lib/textActions";
 import { choose as chooseDialog, prompt as promptDialog } from "@/components/ui/confirm";
-import { Note, Tag } from "@/types";
+import { Note, Tag, type FileItem } from "@/types";
 import TagInput from "@/components/TagInput";
 import AIWritingAssistant from "@/components/AIWritingAssistant";
 import type { NoteEditorHandle, NoteEditorHeading, NoteEditorProps } from "@/components/editors/types";
@@ -1579,6 +1580,8 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   const [attachmentPreview, setAttachmentPreview] = useState<
     { id: string; isDocx: boolean; filename: string } | null
   >(null);  // 图片预览状态
+  const [attachmentLibraryOpen, setAttachmentLibraryOpen] = useState(false);
+  const attachmentLibraryAnchorRef = useRef<AsyncInsertAnchor | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [imageZoom, setImageZoom] = useState(1);
   const [imageDrag, setImageDrag] = useState({ x: 0, y: 0 });
@@ -4332,6 +4335,35 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     releaseAsyncInsertAnchor(asyncInsertAnchorsRef.current, anchor);
   }, []);
 
+  const closeAttachmentLibrary = useCallback(() => {
+    setAttachmentLibraryOpen(false);
+    releaseEditorInsertAnchor(attachmentLibraryAnchorRef.current);
+    attachmentLibraryAnchorRef.current = null;
+  }, [releaseEditorInsertAnchor]);
+
+  const openAttachmentLibrary = useCallback(() => {
+    if (!editor || editor.isDestroyed) return;
+    releaseEditorInsertAnchor(attachmentLibraryAnchorRef.current);
+    attachmentLibraryAnchorRef.current = captureEditorInsertAnchor();
+    setAttachmentLibraryOpen(true);
+  }, [captureEditorInsertAnchor, editor, releaseEditorInsertAnchor]);
+
+  const insertExistingAttachment = useCallback((item: FileItem) => {
+    const anchor = attachmentLibraryAnchorRef.current;
+    if (!editor || !restoreEditorInsertAnchor(anchor)) {
+      closeAttachmentLibrary();
+      toast.error(t("tiptap.attachmentInsertPositionLost", { defaultValue: "插入位置已失效，请重试" }));
+      return;
+    }
+    editor
+      .chain()
+      .focus()
+      .insertContent(buildAttachmentLinkHtml(item.filename, item.url, item.size))
+      .run();
+    closeAttachmentLibrary();
+    toast.success(t("tiptap.attachmentLinkInserted", { defaultValue: "附件链接已插入" }));
+  }, [closeAttachmentLibrary, editor, restoreEditorInsertAnchor, t]);
+
   const handleImageUpload = useCallback(() => {
     if (!editor) return;
     const insertAnchor = captureEditorInsertAnchor();
@@ -5137,8 +5169,17 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
         <ToolbarButton onClick={handleVideoUpload} title={t('tiptap.uploadLocalVideo')}>
           <Upload size={iconSize} />
         </ToolbarButton>
-        <ToolbarButton onClick={handleAttachmentUpload} title={t('tiptap.insertAttachment')}>
+        <ToolbarButton
+          onClick={handleAttachmentUpload}
+          title={t("tiptap.uploadAndInsertAttachment", { defaultValue: "上传新附件" })}
+        >
           <Paperclip size={iconSize} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={openAttachmentLibrary}
+          title={t("tiptap.insertExistingAttachment", { defaultValue: "从文件管理插入" })}
+        >
+          <FolderSearch size={iconSize} />
         </ToolbarButton>
         <TableGridPicker iconSize={iconSize} onPick={insertTable} />
         <ToolbarButton onClick={insertMermaid} title={t('tiptap.insertMermaid')}>
@@ -6085,7 +6126,13 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       {/* 斜杠命令菜单 */}
       <SlashCommandsMenu
         editor={editor}
-        items={getDefaultSlashCommands(t, handleImageUpload, openAIAssistant)}
+        items={getDefaultSlashCommands(t, handleImageUpload, openAIAssistant, openAttachmentLibrary)}
+      />
+
+      <AttachmentLibraryPicker
+        open={attachmentLibraryOpen}
+        onClose={closeAttachmentLibrary}
+        onSelect={insertExistingAttachment}
       />
 
       {/* 笔记引用搜索菜单 */}

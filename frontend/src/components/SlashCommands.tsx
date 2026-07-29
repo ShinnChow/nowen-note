@@ -9,7 +9,7 @@ import {
   Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, CheckSquare,
   Quote, FileCode, Minus, ImagePlus, Sparkles,
   Bold, Italic, Highlighter, Table2,
-  Strikethrough, Code, Link as LinkIcon, Workflow, Sigma, BookOpen, Film
+  Strikethrough, Code, Link as LinkIcon, Workflow, Sigma, BookOpen, Film, FolderSearch
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -175,7 +175,12 @@ function SlashMenu({ editor, items, query, position, onSelect, onClose }: SlashM
 }
 
 // 获取默认的斜杠命令列表
-export function getDefaultSlashCommands(t: (key: string) => string, onImageUpload?: () => void, onAIAssistant?: () => void): SlashCommandItem[] {
+export function getDefaultSlashCommands(
+  t: (key: string) => string,
+  onImageUpload?: () => void,
+  onAIAssistant?: () => void,
+  onAttachmentLibrary?: () => void,
+): SlashCommandItem[] {
   return [
     // 标题
     {
@@ -484,6 +489,15 @@ export function getDefaultSlashCommands(t: (key: string) => string, onImageUploa
       category: t("slash.catInsert"),
       keywords: ["image", "picture", "photo", "图片", "插图"],
       action: () => onImageUpload?.(),
+    },
+    {
+      id: "attachmentLibrary",
+      label: t("slash.attachmentLibrary"),
+      description: t("slash.attachmentLibraryDesc"),
+      icon: <FolderSearch size={16} />,
+      category: t("slash.catInsert"),
+      keywords: ["fj", "attachment", "file", "library", "附件", "文件", "文件管理"],
+      action: () => onAttachmentLibrary?.(),
     },
     {
       // 视频：弹窗输 URL 后调 setVideo。支持直链 mp4/webm + B 站 / YouTube /
