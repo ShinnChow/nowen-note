@@ -166,6 +166,7 @@ export async function createNowenPackageWithPermissions(params: {
   notebookId?: string;
   includeSubNotebooks?: boolean;
   includeTrashed?: boolean;
+  folderUnlockTokens?: string[];
 }): Promise<Awaited<ReturnType<typeof createStableNowenPackageExport>>> {
   const manifest = buildRoundTripPermissionsManifest(params.userId, params.workspaceId);
   const result = await createStableNowenPackageExport(params);
