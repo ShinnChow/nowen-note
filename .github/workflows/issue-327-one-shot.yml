@@ -60,73 +60,31 @@ jobs:
               end = text.index(end_marker, start)
               text = text[:start] + text[end:]
 
-          indent_old = '''          onClick={() => {
-            if (editor.isActive("taskList")) {
-              if (editor.chain().focus().sinkListItem("taskItem").run()) return;
-            } else if (editor.isActive("bulletList") || editor.isActive("orderedList")) {
-              if (editor.chain().focus().sinkListItem("listItem").run()) {
-                normalizeAdjacentLists(editor);
-                return;
-              }
-            }
-            (editor.chain().focus() as any).changeIndent(1).run();
-          }}'''
-          indent_new = '''          onClick={() => {
-            // Code blocks own their indentation even when nested in a list item.
-            // Route them through changeIndent before list sink commands can move
-            // the surrounding numbered item instead.
-            if (editor.isActive("codeBlock")) {
-              (editor.chain().focus() as any).changeIndent(1).run();
-              return;
-            }
-            if (editor.isActive("taskList")) {
-              if (editor.chain().focus().sinkListItem("taskItem").run()) return;
-            } else if (editor.isActive("bulletList") || editor.isActive("orderedList")) {
-              if (editor.chain().focus().sinkListItem("listItem").run()) {
-                normalizeAdjacentLists(editor);
-                return;
-              }
-            }
-            (editor.chain().focus() as any).changeIndent(1).run();
-          }}'''
-          if indent_new not in text:
-              assert text.count(indent_old) == 1, "indent toolbar block changed"
-              text = text.replace(indent_old, indent_new, 1)
+          def insert_code_block_guard(source: str, delta: int) -> str:
+              command = f'(editor.chain().focus() as any).changeIndent({delta}).run();'
+              command_pos = source.index(command)
+              handler_start = source.rfind('          onClick={() => {\n', 0, command_pos)
+              assert handler_start >= 0, f"toolbar handler for {delta} not found"
+              body_start = handler_start + len('          onClick={() => {\n')
+              existing = source[body_start:command_pos]
+              guard = (
+                  '            // Code blocks own their indentation even when nested in a list item.\n'
+                  '            // Route them through changeIndent before list commands can move the surrounding item.\n'
+                  '            if (editor.isActive("codeBlock")) {\n'
+                  f'              (editor.chain().focus() as any).changeIndent({delta}).run();\n'
+                  '              return;\n'
+                  '            }\n'
+              )
+              if 'if (editor.isActive("codeBlock"))' not in existing:
+                  source = source[:body_start] + guard + source[body_start:]
+              return source
 
-          outdent_old = '''          onClick={() => {
-            if (editor.isActive("taskList")) {
-              if (editor.chain().focus().liftListItem("taskItem").run()) return;
-            } else if (editor.isActive("bulletList") || editor.isActive("orderedList")) {
-              if (editor.chain().focus().liftListItem("listItem").run()) {
-                normalizeAdjacentLists(editor);
-                return;
-              }
-            }
-            (editor.chain().focus() as any).changeIndent(-1).run();
-          }}'''
-          outdent_new = '''          onClick={() => {
-            if (editor.isActive("codeBlock")) {
-              (editor.chain().focus() as any).changeIndent(-1).run();
-              return;
-            }
-            if (editor.isActive("taskList")) {
-              if (editor.chain().focus().liftListItem("taskItem").run()) return;
-            } else if (editor.isActive("bulletList") || editor.isActive("orderedList")) {
-              if (editor.chain().focus().liftListItem("listItem").run()) {
-                normalizeAdjacentLists(editor);
-                return;
-              }
-            }
-            (editor.chain().focus() as any).changeIndent(-1).run();
-          }}'''
-          if outdent_new not in text:
-              assert text.count(outdent_old) == 1, "outdent toolbar block changed"
-              text = text.replace(outdent_old, outdent_new, 1)
+          text = insert_code_block_guard(text, 1)
+          text = insert_code_block_guard(text, -1)
 
           assert import_line in text
           assert start_marker not in text
-          assert indent_new in text
-          assert outdent_new in text
+          assert text.count('if (editor.isActive("codeBlock"))') >= 2
           path.write_text(text, encoding="utf-8")
           PY
 
