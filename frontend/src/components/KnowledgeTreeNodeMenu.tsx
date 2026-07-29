@@ -10,6 +10,7 @@ import {
   Image as ImageIcon,
   Link2,
   Lock,
+  LockKeyhole,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -65,6 +66,9 @@ export interface KnowledgeTreeNodeMenuProps {
   onRename: (node: KnowledgeTreeNode) => void | Promise<void>;
   onMove: (node: KnowledgeTreeNode) => void;
   onPermissions: (node: KnowledgeTreeNode) => void;
+  onPassword: (node: KnowledgeTreeNode) => void;
+  isNodeUnlocked: (node: KnowledgeTreeNode) => boolean;
+  onUnlockNode: (node: KnowledgeTreeNode) => void;
   onDelete: (node: KnowledgeTreeNode) => void | Promise<void>;
   onReload: () => void | Promise<void>;
   onNotePatched: (nodeId: string, patch: NoteStatusPatch) => void;
@@ -155,6 +159,13 @@ export function buildKnowledgeTreeNodeMenuItems(
   if (isNotebook && capabilities.canEdit) {
     management.push({ id: "change_icon", label: "修改图标", icon: <MoreHorizontal size={14} /> });
   }
+  if (isNotebook && capabilities.canManageMembers) {
+    management.push({
+      id: "folder_password",
+      label: node.isPasswordProtected === 1 ? "修改密码" : "设置密码",
+      icon: <LockKeyhole size={14} />,
+    });
+  }
   if (capabilities.canEdit) management.push({ id: "rename", label: "重命名", icon: <Pencil size={14} /> });
   if (isDocument && (isOwned || capabilities.canReshare)) {
     management.push({ id: "share_note", label: "分享", icon: <Share2 size={14} /> });
@@ -233,6 +244,9 @@ export default function KnowledgeTreeNodeMenu({
   onRename,
   onMove,
   onPermissions,
+  onPassword,
+  isNodeUnlocked,
+  onUnlockNode,
   onDelete,
   onReload,
   onNotePatched,
@@ -407,6 +421,20 @@ export default function KnowledgeTreeNodeMenu({
     }
     if (!node) return;
     onClose();
+    const protectedContentActions = new Set([
+      "new_note",
+      "new_markdown",
+      "new_folder",
+      "import_markdown",
+      "import_word",
+      "import_url",
+      "export_folder",
+      "delete",
+    ]);
+    if (node.nodeType === "folder" && !isNodeUnlocked(node) && protectedContentActions.has(actionId)) {
+      onUnlockNode(node);
+      return;
+    }
     try {
       switch (actionId) {
         case "open": await onOpen(node); break;
@@ -424,6 +452,7 @@ export default function KnowledgeTreeNodeMenu({
         case "rename": await onRename(node); break;
         case "move": onMove(node); break;
         case "permissions": onPermissions(node); break;
+        case "folder_password": onPassword(node); break;
         case "delete": await onDelete(node); break;
         case "share": setShareNotebook(await getNotebook()); break;
         case "share_note": setShareNote({ id: node.resourceId, title: node.title }); break;

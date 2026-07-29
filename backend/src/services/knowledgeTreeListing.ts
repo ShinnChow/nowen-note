@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 
 import { getDb } from "../db/schema.js";
 import { ensureKnowledgeTreeTables } from "../db/knowledgeTreeMigration.js";
+import { ensureKnowledgeTreePasswordTable } from "../db/knowledgeTreePasswordMigration.js";
 import { resolveKnowledgeNodeAccess } from "./knowledgeCapabilities.js";
 import type { KnowledgeTreeNode } from "./knowledgeTreeCore.js";
 
@@ -35,6 +36,7 @@ export function listKnowledgeTree(input: {
 }): KnowledgeTreeNode[] {
   const db = input.db || getDb();
   ensureKnowledgeTreeTables(db);
+  ensureKnowledgeTreePasswordTable(db);
   const key = scopeKey(input.userId, input.workspaceId);
   const rows = db.prepare(`
     SELECT node.id, node.userId, node.workspaceId, node.scopeKey, node.parentId,
@@ -48,11 +50,14 @@ export function listKnowledgeTree(input: {
              WHERE favorite.noteId = note.id AND favorite.userId = ?
            ) THEN 1 ELSE 0 END AS isFavorite,
            CASE WHEN node.resourceType = 'note' THEN COALESCE(note.isLocked, 0) ELSE 0 END AS isLocked,
+           CASE WHEN node.resourceType = 'notebook' AND notebook_password.notebookId IS NOT NULL THEN 1 ELSE 0 END AS isPasswordProtected,
            CASE WHEN node.resourceType = 'note' THEN note.contentFormat ELSE NULL END AS contentFormat,
            (SELECT COUNT(*) FROM knowledge_tree_nodes child
              WHERE child.parentId = node.id AND child.isDeleted = 0) AS childCount
     FROM knowledge_tree_nodes node
     LEFT JOIN notebooks nb ON node.resourceType = 'notebook' AND nb.id = node.resourceId
+    LEFT JOIN notebook_passwords notebook_password
+      ON node.resourceType = 'notebook' AND notebook_password.notebookId = node.resourceId
     LEFT JOIN notes note ON node.resourceType = 'note' AND note.id = node.resourceId
     LEFT JOIN mindmaps mm ON node.resourceType = 'mindmap' AND mm.id = node.resourceId
     LEFT JOIN files file ON node.resourceType = 'file' AND file.id = node.resourceId

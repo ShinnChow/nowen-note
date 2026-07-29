@@ -7,6 +7,7 @@ import {
   FileText,
   Folder,
   Loader2,
+  LockKeyhole,
   MoreHorizontal,
   Pin,
   Plus,
@@ -20,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 
+import FolderPasswordDialog from "@/components/FolderPasswordDialog";
 import KnowledgeTreeNodeMenu from "@/components/KnowledgeTreeNodeMenu";
 import KnowledgeTreePermissionsDialog from "@/components/KnowledgeTreePermissionsDialog";
 import {
@@ -45,6 +47,14 @@ import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
+import {
+  forgetUnlockedFolder,
+  hideLockedFolderDescendants,
+  isFolderUnlocked,
+  KNOWLEDGE_TREE_PASSWORD_SESSION_CHANGED_EVENT,
+  loadUnlockedFolderIds,
+  rememberUnlockedFolder,
+} from "@/lib/knowledgeTreePassword";
 import {
   buildFirstLevelNoteCounts,
   countOwnedNotebooks,
@@ -244,6 +254,9 @@ export function KnowledgeTreePanel({
   const [draft, setDraft] = useState<KnowledgeTreeInlineDraft | null>(null);
   const [permissionsNode, setPermissionsNode] = useState<KnowledgeTreeNode | null>(null);
   const [movingNode, setMovingNode] = useState<KnowledgeTreeNode | null>(null);
+  const [unlockedFolderIds, setUnlockedFolderIds] = useState<Set<string>>(() => loadUnlockedFolderIds());
+  const [passwordDialog, setPasswordDialog] = useState<{ node: KnowledgeTreeNode; mode: "unlock" | "manage" } | null>(null);
+  const [pendingFolderOpenId, setPendingFolderOpenId] = useState<string | null>(null);
   const { menu, menuRef, openMenu, openMenuAt, closeMenu } = useContextMenu();
   const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const menuNode = menu.targetId ? nodes.find((candidate) => candidate.id === menu.targetId) || null : null;
@@ -297,6 +310,12 @@ export function KnowledgeTreePanel({
   }, [reload, surfaceActive]);
 
   useEffect(() => {
+    const syncUnlockedFolders = () => setUnlockedFolderIds(loadUnlockedFolderIds());
+    window.addEventListener(KNOWLEDGE_TREE_PASSWORD_SESSION_CHANGED_EVENT, syncUnlockedFolders);
+    return () => window.removeEventListener(KNOWLEDGE_TREE_PASSWORD_SESSION_CHANGED_EVENT, syncUnlockedFolders);
+  }, []);
+
+  useEffect(() => {
     if (!surfaceActive) return;
     const focus = () => requestAnimationFrame(() => searchRef.current?.focus());
     window.addEventListener(FOCUS_KNOWLEDGE_TREE_EVENT, focus);
@@ -312,9 +331,13 @@ export function KnowledgeTreePanel({
     });
   }, [draft?.kind, draft?.parentId]);
 
+  const visibleNodes = useMemo(
+    () => hideLockedFolderDescendants(nodes, unlockedFolderIds),
+    [nodes, unlockedFolderIds],
+  );
   const allChildren = useMemo(() => buildChildren(nodes), [nodes]);
-  const firstLevelNoteCounts = useMemo(() => buildFirstLevelNoteCounts(nodes), [nodes]);
-  const filteredNodes = useMemo(() => filterKnowledgeTreeNodes(nodes, query), [nodes, query]);
+  const firstLevelNoteCounts = useMemo(() => buildFirstLevelNoteCounts(visibleNodes), [visibleNodes]);
+  const filteredNodes = useMemo(() => filterKnowledgeTreeNodes(visibleNodes, query), [visibleNodes, query]);
   const children = useMemo(() => buildChildren(filteredNodes), [filteredNodes]);
   const effectiveExpanded = query.trim() ? new Set(filteredNodes.map((node) => node.id)) : expanded;
 
@@ -393,6 +416,11 @@ export function KnowledgeTreePanel({
   const openDocument = async (node: KnowledgeTreeNode) => {
     closeMenu();
     if (node.nodeType === "folder") {
+      if (!isFolderUnlocked(node, unlockedFolderIds)) {
+        setPendingFolderOpenId(node.id);
+        setPasswordDialog({ node, mode: "unlock" });
+        return;
+      }
       await toggle(node);
       return;
     }
@@ -423,6 +451,11 @@ export function KnowledgeTreePanel({
 
   const startInlineCreate = useCallback((parent: KnowledgeTreeNode | null, kind: KnowledgeTreeInlineCreateKind) => {
     if (parent && !parent.access.capabilities.canCreate) return;
+    if (parent && !isFolderUnlocked(parent, unlockedFolderIds)) {
+      setPendingFolderOpenId(null);
+      setPasswordDialog({ node: parent, mode: "unlock" });
+      return;
+    }
     closeMenu();
     setQuery("");
     if (parent) {
@@ -436,7 +469,7 @@ export function KnowledgeTreePanel({
       saving: false,
       error: null,
     });
-  }, [closeMenu]);
+  }, [closeMenu, unlockedFolderIds]);
 
   useEffect(() => {
     if (!createRequest || handledCreateRequestRef.current === createRequest.requestId) return;
@@ -455,6 +488,11 @@ export function KnowledgeTreePanel({
       : null;
     if (importRequest.parentId && !parent) return;
     handledImportRequestRef.current = importRequest.requestId;
+    if (parent && !isFolderUnlocked(parent, unlockedFolderIds)) {
+      setPendingFolderOpenId(null);
+      setPasswordDialog({ node: parent, mode: "unlock" });
+      return;
+    }
 
     const runImport = async () => {
       try {
@@ -479,7 +517,7 @@ export function KnowledgeTreePanel({
       }
     };
     void runImport();
-  }, [actions, activateNote, importRequest, nodes, reload, state.activeNote?.notebookId, state.notebooks, state.selectedNotebookId]);
+  }, [actions, activateNote, importRequest, nodes, reload, state.activeNote?.notebookId, state.notebooks, state.selectedNotebookId, unlockedFolderIds]);
 
   const commitDraft = async () => {
     if (!draft || draft.saving) return;
@@ -708,7 +746,7 @@ export function KnowledgeTreePanel({
     const isExpanded = effectiveExpanded.has(node.id);
     const active = node.resourceType === "note" && state.activeNote?.id === node.resourceId;
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
-    const firstLevelNoteCount = depth === 0 && node.nodeType === "folder" && !node.sharedRootId
+    const firstLevelNoteCount = depth === 0 && node.nodeType === "folder" && !node.sharedRootId && isFolderUnlocked(node, unlockedFolderIds)
       ? firstLevelNoteCounts.get(node.id) ?? 0
       : null;
     return (
@@ -726,13 +764,18 @@ export function KnowledgeTreePanel({
             event.dataTransfer.setData("application/x-nowen-tree-node", node.id);
           }}
           onDragOver={(event) => {
-            if (!node.access.capabilities.canCreate) return;
+            if (!node.access.capabilities.canCreate || !isFolderUnlocked(node, unlockedFolderIds)) return;
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
           }}
           onDrop={(event) => {
             if (!node.access.capabilities.canCreate) return;
             event.preventDefault();
+            if (!isFolderUnlocked(node, unlockedFolderIds)) {
+              setPendingFolderOpenId(null);
+              setPasswordDialog({ node, mode: "unlock" });
+              return;
+            }
             void dropMove(event.dataTransfer.getData("application/x-nowen-tree-node"), node.id);
           }}
           onContextMenu={(event) => openMenu(event, node.id, "knowledge-node")}
@@ -744,7 +787,7 @@ export function KnowledgeTreePanel({
         >
           <button
             type="button"
-            onClick={() => hasChildren && void toggle(node)}
+            onClick={() => hasChildren && void openDocument(node)}
             className={cn(
               "flex shrink-0 items-center justify-center text-tx-tertiary",
               variant === "mobile" ? "h-6 w-4" : "h-7 w-5",
@@ -767,6 +810,9 @@ export function KnowledgeTreePanel({
           >
             {nodeIcon(node)}
             <span className="min-w-0 flex-1 truncate">{node.title}</span>
+            {node.nodeType === "folder" && node.isPasswordProtected === 1 && (
+              <LockKeyhole size={11} className="shrink-0 text-tx-tertiary" aria-label="密码保护" />
+            )}
             {firstLevelNoteCount !== null && (
               <span
                 className="min-w-4 shrink-0 rounded-full bg-app-hover px-1.5 text-center text-[10px] leading-4 tabular-nums text-tx-tertiary transition-opacity [@media(hover:hover)]:group-hover:opacity-0"
@@ -797,7 +843,7 @@ export function KnowledgeTreePanel({
             {isSharedRoot(node) && <span className="rounded bg-accent-primary/10 px-1 text-[9px] text-accent-primary">共享</span>}
             {node.access.source === "inherited" && <span className="rounded bg-app-active px-1 text-[9px] text-tx-tertiary">继承</span>}
           </button>
-          {node.access.capabilities.canCreate && (
+          {node.access.capabilities.canCreate && isFolderUnlocked(node, unlockedFolderIds) && (
             <button
               type="button"
               onClick={(event) => {
@@ -918,19 +964,60 @@ export function KnowledgeTreePanel({
             onClose={() => setPermissionsNode(null)}
           />
         )}
-        {movingNode && <MovePanel node={movingNode} nodes={nodes} children={allChildren} onMoved={() => void reload()} onClose={() => setMovingNode(null)} />}
+        {passwordDialog && (
+          <FolderPasswordDialog
+            node={passwordDialog.node}
+            mode={passwordDialog.mode}
+            onClose={() => {
+              setPasswordDialog(null);
+              setPendingFolderOpenId(null);
+            }}
+            onUnlocked={(nodeId) => {
+              setUnlockedFolderIds(rememberUnlockedFolder(nodeId));
+              if (pendingFolderOpenId === nodeId) {
+                setExpanded((current) => new Set(current).add(nodeId));
+                const target = nodes.find((node) => node.id === nodeId);
+                if (target && !target.sharedRootId) {
+                  void knowledgeTreeApi.update(nodeId, { isExpanded: true }).catch(() => undefined);
+                }
+              }
+            }}
+            onChanged={(nodeId) => {
+              setUnlockedFolderIds(forgetUnlockedFolder(nodeId));
+              setExpanded((current) => {
+                const next = new Set(current);
+                next.delete(nodeId);
+                return next;
+              });
+              setNodes((current) => current.map((node) => (
+                node.id === nodeId ? { ...node, isPasswordProtected: 1, isExpanded: 0 } : node
+              )));
+              emitTreeChanged("folder-password-changed");
+            }}
+          />
+        )}
+        {movingNode && <MovePanel node={movingNode} nodes={visibleNodes.filter((node) => isFolderUnlocked(node, unlockedFolderIds))} children={allChildren} onMoved={() => void reload()} onClose={() => setMovingNode(null)} />}
       </div>
       <KnowledgeTreeNodeMenu
         menu={menu}
         menuRef={menuRef}
         node={menuNode}
-        nodes={nodes}
+        nodes={visibleNodes.filter((node) => isFolderUnlocked(node, unlockedFolderIds))}
         onClose={closeMenu}
         onOpen={openDocument}
         onSplit={openSplit}
         onCreate={startInlineCreate}
         onRename={rename}
         onMove={setMovingNode}
+        onPassword={(node) => {
+          setPendingFolderOpenId(null);
+          setPasswordDialog({ node, mode: "manage" });
+        }}
+        isNodeUnlocked={(node) => isFolderUnlocked(node, unlockedFolderIds)}
+        onUnlockNode={(node) => {
+          setPendingFolderOpenId(null);
+          setPasswordDialog({ node, mode: "unlock" });
+        }}
         onPermissions={setPermissionsNode}
         onDelete={remove}
         onReload={reload}
