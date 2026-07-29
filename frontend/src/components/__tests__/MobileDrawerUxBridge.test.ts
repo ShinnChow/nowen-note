@@ -28,6 +28,12 @@ describe("MobileDrawerUxBridge helpers", () => {
     expect(ANDROID_DRAWER_SAFE_AREA_CSS).toContain("text-overflow: clip !important");
   });
 
+  it("只限制导航项宽度，不影响导航栏内打开的弹窗按钮", () => {
+    expect(ANDROID_DRAWER_SAFE_AREA_CSS).toContain("[data-mobile-drawer-rail-item]");
+    expect(ANDROID_DRAWER_SAFE_AREA_CSS).not.toContain("[data-mobile-drawer-rail].w-16 button {");
+    expect(ANDROID_DRAWER_SAFE_AREA_CSS).not.toContain("[data-mobile-drawer-rail].w-16 button > span:last-child");
+  });
+
   it("closes on a committed Enter but not while an IME is composing", () => {
     expect(shouldCloseDrawerOnSearchEnter({ key: "Enter", isComposing: false, keyCode: 13 }, "测试")).toBe(true);
     expect(shouldCloseDrawerOnSearchEnter({ key: "Enter", isComposing: true, keyCode: 13 }, "ce shi")).toBe(false);

@@ -211,6 +211,7 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
     return (
       <button
         key={item.mode}
+        data-mobile-drawer-rail-item=""
         onClick={() => handleClick(item.mode)}
         title={showLabel ? undefined : label}
         aria-label={label}
@@ -244,6 +245,7 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
       {isMobile ? (
         <>
           <button
+            data-mobile-drawer-rail-item=""
             onClick={() => actions.setMobileSidebar(false)}
             title={t("common.close")}
             aria-label={t("common.close")}
@@ -252,6 +254,7 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
             <X size={16} />
           </button>
           <button
+            data-mobile-drawer-rail-item=""
             onClick={() => setRailMode(mobileNextMode)}
             title={t(`sidebar.railMode.switchTo.${mobileNextMode}`)}
             aria-label={t(`sidebar.railMode.switchTo.${mobileNextMode}`)}
@@ -262,6 +265,7 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
         </>
       ) : (
         <button
+          data-mobile-drawer-rail-item=""
           onClick={actions.toggleSidebar}
           title={state.sidebarCollapsed ? t("common.expand") : t("common.collapse")}
           aria-label={state.sidebarCollapsed ? t("common.expand") : t("common.collapse")}
@@ -278,6 +282,7 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
           <>
             <button
               type="button"
+              data-mobile-drawer-rail-item=""
               onClick={handleMobileSearch}
               title={showLabel ? undefined : mobileSearchLabel}
               aria-label={mobileSearchLabel}
@@ -306,6 +311,7 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
       <div className={cn("my-2 border-t border-app-border/60", showLabel ? "w-8" : "w-6")} aria-hidden />
 
       <button
+        data-mobile-drawer-rail-item=""
         onClick={() => setShowSettings(true)}
         title={showLabel ? undefined : t("sidebar.settings")}
         aria-label={t("sidebar.settings")}
@@ -317,6 +323,7 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
 
       {isAccountLoginHistorySupported() && (
         <button
+          data-mobile-drawer-rail-item=""
           onClick={() => setLoginHistoryOpen(true)}
           title={showLabel ? undefined : t("auth.loginHistory.title")}
           aria-label={t("auth.loginHistory.title")}
@@ -329,6 +336,7 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
 
       {isDesktopApp() && canSwitchBackToLocal && (
         <button
+          data-mobile-drawer-rail-item=""
           onClick={handleDesktopCloudButton}
           title={showLabel ? undefined : t("sidebar.switchToLocal", "切回本地离线模式")}
           aria-label={t("sidebar.switchToLocal", "切回本地离线模式")}
@@ -340,6 +348,7 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
       )}
 
       <button
+        data-mobile-drawer-rail-item=""
         onClick={handleLogout}
         title={showLabel ? undefined : t("sidebar.logout")}
         aria-label={t("sidebar.logout")}

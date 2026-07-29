@@ -103,12 +103,12 @@ export const ANDROID_DRAWER_SAFE_AREA_CSS = `
     text-size-adjust: 100%;
   }
 
-  html[data-native="android"] [data-mobile-drawer-rail].w-16 button {
+  html[data-native="android"] [data-mobile-drawer-rail].w-16 [data-mobile-drawer-rail-item] {
     width: 64px !important;
     max-width: 64px !important;
   }
 
-  html[data-native="android"] [data-mobile-drawer-rail].w-16 button > span:last-child {
+  html[data-native="android"] [data-mobile-drawer-rail].w-16 [data-mobile-drawer-rail-item] > span:last-child {
     max-width: 64px !important;
     padding-left: 2px !important;
     padding-right: 2px !important;
