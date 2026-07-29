@@ -111,6 +111,7 @@ describe("code block indent commands", () => {
     editor.commands.setTextSelection(codePos + 3);
 
     expect(changeIndent(editor, 1)).toBe(true);
+    console.log("issue327-nested-json", JSON.stringify(editor.getJSON()));
 
     expect(editor.state.doc.childCount).toBe(1);
     const list = editor.state.doc.child(0);
@@ -158,12 +159,15 @@ describe("code block indent commands", () => {
     });
     const [codePos] = nodePositions(editor, "codeBlock");
     editor.commands.setTextSelection(codePos + 2);
+    console.log("issue327-before-outdent", JSON.stringify(editor.getJSON()));
 
     expect(changeIndent(editor, -1)).toBe(true);
+    console.log("issue327-after-first-outdent", JSON.stringify(editor.getJSON()));
     expect(editor.state.doc.nodeAt(codePos)?.attrs.indent).toBe(0);
     expect(editor.state.doc.childCount).toBe(1);
 
     expect(changeIndent(editor, -1)).toBe(true);
+    console.log("issue327-after-second-outdent", JSON.stringify(editor.getJSON()));
     const topLevelTypes = Array.from(
       { length: editor.state.doc.childCount },
       (_, index) => editor.state.doc.child(index).type.name,
