@@ -234,6 +234,8 @@
     "retryLoad": "Retry",
     "reloginOrChangeServer": "Re-login / change server",
     "cannotCreateInTrash": "Cannot create notes in Trash. Please switch to another view first",
+    "trashEmptyTitle": "Trash is empty",
+    "trashEmptyHint": "Deleted notes will appear here temporarily",
     "noteCreatedInNotebook": "New note created in \"{{name}}\"",
     "createFailed": "Failed to create note",
     "selectedCount": "{{count}} selected",
