@@ -319,6 +319,23 @@ npm run build:all
 - [GitHub Issues](https://github.com/cropflre/nowen-note/issues)
 - QQ 群：`1093473044`
 
+## 支持作者
+
+如果 Nowen Note 对你有帮助，欢迎扫码请作者喝杯咖啡。感谢每一份支持，它会帮助项目持续维护和迭代。
+
+<table align="center">
+  <tr>
+    <th>微信赞赏</th>
+    <th>支付宝赞赏</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="./frontend/public/weixin.jpg" alt="微信赞赏码" width="260" /></td>
+    <td align="center"><img src="./frontend/public/zhifubao.png" alt="支付宝赞赏码" width="260" /></td>
+  </tr>
+</table>
+
+也可以阅读 [作者感言](./AUTHOR_STORY.md)。
+
 ## License
 
 Nowen Note 基于 [GNU General Public License v3.0](./LICENSE) 开源。
