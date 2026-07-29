@@ -41,6 +41,33 @@ export function markdownFilesFromDataTransfer(dataTransfer: Pick<DataTransfer, "
   return Array.from(dataTransfer.files || []).filter(isMarkdownDropFile);
 }
 
+/** 打开系统文件选择器，支持一次选择多个 Markdown 文件。 */
+export function pickMarkdownFiles(): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".md,.markdown,text/markdown,text/x-markdown";
+    input.multiple = true;
+    input.style.display = "none";
+    document.body.appendChild(input);
+
+    let settled = false;
+    const cleanup = () => input.remove();
+    input.onchange = () => {
+      settled = true;
+      const files = Array.from(input.files || []).filter(isMarkdownDropFile);
+      cleanup();
+      resolve(files);
+    };
+    input.oncancel = () => {
+      if (settled) return;
+      cleanup();
+      resolve([]);
+    };
+    input.click();
+  });
+}
+
 export function findKnowledgeTreeDropRow(target: EventTarget | null): HTMLElement | null {
   if (!(target instanceof Element)) return null;
   const row = target.closest<HTMLElement>(TREE_NODE_SELECTOR);
@@ -95,19 +122,22 @@ async function readMarkdownFile(file: File): Promise<string> {
   return text.replace(/^\uFEFF/, "");
 }
 
-async function importMarkdownFile(file: File, target: KnowledgeTreeNode): Promise<void> {
+export async function importMarkdownFileIntoKnowledgeTree(
+  file: File,
+  parentId: string | null,
+): Promise<Awaited<ReturnType<typeof api.getNote>>> {
   const title = markdownDropTitle(file.name);
   const content = await readMarkdownFile(file);
   let createdNode: KnowledgeTreeNode | null = null;
 
   try {
     createdNode = await knowledgeTreeApi.create({
-      parentId: target.id,
+      parentId,
       nodeType: "markdown",
       title,
     });
     const createdNote = await api.getNote(createdNode.resourceId);
-    await api.updateNoteConfirmed(createdNode.resourceId, {
+    return await api.updateNoteConfirmed(createdNode.resourceId, {
       title,
       content,
       contentFormat: "markdown",
@@ -187,7 +217,7 @@ async function handleMarkdownDrop(row: HTMLElement, dataTransfer: DataTransfer):
 
     for (const file of markdownFiles) {
       try {
-        await importMarkdownFile(file, target);
+        await importMarkdownFileIntoKnowledgeTree(file, target.id);
         successCount += 1;
       } catch (error) {
         failures.push({ file: file.name, reason: errorMessage(error) });

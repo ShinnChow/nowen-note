@@ -2108,6 +2108,7 @@
       "video": "Video",
       "camera": "Camera",
       "record": "Record",
+      "more": "More",
       "uploading": "Uploading...",
       "uploadFailed": "Upload failed",
       "videoTooLarge": "{{name}} exceeds 100MB",

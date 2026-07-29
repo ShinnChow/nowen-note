@@ -32,6 +32,7 @@ import EmojiIconPicker from "@/components/EmojiPicker";
 import NotebookShareDialog from "@/components/NotebookShareDialog";
 import ShareModal from "@/components/ShareModal";
 import {
+  importMarkdownIntoKnowledgeTree,
   importWeChatArticleIntoKnowledgeTree,
   importWordIntoKnowledgeTree,
 } from "@/components/knowledgeTreeImport";
@@ -93,6 +94,7 @@ function createChildren(): ContextMenuItem[] {
 
 function importChildren(): ContextMenuItem[] {
   return [
+    { id: "import_markdown", label: "Markdown 文件", icon: <FileCode size={14} /> },
     { id: "import_word", label: "Word 文档", icon: <FileType2 size={14} /> },
     { id: "import_url", label: "公众号文章", icon: <Link2 size={14} /> },
   ];
@@ -292,6 +294,20 @@ export default function KnowledgeTreeNodeMenu({
     actions.refreshNotebooks();
   };
 
+  const importMarkdown = async () => {
+    if (!node) return;
+    const imported = await importMarkdownIntoKnowledgeTree({
+      parent: node,
+      nodes,
+      fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId,
+    });
+    if (!imported) return;
+    openLoadedNote(imported);
+    await onReload();
+    actions.refreshNotes();
+    actions.refreshNotebooks();
+  };
+
   const importUrl = async () => {
     if (!node) return;
     const imported = await importWeChatArticleIntoKnowledgeTree({
@@ -399,6 +415,7 @@ export default function KnowledgeTreeNodeMenu({
         case "new_note": onCreate(node, "note"); break;
         case "new_markdown": onCreate(node, "markdown"); break;
         case "new_folder": onCreate(node, "folder"); break;
+        case "import_markdown": await importMarkdown(); break;
         case "import_word": await importWord(); break;
         case "import_url": await importUrl(); break;
         case "toggle_pin": await patchNote({ isPinned: note?.isPinned === 1 ? 0 : 1 }); break;

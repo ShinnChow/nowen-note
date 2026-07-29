@@ -2272,6 +2272,7 @@
       "video": "视频",
       "camera": "拍照",
       "record": "录像",
+      "more": "更多",
       "uploading": "上传中...",
       "uploadFailed": "上传失败",
       "videoTooLarge": "{{name}} 超过 100MB",

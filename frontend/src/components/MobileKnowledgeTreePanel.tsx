@@ -26,6 +26,7 @@ import {
   type KnowledgeTreeCreateMenuState,
 } from "@/components/KnowledgeTreeCreateMenuRuntime";
 import {
+  importMarkdownIntoKnowledgeTree,
   importWeChatArticleIntoKnowledgeTree,
   importWordIntoKnowledgeTree,
 } from "@/components/knowledgeTreeImport";
@@ -448,7 +449,7 @@ export default function MobileKnowledgeTreePanel({
 
   const importIntoTree = useCallback(async (
     targetParentId: string | null,
-    kind: "word" | "wechat",
+    kind: "markdown" | "word" | "wechat",
   ) => {
     setCreateMenu(null);
     const parent = targetParentId ? nodes.find((node) => node.id === targetParentId) || null : null;
@@ -459,9 +460,11 @@ export default function MobileKnowledgeTreePanel({
         nodes,
         fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId || state.notebooks[0]?.id || null,
       };
-      const imported = kind === "word"
-        ? await importWordIntoKnowledgeTree(options)
-        : await importWeChatArticleIntoKnowledgeTree(options);
+      const imported = kind === "markdown"
+        ? await importMarkdownIntoKnowledgeTree(options)
+        : kind === "word"
+          ? await importWordIntoKnowledgeTree(options)
+          : await importWeChatArticleIntoKnowledgeTree(options);
       if (!imported) return;
       activateNote(imported);
       emitTreeChanged("node-imported-quick-browse");

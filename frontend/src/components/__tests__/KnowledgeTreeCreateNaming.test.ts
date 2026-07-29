@@ -15,14 +15,18 @@ describe("knowledge tree create naming", () => {
     expect(panelSource).toContain("startInlineCreate(parent, createRequest.kind);");
   });
 
-  it("offers Word and WeChat article imports from the plus menu", () => {
+  it("offers Markdown, Word and WeChat article imports from the plus menu", () => {
+    expect(runtimeSource).toContain('label: "导入 Markdown 文件"');
     expect(runtimeSource).toContain('label: "导入 Word 文档"');
     expect(runtimeSource).toContain('label: "导入公众号文章"');
+    expect(runtimeSource).toContain("也可将 .md 文件拖拽到目录树导入");
     expect(runtimeSource).toContain("setImportRequest({");
     expect(runtimeSource).toContain("importRequest={importRequest}");
     expect(panelSource).toContain("importRequest?: KnowledgeTreeImportRequest;");
     expect(panelSource).toContain("importWordIntoKnowledgeTree");
+    expect(panelSource).toContain("importMarkdownIntoKnowledgeTree");
     expect(panelSource).toContain("importWeChatArticleIntoKnowledgeTree");
+    expect(quickPanelSource).toContain("importMarkdownIntoKnowledgeTree");
   });
 
   it("uses the tree-style anchored menu and inline naming in quick browse", () => {

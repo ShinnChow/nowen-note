@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   findKnowledgeTreeDropRow,
@@ -6,6 +6,7 @@ import {
   isMarkdownDropFile,
   markdownDropTitle,
   markdownFilesFromDataTransfer,
+  pickMarkdownFiles,
 } from "@/lib/knowledgeTreeMarkdownDrop";
 
 afterEach(() => {
@@ -47,6 +48,34 @@ describe("knowledgeTreeMarkdownDrop", () => {
       files: files as unknown as FileList,
     });
     expect(selected.map((file) => file.name)).toEqual(["a.md", "c.markdown"]);
+  });
+
+  it("opens a multi-file Markdown picker", async () => {
+    let picker: HTMLInputElement | null = null;
+    const nativeCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string) => {
+      const element = nativeCreateElement(tagName);
+      if (tagName === "input") picker = element as HTMLInputElement;
+      return element;
+    }) as typeof document.createElement);
+    vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(function click(this: HTMLInputElement) {
+      Object.defineProperty(this, "files", {
+        configurable: true,
+        value: [
+          new File(["# A"], "a.md", { type: "text/markdown" }),
+          new File(["# B"], "b.markdown", { type: "text/markdown" }),
+        ],
+      });
+      this.onchange?.(new Event("change"));
+    });
+
+    const files = await pickMarkdownFiles();
+    const pickerElement = picker as unknown as HTMLInputElement;
+
+    expect(pickerElement.accept).toContain(".md");
+    expect(pickerElement.accept).toContain(".markdown");
+    expect(pickerElement.multiple).toBe(true);
+    expect(files.map((file) => file.name)).toEqual(["a.md", "b.markdown"]);
   });
 
   it("resolves a drop row only inside an embedded knowledge tree", () => {

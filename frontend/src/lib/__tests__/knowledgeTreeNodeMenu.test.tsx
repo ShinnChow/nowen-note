@@ -55,6 +55,7 @@ describe("knowledge tree node menu", () => {
     expect(actions).toEqual(expect.arrayContaining([
       "new_note",
       "new_markdown",
+      "import_markdown",
       "import_word",
       "import_url",
       "new_folder",

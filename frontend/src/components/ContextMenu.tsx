@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Download,
   FileType2,
@@ -379,6 +380,7 @@ export default function ContextMenu({
     renameLabel,
     t,
   ]);
+  const activeSubmenu = displayItems.find((item) => item.id === submenuParentId && item.children);
 
   useEffect(() => {
     if (!isOpen || !menuRef || !("current" in menuRef)) return;
@@ -412,6 +414,10 @@ export default function ContextMenu({
   useEffect(() => {
     setAdjustedPos({ x, y });
   }, [x, y]);
+
+  useEffect(() => {
+    if (!isOpen) setSubmenuParentId(null);
+  }, [isOpen]);
 
   useEffect(() => () => {
     if (submenuCloseTimer.current) clearTimeout(submenuCloseTimer.current);
@@ -549,31 +555,77 @@ export default function ContextMenu({
             zIndex: 100,
             animation: "contextMenuIn 0.12s ease-out",
           }}
-          className="w-48 backdrop-blur-xl bg-white/90 dark:bg-zinc-900/90 rounded-[12px] shadow-lg shadow-black/[0.08] dark:shadow-black/30 border border-black/[0.06] dark:border-white/[0.08] py-1 select-none"
+          className="w-48 max-h-[calc(100dvh-16px)] overflow-y-auto overscroll-contain sm:max-h-none sm:overflow-visible backdrop-blur-xl bg-white/90 dark:bg-zinc-900/90 rounded-[12px] shadow-lg shadow-black/[0.08] dark:shadow-black/30 border border-black/[0.06] dark:border-white/[0.08] py-1 select-none"
         >
           {header && (
             <div className="px-3 py-1.5 text-[11px] font-medium text-tx-tertiary border-b border-black/[0.06] dark:border-white/[0.08] mb-0.5 truncate">
               {header}
             </div>
           )}
-          {displayItems.map((item) =>
-            item.separator ? (
+          {activeSubmenu && (
+            <div className="sm:hidden">
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSubmenuParentId(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+              >
+                <ChevronLeft size={14} className="text-tx-tertiary" />
+                {activeSubmenu.label}
+              </button>
+              <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] mx-2 mb-1" />
+              {activeSubmenu.children?.map((child) => (
+                <button
+                  key={child.id}
+                  type="button"
+                  disabled={child.disabled}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSubmenuParentId(null);
+                    if (!child.disabled) void handleSpecialInlineNoteAction(child.id);
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors duration-150 ease-out",
+                    child.disabled && "opacity-40 cursor-not-allowed",
+                    "text-zinc-700 dark:text-zinc-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:text-tx-primary",
+                  )}
+                >
+                  {child.icon && <span className="w-4 h-4 flex items-center justify-center">{child.icon}</span>}
+                  {child.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className={cn(submenuParentId && "hidden sm:block")}>
+            {displayItems.map((item) =>
+              item.separator ? (
               <div key={item.id} className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1 mx-2" />
             ) : item.children ? (
               <div
                 key={item.id}
                 className="relative"
                 onMouseEnter={() => {
+                  if (!window.matchMedia("(min-width: 640px) and (hover: hover)").matches) return;
                   if (submenuCloseTimer.current) clearTimeout(submenuCloseTimer.current);
                   setSubmenuParentId(item.id);
                 }}
                 onMouseLeave={() => {
+                  if (!window.matchMedia("(min-width: 640px) and (hover: hover)").matches) return;
                   submenuCloseTimer.current = setTimeout(() => setSubmenuParentId(null), 150);
                 }}
               >
                 <button
                   type="button"
                   disabled={item.disabled}
+                  aria-haspopup="menu"
+                  aria-expanded={submenuParentId === item.id}
+                  onClick={() => {
+                    if (!item.disabled) setSubmenuParentId(item.id);
+                  }}
                   className={cn(
                     "w-full flex items-center justify-between gap-2 px-3 py-2 text-sm transition-colors duration-150 ease-out",
                     item.disabled && "opacity-40 cursor-not-allowed",
@@ -641,8 +693,9 @@ export default function ContextMenu({
                 {item.icon && <span className="w-4 h-4 flex items-center justify-center">{item.icon}</span>}
                 {item.label}
               </button>
-            ),
-          )}
+              ),
+            )}
+          </div>
         </div>
       )}
 

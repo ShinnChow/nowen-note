@@ -16,7 +16,7 @@ export type { KnowledgeTreePanelProps };
 
 const CREATE_SCOPE_ATTR = "data-nowen-create-scope";
 const CREATE_MENU_WIDTH = 184;
-const CREATE_MENU_HEIGHT = 196;
+const CREATE_MENU_HEIGHT = 252;
 
 const CREATE_ITEMS = [
   { kind: "note", label: "富文本文档", icon: FileText },
@@ -25,6 +25,7 @@ const CREATE_ITEMS = [
 ] as const;
 
 const IMPORT_ITEMS = [
+  { kind: "markdown", label: "导入 Markdown 文件", icon: FileCode },
   { kind: "word", label: "导入 Word 文档", icon: FileType2 },
   { kind: "wechat", label: "导入公众号文章", icon: Link2 },
 ] as const;
@@ -147,11 +148,21 @@ export function KnowledgeTreeCreateDropdown({
             className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-tx-secondary transition-colors hover:bg-app-hover hover:text-tx-primary focus:bg-app-hover focus:text-tx-primary focus:outline-none"
             onClick={() => onImport(menu.parentId, item.kind)}
           >
-            <Icon size={15} className={item.kind === "word" ? "text-violet-500" : "text-sky-500"} />
+            <Icon
+              size={15}
+              className={item.kind === "markdown"
+                ? "text-emerald-500"
+                : item.kind === "word"
+                  ? "text-violet-500"
+                  : "text-sky-500"}
+            />
             <span>{item.label}</span>
           </button>
         );
       })}
+      <p className="border-t border-app-border px-2.5 pb-1 pt-2 text-[10px] text-tx-tertiary">
+        也可将 .md 文件拖拽到目录树导入
+      </p>
     </div>,
     document.body,
   );
