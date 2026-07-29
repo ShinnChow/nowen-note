@@ -103,6 +103,16 @@ describe("OfflineIndicator status information architecture", () => {
     });
   });
 
+  it("keeps the mobile offline state completely silent", () => {
+    expect(getSyncIndicatorPresentation({
+      ...basePresentationInput,
+      isOnline: false,
+      pendingCount: 2,
+      queueCount: 2,
+      suppressOffline: true,
+    })).toBeNull();
+  });
+
   it("does not flash transient pending writes before they become meaningful", () => {
     expect(getSyncIndicatorPresentation({
       ...basePresentationInput,

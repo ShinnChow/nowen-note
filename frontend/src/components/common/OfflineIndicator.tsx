@@ -25,6 +25,7 @@ import {
 import { toast } from "@/lib/toast";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useAppActions } from "@/store/AppContext";
+import { isMobileRuntime } from "@/lib/textActions";
 
 function itemTypeLabel(item: OfflineQueueItem): string {
   if (item.type === "createNote") return "新建笔记";
@@ -78,6 +79,7 @@ export interface SyncIndicatorPresentationInput {
   conflictCount: number;
   queueCount: number;
   lastError?: string | null;
+  suppressOffline?: boolean;
 }
 
 /**
@@ -94,11 +96,13 @@ export function getSyncIndicatorPresentation({
   conflictCount,
   queueCount,
   lastError,
+  suppressOffline = false,
 }: SyncIndicatorPresentationInput): SyncIndicatorPresentation | null {
   const visibleFailedCount = Math.max(0, failedCount - conflictCount);
   const visiblePendingCount = Math.max(0, pendingCount - conflictCount);
 
   if (!isOnline) {
+    if (suppressOffline) return null;
     return {
       tone: "offline",
       label: "当前离线",
@@ -168,6 +172,7 @@ export default function OfflineIndicator() {
   const [showPending, setShowPending] = useState(false);
   const [showSyncing, setShowSyncing] = useState(false);
   const recoveryToastShownRef = useRef(false);
+  const suppressOffline = isMobileRuntime();
 
   useEffect(() => subscribeSyncSummary(setSummary), []);
   useEffect(() => subscribeOfflineQueue(() => setQueue(getQueue())), []);
@@ -250,6 +255,7 @@ export default function OfflineIndicator() {
     conflictCount,
     queueCount: visibleQueue.length,
     lastError: summary.lastError,
+    suppressOffline,
   }), [
     conflictCount,
     failedItems.length,
@@ -260,6 +266,7 @@ export default function OfflineIndicator() {
     showSyncing,
     summary.lastError,
     summary.state,
+    suppressOffline,
   ]);
 
   useEffect(() => {
