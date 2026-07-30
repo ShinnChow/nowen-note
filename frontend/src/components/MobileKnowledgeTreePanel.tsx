@@ -4,6 +4,9 @@ import {
   ArrowUpDown,
   Check,
   ChevronRight,
+  ChevronsDown,
+  ChevronsUp,
+  CircleAlert,
   Clock3,
   FileCode,
   FileText,
@@ -233,6 +236,7 @@ export default function MobileKnowledgeTreePanel({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<MobileView>("recent");
   const [parentId, setParentId] = useState<string | null>(null);
+  const [allExpanded, setAllExpanded] = useState(false);
   const [sortMode, setSortMode] = useState<MobileKnowledgeTreeSortMode>(() => loadMobileKnowledgeTreeSortMode());
   const [recentEntries, setRecentEntries] = useState<MobileKnowledgeTreeRecentEntry[]>(() => loadMobileKnowledgeTreeRecentEntries());
   const [permissionsNode, setPermissionsNode] = useState<KnowledgeTreeNode | null>(null);
@@ -340,6 +344,20 @@ export default function MobileKnowledgeTreePanel({
     () => getMobileKnowledgeTreeChildren(visibleNodes, parentId, sortMode),
     [visibleNodes, parentId, sortMode],
   );
+  const childrenByParent = useMemo(() => {
+    const result = new Map<string | null, KnowledgeTreeNode[]>();
+    for (const node of sortMobileKnowledgeTreeNodes(
+      visibleNodes.filter((candidate) => candidate.isDeleted !== 1),
+      sortMode,
+    )) {
+      const key = node.parentId ?? null;
+      const siblings = result.get(key) || [];
+      siblings.push(node);
+      result.set(key, siblings);
+    }
+    return result;
+  }, [sortMode, visibleNodes]);
+  const hasExpandableContent = currentChildren.some((node) => (childrenByParent.get(node.id)?.length || 0) > 0);
   const recentNodes = useMemo(
     () => buildMobileKnowledgeTreeRecentNodes(visibleNodes, recentEntries),
     [visibleNodes, recentEntries],
@@ -683,14 +701,14 @@ export default function MobileKnowledgeTreePanel({
     );
   };
 
-  const renderNode = (node: KnowledgeTreeNode, showPath = false) => {
+  const renderNode = (node: KnowledgeTreeNode, showPath = false, depth = 0) => {
     const active = node.resourceType === "note" && state.activeNote?.id === node.resourceId;
     const hasChildren = node.childCount > 0 || nodes.some((candidate) => candidate.parentId === node.id);
     const path = showPath ? buildMobileKnowledgeTreePath(node, nodes) : "";
     const updatedAt = formatUpdatedAt(node.updatedAt);
     const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
     const desktopHoverHidden = variant === "desktop" ? "[@media(hover:hover)]:group-hover:hidden" : "";
-    const firstLevelNoteCount = parentId === null && !showPath && node.nodeType === "folder" && !node.sharedRootId && isFolderUnlocked(node, unlockedFolderIds)
+    const firstLevelNoteCount = parentId === null && depth === 0 && !showPath && node.nodeType === "folder" && !node.sharedRootId && isFolderUnlocked(node, unlockedFolderIds)
       ? firstLevelNoteCounts.get(node.id) ?? 0
       : null;
     return (
@@ -706,6 +724,7 @@ export default function MobileKnowledgeTreePanel({
         onTouchMove={variant === "mobile" ? moveLongPress : undefined}
         onTouchEnd={variant === "mobile" ? cancelLongPress : undefined}
         onTouchCancel={variant === "mobile" ? cancelLongPress : undefined}
+        style={variant === "desktop" && depth > 0 ? { paddingLeft: `${Math.min(depth, 8) * 14}px` } : undefined}
         data-mobile-knowledge-tree-node-id={node.id}
         data-desktop-knowledge-tree-node-id={variant === "desktop" ? node.id : undefined}
       >
@@ -810,6 +829,13 @@ export default function MobileKnowledgeTreePanel({
     );
   };
 
+  const renderExpandedBranch = (node: KnowledgeTreeNode, depth = 0): React.ReactNode => (
+    <React.Fragment key={`expanded-${node.id}`}>
+      {renderNode(node, false, depth)}
+      {(childrenByParent.get(node.id) || []).map((child) => renderExpandedBranch(child, depth + 1))}
+    </React.Fragment>
+  );
+
   const renderEmpty = (title: string, description?: string) => (
     <div className="flex flex-col items-center px-6 py-14 text-center">
       <TreePine size={30} className="mb-2 text-tx-tertiary/35" />
@@ -821,7 +847,9 @@ export default function MobileKnowledgeTreePanel({
   const renderBrowseContent = () => {
     if (parentId !== null) {
       if (currentChildren.length === 0 && !draft) return renderEmpty("当前目录为空", "点击右上角加号创建文档或子目录。");
-      return <>{draft && renderDraft()}{currentChildren.map((node) => renderNode(node))}</>;
+      return <>{draft && renderDraft()}{currentChildren.map((node) => (
+        variant === "desktop" && allExpanded ? renderExpandedBranch(node) : renderNode(node)
+      ))}</>;
     }
     if (rootOwned.length === 0 && rootShared.length === 0 && !draft) return renderEmpty("暂无内容", "点击右上角加号创建第一个根目录。");
     return (
@@ -839,13 +867,17 @@ export default function MobileKnowledgeTreePanel({
               </span>
             </div>
             {draft && renderDraft()}
-            {rootOwned.map((node) => renderNode(node))}
+            {rootOwned.map((node) => (
+              variant === "desktop" && allExpanded ? renderExpandedBranch(node) : renderNode(node)
+            ))}
           </section>
         )}
         {rootShared.length > 0 && (
           <section className={cn("mt-2 border-t border-app-border pt-2", rootOwned.length === 0 && "mt-0 border-t-0 pt-0")} data-mobile-knowledge-tree-section="shared">
             <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-tx-tertiary">共享给我</div>
-            {rootShared.map((node) => renderNode(node))}
+            {rootShared.map((node) => (
+              variant === "desktop" && allExpanded ? renderExpandedBranch(node) : renderNode(node)
+            ))}
           </section>
         )}
       </>
@@ -889,7 +921,7 @@ export default function MobileKnowledgeTreePanel({
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 px-2 pb-2">
+      <div className={cn("flex items-center px-2", variant === "mobile" ? "gap-1.5 pb-2" : "gap-0.5 pb-1.5")}>
         <div className={cn(
           "flex min-w-0 flex-1 items-center gap-2 border border-app-border bg-app-bg",
           variant === "mobile" ? "rounded-xl px-3 py-2" : "rounded-lg px-2.5 py-1.5",
@@ -919,25 +951,50 @@ export default function MobileKnowledgeTreePanel({
           <button
             type="button"
             onClick={() => void chooseSortMode()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-accent-primary hover:bg-app-hover"
+            className={cn(
+              "flex shrink-0 items-center justify-center text-accent-primary hover:bg-app-hover",
+              variant === "mobile" ? "h-9 w-9 rounded-lg" : "h-7 w-6 rounded-md",
+            )}
             title={`排序：${SORT_LABELS[sortMode]}`}
             aria-label={`目录排序，当前为${SORT_LABELS[sortMode]}`}
           >
-            <ArrowUpDown size={16} />
+            <ArrowUpDown size={variant === "mobile" ? 16 : 13} />
           </button>
+        )}
+        {variant === "desktop" && view === "browse" && (
+          <button
+            type="button"
+            onClick={() => setAllExpanded((current) => !current)}
+            disabled={Boolean(query.trim()) || (!allExpanded && !hasExpandableContent)}
+            className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-tx-tertiary"
+            title={query.trim() ? "清除搜索后可批量展开或收起" : allExpanded ? "全部收起" : "全部展开"}
+            aria-label={allExpanded ? "全部收起" : "全部展开"}
+          >{allExpanded ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />}</button>
         )}
         <button
           type="button"
           onClick={(event) => openCreateDropdown(event, view === "browse" ? currentFolder : null)}
           disabled={view === "browse" && !!currentFolder && !currentFolder.access.capabilities.canCreate}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-40"
+          className={cn(
+            "flex shrink-0 items-center justify-center text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-40",
+            variant === "mobile" ? "h-9 w-9 rounded-lg" : "h-7 w-6 rounded-md",
+          )}
           title={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
           aria-label={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
           aria-haspopup="menu"
         >
-          <Plus size={17} />
+          <Plus size={variant === "mobile" ? 17 : 14} />
         </button>
-        <button type="button" onClick={() => void reload()} disabled={loading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-50" title="刷新内容"><RefreshCw size={15} className={loading ? "animate-spin" : undefined} /></button>
+        <button
+          type="button"
+          onClick={() => void reload()}
+          disabled={loading}
+          className={cn(
+            "flex shrink-0 items-center justify-center text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-50",
+            variant === "mobile" ? "h-9 w-9 rounded-lg" : "h-7 w-6 rounded-md",
+          )}
+          title="刷新内容"
+        ><RefreshCw size={variant === "mobile" ? 15 : 13} className={loading ? "animate-spin" : undefined} /></button>
       </div>
 
       {view === "browse" && !query && (
@@ -971,10 +1028,26 @@ export default function MobileKnowledgeTreePanel({
         {loading && nodes.length === 0 ? (
           <div className="flex justify-center py-16"><Loader2 size={22} className="animate-spin text-tx-tertiary" /></div>
         ) : error ? (
-          <div className="mx-2 mt-4 rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-center">
-            <p className="text-sm font-medium text-red-500">内容加载失败</p>
-            <p className="mt-1 break-words text-xs text-tx-tertiary">{error}</p>
-            <button type="button" onClick={() => void reload()} className="mt-3 rounded-lg bg-accent-primary px-3 py-1.5 text-xs font-medium text-white">重试</button>
+          <div role="status" className="mx-2 mt-4 rounded-2xl border border-app-border bg-app-surface/70 px-5 py-6 text-center shadow-sm">
+            <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <CircleAlert size={20} aria-hidden="true" />
+            </span>
+            <p className="mt-3 text-sm font-medium text-tx-primary">内容暂时未加载</p>
+            <p className="mx-auto mt-1 max-w-[280px] text-xs leading-relaxed text-tx-tertiary">
+              可能是网络波动或服务暂时不可用，本次加载失败不会修改你的笔记数据。
+            </p>
+            <button
+              type="button"
+              onClick={() => void reload()}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-accent-primary px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-accent-primary/90"
+            >
+              <RefreshCw size={13} aria-hidden="true" />
+              重新加载
+            </button>
+            <details className="mx-auto mt-3 max-w-[280px] text-left text-[10px] text-tx-tertiary">
+              <summary className="cursor-pointer select-none text-center hover:text-tx-secondary">查看错误详情</summary>
+              <p className="mt-1.5 break-words rounded-md bg-app-bg px-2 py-1.5 leading-relaxed">{error}</p>
+            </details>
           </div>
         ) : query.trim() ? (
           searchResults.length > 0 ? (

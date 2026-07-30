@@ -3,6 +3,9 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronsDown,
+  ChevronsUp,
+  CircleAlert,
   FileCode,
   FileText,
   Folder,
@@ -340,6 +343,12 @@ export function KnowledgeTreePanel({
   const filteredNodes = useMemo(() => filterKnowledgeTreeNodes(visibleNodes, query), [visibleNodes, query]);
   const children = useMemo(() => buildChildren(filteredNodes), [filteredNodes]);
   const effectiveExpanded = query.trim() ? new Set(filteredNodes.map((node) => node.id)) : expanded;
+  const expandableFolderIds = visibleNodes.filter((node) => (
+    node.nodeType === "folder"
+    && (children.get(node.id)?.length || 0) > 0
+  )).map((node) => node.id);
+  const hasExpandedFolders = !query.trim() && expandableFolderIds.some((id) => expanded.has(id));
+  const toggleAllLabel = hasExpandedFolders ? "全部收起" : "全部展开";
 
   useEffect(() => {
     if (variant !== "desktop" || !surfaceActive || nodes.length === 0 || !state.activeNote?.id) return;
@@ -412,6 +421,20 @@ export function KnowledgeTreePanel({
       try { await knowledgeTreeApi.update(node.id, { isExpanded: opening }); } catch { /* local navigation remains usable */ }
     }
   };
+
+  const toggleAll = useCallback(() => {
+    const expanding = !hasExpandedFolders;
+    const targetIds = new Set(expandableFolderIds);
+    const changedOwnedFolders = nodes.filter((node) => (
+      node.nodeType === "folder"
+      && targetIds.has(node.id)
+      && !node.sharedRootId
+    ));
+    setExpanded(expanding ? targetIds : new Set());
+    void Promise.allSettled(
+      changedOwnedFolders.map((node) => knowledgeTreeApi.update(node.id, { isExpanded: expanding })),
+    );
+  }, [expandableFolderIds, hasExpandedFolders, nodes]);
 
   const openDocument = async (node: KnowledgeTreeNode) => {
     closeMenu();
@@ -886,7 +909,7 @@ export function KnowledgeTreePanel({
 
   return (
     <section ref={rootRef} className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col", className)} data-nowen-knowledge-tree="embedded" data-sidebar-surface-active={surfaceActive ? "true" : "false"}>
-      <div className="flex items-center gap-1.5 px-2 pb-1.5">
+      <div className="flex items-center gap-0.5 px-2 pb-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-app-border bg-app-bg px-2 py-1.5">
           <Search size={13} className="shrink-0 text-tx-tertiary" />
           <input
@@ -901,23 +924,45 @@ export function KnowledgeTreePanel({
         </div>
         <button
           type="button"
+          onClick={toggleAll}
+          disabled={Boolean(query.trim()) || expandableFolderIds.length === 0}
+          className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-tx-tertiary"
+          title={query.trim() ? "清除筛选后可批量展开或收起" : toggleAllLabel}
+          aria-label={toggleAllLabel}
+        >{hasExpandedFolders ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />}</button>
+        <button
+          type="button"
           onClick={() => startInlineCreate(null, "folder")}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
+          className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
           title="新建根文件夹"
         ><Plus size={14} /></button>
-        <button type="button" onClick={() => void reload()} disabled={loading} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-50" title="刷新内容树"><RefreshCw size={13} className={loading ? "animate-spin" : undefined} /></button>
+        <button type="button" onClick={() => void reload()} disabled={loading} className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-50" title="刷新内容树"><RefreshCw size={13} className={loading ? "animate-spin" : undefined} /></button>
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1 pb-3" data-swipe-blocker="knowledge-tree-scroll">
         {loading && nodes.length === 0 ? (
           <div className="flex justify-center py-14"><Loader2 size={20} className="animate-spin text-tx-tertiary" /></div>
         ) : error ? (
-          <div className="mx-2 mt-4 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-center">
-            <p className="text-xs font-medium text-red-500">内容树加载失败</p>
-            <p className="mt-1 break-words text-[10px] text-tx-tertiary">{error}</p>
-            <div className="mt-3 flex justify-center gap-2">
-              <button type="button" onClick={() => void reload()} className="rounded-md bg-accent-primary px-2.5 py-1 text-[10px] font-medium text-white">重试</button>
-            </div>
+          <div role="status" className="mx-2 mt-4 rounded-xl border border-app-border bg-app-surface/70 px-4 py-5 text-center shadow-sm">
+            <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <CircleAlert size={18} aria-hidden="true" />
+            </span>
+            <p className="mt-3 text-sm font-medium text-tx-primary">内容暂时未加载</p>
+            <p className="mx-auto mt-1 max-w-[250px] text-[11px] leading-relaxed text-tx-tertiary">
+              可能是网络波动或服务暂时不可用，本次加载失败不会修改你的笔记数据。
+            </p>
+            <button
+              type="button"
+              onClick={() => void reload()}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-accent-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-primary/90"
+            >
+              <RefreshCw size={12} aria-hidden="true" />
+              重新加载
+            </button>
+            <details className="mx-auto mt-3 max-w-[250px] text-left text-[10px] text-tx-tertiary">
+              <summary className="cursor-pointer select-none text-center hover:text-tx-secondary">查看错误详情</summary>
+              <p className="mt-1.5 break-words rounded-md bg-app-bg px-2 py-1.5 leading-relaxed">{error}</p>
+            </details>
           </div>
         ) : filteredNodes.length === 0 && !sharedLoadError && !draft ? (
           <div className="flex flex-col items-center py-14 text-center">
