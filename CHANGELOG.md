@@ -12,6 +12,42 @@
 
 <!-- ADD_NEW_HERE -->
 
+## v1.4.4 - 2026-07-30
+
+### ✨ 新增
+
+- 移动端知识树支持紧凑模式 (c66752a)
+- 知识树支持全部展开/收起并优化加载失败态 (7d8aedb)
+- 支持笔记 Markdown 与富文本格式互转 (fda5b37)
+- 笔记列表回收站空状态展示 (b11d7df)
+
+### 🐛 修复
+
+- **share**: show guest nickname in public comments (#543) (8dd7b47)
+- **permissions**: install routes in legacy backend entry (eb645bd)
+- **share**: prompt guest nickname before public comments (#541) (862fbcf)
+- **editor**: restore rich-text interaction after format conversion (#539) (bf92883)
+- 窗口化 Tiptap 编辑器大纲滚动定位 (afaecde)
+- 右键菜单子菜单按视口智能定位 (877b7dc)
+- 知识树根文档下创建子节点包裹隐藏根容器 (3a2fec3)
+- 增强斜杠菜单中文输入法组合态处理 (37ec249)
+- 优化 Markdown 隐藏块标记的容错与编辑器光标稳定 (8210c8f)
+- 移动端抽屉导航栏宽度规则仅作用于导航项 (b4520aa)
+
+### 📝 文档
+
+- 设计 GitHub SignPath Windows 更新签名方案 (5c73e1f)
+- **readme**: sync v1.4.3 capabilities (1f77093)
+
+### ✅ 测试
+
+- **permissions**: cover legacy backend route bootstrap (c2af22b)
+
+### 🤖 CI
+
+- **permissions**: watch legacy runtime bootstrap (45a20a9)
+
+
 ## v1.4.3 - 2026-07-29
 
 ### ✨ 新增

@@ -1,6 +1,11 @@
 {
-  "generatedAt": "2026-07-29T09:16:29.939Z",
+  "generatedAt": "2026-07-30T08:27:28.225Z",
   "entries": [
+    {
+      "version": "1.4.4",
+      "date": "2026-07-30",
+      "body": "### ✨ 新增\n\n- 移动端知识树支持紧凑模式 (c66752a)\n- 知识树支持全部展开/收起并优化加载失败态 (7d8aedb)\n- 支持笔记 Markdown 与富文本格式互转 (fda5b37)\n- 笔记列表回收站空状态展示 (b11d7df)\n\n### 🐛 修复\n\n- **share**: show guest nickname in public comments (#543) (8dd7b47)\n- **permissions**: install routes in legacy backend entry (eb645bd)\n- **share**: prompt guest nickname before public comments (#541) (862fbcf)\n- **editor**: restore rich-text interaction after format conversion (#539) (bf92883)\n- 窗口化 Tiptap 编辑器大纲滚动定位 (afaecde)\n- 右键菜单子菜单按视口智能定位 (877b7dc)\n- 知识树根文档下创建子节点包裹隐藏根容器 (3a2fec3)\n- 增强斜杠菜单中文输入法组合态处理 (37ec249)\n- 优化 Markdown 隐藏块标记的容错与编辑器光标稳定 (8210c8f)\n- 移动端抽屉导航栏宽度规则仅作用于导航项 (b4520aa)\n\n### 📝 文档\n\n- 设计 GitHub SignPath Windows 更新签名方案 (5c73e1f)\n- **readme**: sync v1.4.3 capabilities (1f77093)\n\n### ✅ 测试\n\n- **permissions**: cover legacy backend route bootstrap (c2af22b)\n\n### 🤖 CI\n\n- **permissions**: watch legacy runtime bootstrap (45a20a9)"
+    },
     {
       "version": "1.4.3",
       "date": "2026-07-29",
@@ -45,11 +50,6 @@
       "version": "1.3.5",
       "date": "2026-07-13",
       "body": "### ✨ 新增\n\n- 用户偏好跟随账号同步 (#209) (1cc78c6)\n- **移动端**: 优化图片操作菜单（任务 2/3） (bd6b701)\n\n### 🐛 修复\n\n- **Android**: 修复笔记列表轻触无响应 (f0ad5ce)\n- **search**: rebuild stale FTS index on upgrade (#212) (1d1ab84)\n- **search**: require explainable matches and cover metadata (#212) (a0bb18a)\n- **search**: normalize literal query terms (#212) (8e32aeb)\n- **移动端**: 提供 Markdown 预览入口 (b1da1f0)\n- **Markdown**: 渲染行内与块级公式 (e70c612)\n- **移动端**: 消除图片菜单切换闪烁 (04b3629)\n- **移动端**: 兼容通用编辑器选区类型（任务 3/3） (ed0a91c)\n- **移动端**: 保持图片操作菜单可见（任务 1/3） (3749ece)\n\n### 📝 文档\n\n- **移动端**: 记录图片菜单实现计划 (c633e03)\n- **移动端**: 记录图片操作菜单设计 (c51c5fe)\n\n### 💄 样式\n\n- **移动端**: 缩小图片操作面板 (6f77dc6)\n\n### ✅ 测试\n\n- **search**: cover query normalization (#212) (b6168da)\n- **search**: cover reliable full-text retrieval (#212) (ee6ddde)"
-    },
-    {
-      "version": "1.3.4",
-      "date": "2026-07-13",
-      "body": "### 🐛 修复\n\n- **桌面端**: 避免失效令牌登录循环 (e647d03)\n- **附件**: 为上传与文件列表签发访问地址 (d51d603)\n- **笔记**: 重命名时携带服务端版本 (69dbabe)"
     }
   ]
 }
