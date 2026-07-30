@@ -64,6 +64,28 @@ jobs:
             "          readOnly: !writable,\n          source: joined.source,",
             "          warnings: result.warnings,\n          readOnly: !writable,",
           )
+          text = text.replace(
+            '''        "yjs-read-sync",
+        "yjs-awareness-relay",
+      ],
+      pendingCapabilities: ["yjs-update-write", "yjs-snapshot-compaction"],''',
+            '''            "yjs-read-sync",
+            "yjs-awareness-relay",
+          ],
+          pendingCapabilities: ["yjs-update-write", "yjs-snapshot-compaction"],''',
+          )
+          text = text.replace(
+            '''        "yjs-read-sync",
+        "yjs-awareness-relay",
+        "yjs-update-write",
+      ],
+      pendingCapabilities: ["yjs-snapshot-compaction"],''',
+            '''            "yjs-read-sync",
+            "yjs-awareness-relay",
+            "yjs-update-write",
+          ],
+          pendingCapabilities: ["yjs-snapshot-compaction"],''',
+          )
           path.write_text(text)
           PY
           python backend/scripts/apply-pg-yjs-write-slice.py
