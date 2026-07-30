@@ -1,12 +1,13 @@
 name: Guarded PostgreSQL Yjs write migration
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, reopened, synchronize]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: guarded-pg-yjs-write
@@ -14,7 +15,7 @@ concurrency:
 
 jobs:
   migrate:
-    if: github.head_ref == 'pg-yjs-write-trigger-v2-20260730'
+    if: github.event.issue.number == 299 && github.event.issue.pull_request && github.event.comment.body == '/apply-pg-yjs-write-v2'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -34,6 +35,7 @@ jobs:
     env:
       TEST_PG_DATABASE_URL: postgres://nowen:nowen_ci_password@127.0.0.1:5432/nowen_note_test
       DATABASE_URL: postgres://nowen:nowen_ci_password@127.0.0.1:5432/nowen_note_test
+      GH_TOKEN: ${{ github.token }}
 
     steps:
       - uses: actions/checkout@v4
@@ -123,3 +125,13 @@ jobs:
         run: npm run build
       - name: Push validated Yjs branch
         run: git push origin HEAD:pg-yjs-write-20260730
+      - name: Publish success
+        if: success()
+        run: >-
+          gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${{ github.event.comment.id }}"
+          -X PATCH -f body="✅ PostgreSQL y:update migration passed and pushed. head=${{ steps.patch.outputs.head }} run=${{ github.run_id }}"
+      - name: Publish failure
+        if: failure()
+        run: >-
+          gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${{ github.event.comment.id }}"
+          -X PATCH -f body="❌ PostgreSQL y:update migration failed before push. run=${{ github.run_id }}"
