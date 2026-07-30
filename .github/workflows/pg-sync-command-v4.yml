@@ -1,4 +1,4 @@
-name: Guarded PostgreSQL main synchronization v6
+name: Guarded PostgreSQL Yjs write migration v3
 
 on:
   issue_comment:
@@ -10,12 +10,12 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: guarded-pg-main-sync
+  group: guarded-pg-yjs-write
   cancel-in-progress: false
 
 jobs:
-  sync:
-    if: github.event.issue.number == 299 && github.event.issue.pull_request && github.event.comment.body == '/sync-main-into-pg-v6'
+  migrate:
+    if: github.event.issue.number == 299 && github.event.issue.pull_request && github.event.comment.body == '/apply-pg-yjs-write-v3'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -40,43 +40,65 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: pg-migration-unified
+          ref: pg-yjs-write-20260730
           fetch-depth: 0
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      - name: Merge latest main and reconcile PG boundaries
-        id: merge
-        shell: bash
+      - name: Apply realtime and regression slice
+        id: patch
         run: |
           set -euo pipefail
-          git fetch origin main pg-sync-main-resolved-20260730
-          echo "before=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "main=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
-          git merge --no-ff --no-edit -X ours origin/main
-          git checkout origin/pg-sync-main-resolved-20260730 -- \
-            backend/build.bundle.mjs \
-            backend/package.json \
-            backend/src/index.hardened.ts \
-            backend/src/routes/import-batches.ts \
-            backend/src/routes/roundtrip-permissions.ts \
-            backend/src/services/roundTripPermissionMapping.ts \
-            backend/scripts/reconcile-pg-main-v1-4-4.py \
-            frontend/src/main.tsx
-          python backend/scripts/reconcile-pg-main-v1-4-4.py
-          rm -f \
-            backend/scripts/reconcile-pg-main-v1-4-4.py \
-            .github/workflows/pg-sync-command-v2.yml \
-            .github/workflows/pg-sync-command-v4.yml \
-            .github/workflows/pg-yjs-write-command.yml
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("backend/scripts/apply-pg-yjs-write-slice.py")
+          text = path.read_text()
+          text = text.replace(
+            "const joined = await yjs.join(noteId, connectionId);",
+            "const result = await yjs.join(noteId, connectionId);",
+          )
+          text = text.replace(
+            "          readOnly: true,\n          source: joined.source,",
+            "          warnings: result.warnings,\n          readOnly: true,",
+          )
+          text = text.replace(
+            "          readOnly: !writable,\n          source: joined.source,",
+            "          warnings: result.warnings,\n          readOnly: !writable,",
+          )
+          text = text.replace(
+            '''        "yjs-read-sync",
+        "yjs-awareness-relay",
+      ],
+      pendingCapabilities: ["yjs-update-write", "yjs-snapshot-compaction"],''',
+            '''            "yjs-read-sync",
+            "yjs-awareness-relay",
+          ],
+          pendingCapabilities: ["yjs-update-write", "yjs-snapshot-compaction"],''',
+          )
+          text = text.replace(
+            '''        "yjs-read-sync",
+        "yjs-awareness-relay",
+        "yjs-update-write",
+      ],
+      pendingCapabilities: ["yjs-snapshot-compaction"],''',
+            '''            "yjs-read-sync",
+            "yjs-awareness-relay",
+            "yjs-update-write",
+          ],
+          pendingCapabilities: ["yjs-snapshot-compaction"],''',
+          )
+          path.write_text(text)
+          PY
+          python backend/scripts/apply-pg-yjs-write-slice.py
+          rm -f backend/scripts/apply-pg-yjs-write-slice.py .github/pg-yjs-pr-trigger
           git add -A
-          git commit --amend --no-edit
-          echo "after=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git commit -m "feat(pg): enable transactional Yjs update writes"
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Install backend dependencies
         working-directory: backend
         run: npm ci --no-audit --no-fund || (sleep 5 && npm ci --no-audit --no-fund)
-      - name: Backend TypeScript
+      - name: TypeScript
         working-directory: backend
         run: npm run build:tsc -- --noEmit
       - name: Direct DB audit
@@ -85,50 +107,31 @@ jobs:
       - name: PostgreSQL schema parity
         working-directory: backend
         run: npm run audit:pg-schema-parity
-      - name: PostgreSQL runtime tests
+      - name: PostgreSQL Yjs write tests
         working-directory: backend
         run: >-
           node --import tsx --test --test-concurrency=1
-          tests/postgres-migrations.test.ts
-          tests/database-runtime.test.ts
-          tests/repository-permissions-pg.test.ts
-          tests/roundtrip-permission-mapping-pg.test.ts
-          tests/note-core-runtime-pg.test.ts
-          tests/note-core-runtime-formats-pg.test.ts
-          tests/note-realtime-route-pg.test.ts
           tests/postgres-yjs-read-runtime-pg.test.ts
           tests/postgres-realtime-yjs-pg.test.ts
-      - name: SQLite regression
+      - name: Full SQLite regression
         working-directory: backend
         env:
           DB_DRIVER: sqlite
           DATABASE_URL: ""
           TEST_PG_DATABASE_URL: ""
         run: npm run test:serial
-      - name: Backend bundle
+      - name: Production backend bundle
         working-directory: backend
         run: npm run build
-      - name: Verify PostgreSQL resources
-        working-directory: backend
-        run: |
-          test -f dist/postgres/schema.sql
-          test -f dist/postgres/schema.base.sql
-          test -f dist/postgres/migrations/0012_tag_scope_unique_names.sql
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --no-audit --no-fund || (sleep 5 && npm ci --no-audit --no-fund)
-      - name: Frontend build
-        working-directory: frontend
-        run: npm run build
-      - name: Push synchronized branch
-        run: git push origin HEAD:pg-migration-unified
+      - name: Push validated Yjs branch
+        run: git push origin HEAD:pg-yjs-write-20260730
       - name: Publish success
         if: success()
         run: >-
           gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${{ github.event.comment.id }}"
-          -X PATCH -f body="✅ PG sync passed and pushed. before=${{ steps.merge.outputs.before }} main=${{ steps.merge.outputs.main }} merge=${{ steps.merge.outputs.after }} run=${{ github.run_id }}"
+          -X PATCH -f body="✅ PostgreSQL y:update migration passed and pushed. head=${{ steps.patch.outputs.head }} run=${{ github.run_id }}"
       - name: Publish failure
         if: failure()
         run: >-
           gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${{ github.event.comment.id }}"
-          -X PATCH -f body="❌ PG sync v6 failed before push. run=${{ github.run_id }}"
+          -X PATCH -f body="❌ PostgreSQL y:update migration failed before push. run=${{ github.run_id }}"
