@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   migrate:
-    if: github.head_ref == 'pg-yjs-write-20260730'
+    if: github.head_ref == 'pg-yjs-write-trigger-20260730'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           python backend/scripts/apply-pg-yjs-write-slice.py
-          rm backend/scripts/apply-pg-yjs-write-slice.py
+          rm backend/scripts/apply-pg-yjs-write-slice.py .github/pg-yjs-pr-trigger
           git add -A
           git commit -m "feat(pg): enable transactional Yjs update writes"
           echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
