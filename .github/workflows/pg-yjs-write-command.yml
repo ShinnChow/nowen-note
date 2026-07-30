@@ -48,6 +48,24 @@ jobs:
         id: patch
         run: |
           set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("backend/scripts/apply-pg-yjs-write-slice.py")
+          text = path.read_text()
+          text = text.replace(
+            "const joined = await yjs.join(noteId, connectionId);",
+            "const result = await yjs.join(noteId, connectionId);",
+          )
+          text = text.replace(
+            "          readOnly: true,\n          source: joined.source,",
+            "          warnings: result.warnings,\n          readOnly: true,",
+          )
+          text = text.replace(
+            "          readOnly: !writable,\n          source: joined.source,",
+            "          warnings: result.warnings,\n          readOnly: !writable,",
+          )
+          path.write_text(text)
+          PY
           python backend/scripts/apply-pg-yjs-write-slice.py
           rm backend/scripts/apply-pg-yjs-write-slice.py .github/pg-yjs-pr-trigger
           git add -A
