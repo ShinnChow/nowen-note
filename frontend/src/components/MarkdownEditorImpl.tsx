@@ -1290,11 +1290,34 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
     const currentDoc = view.state.doc.toString();
     if (currentDoc !== nextDoc) {
       isSettingContent.current = true;
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
-        // �ѹ��ŵ��ĵ���ͷ������ɹ��λ��Խ��
-        selection: { anchor: 0 },
-      });
+      if (isSwitchingNote) {
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
+          selection: { anchor: 0 },
+        });
+      } else {
+        // 同一笔记的保存回填只替换实际变化的区间，让 CodeMirror 自动映射原选区。
+        // 服务端在行尾补充隐藏块 ID 时，末尾回车后的光标会随插入量向后移动，
+        // 不再因整篇替换并强制 anchor=0 而跳到文档开头。
+        let from = 0;
+        const sharedLength = Math.min(currentDoc.length, nextDoc.length);
+        while (from < sharedLength && currentDoc[from] === nextDoc[from]) from += 1;
+
+        let currentTo = currentDoc.length;
+        let nextTo = nextDoc.length;
+        while (
+          currentTo > from
+          && nextTo > from
+          && currentDoc[currentTo - 1] === nextDoc[nextTo - 1]
+        ) {
+          currentTo -= 1;
+          nextTo -= 1;
+        }
+
+        view.dispatch({
+          changes: { from, to: currentTo, insert: nextDoc.slice(from, nextTo) },
+        });
+      }
       // ������һ΢������������� Tiptap ��ȼ��߼���
       queueMicrotask(() => {
         isSettingContent.current = false;
