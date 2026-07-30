@@ -1,8 +1,8 @@
-name: Guarded PostgreSQL Yjs write migration v3
+name: Guarded PostgreSQL Yjs write migration v4
 
 on:
   issue_comment:
-    types: [created]
+    types: [created, edited]
 
 permissions:
   contents: write
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   migrate:
-    if: github.event.issue.number == 299 && github.event.issue.pull_request && github.event.comment.body == '/apply-pg-yjs-write-v3'
+    if: github.event.issue.number == 299 && github.event.issue.pull_request && github.event.comment.body == '/apply-pg-yjs-write-v4'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
