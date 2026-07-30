@@ -3208,6 +3208,17 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       return;
     }
 
+    // 自动保存开始时，父组件会先把编辑器刚发出的内容同步回 activeNote。
+    // 同笔记且原始 JSON 已与当前编辑器一致时无需再次修复或 setContent，
+    // 否则会重置斜杠菜单、选区等正在进行的编辑器交互。
+    if (
+      editor
+      && !noteChanged
+      && note.content === JSON.stringify(editor.getJSON())
+    ) {
+      return;
+    }
+
     // 切换笔记时立即清理旧的 debounce timer，防止旧笔记的保存请求泄漏
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);

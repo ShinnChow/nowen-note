@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import {
+  ArrowLeftRight,
   Download,
   FileCode,
   FilePlus,
@@ -32,6 +33,7 @@ import ContextMenu, { type ContextMenuItem } from "@/components/ContextMenu";
 import EmojiIconPicker from "@/components/EmojiPicker";
 import NotebookShareDialog from "@/components/NotebookShareDialog";
 import ShareModal from "@/components/ShareModal";
+import { confirm } from "@/components/ui/confirm";
 import {
   importMarkdownIntoKnowledgeTree,
   importWeChatArticleIntoKnowledgeTree,
@@ -47,6 +49,11 @@ import {
 } from "@/lib/exportService";
 import type { KnowledgeTreeInlineCreateKind } from "@/lib/knowledgeTreeInlineCreate";
 import type { KnowledgeTreeNode } from "@/lib/knowledgeTreeApi";
+import {
+  convertNoteContent,
+  getNoteFormatConversionTarget,
+  requestActiveNoteFormatConversion,
+} from "@/lib/noteFormatConversion";
 import { toast } from "@/lib/toast";
 import { useApp, useAppActions } from "@/store/AppContext";
 import type { Notebook } from "@/types";
@@ -151,6 +158,12 @@ export function buildKnowledgeTreeNodeMenuItems(
         label: note?.isLocked === 1 ? "解锁" : "锁定",
         icon: note?.isLocked === 1 ? <Unlock size={14} /> : <Lock size={14} />,
         disabled: !note,
+      },
+      {
+        id: "convert_format",
+        label: note?.contentFormat === "markdown" ? "转换为富文本" : "转换为 Markdown",
+        icon: <ArrowLeftRight size={14} />,
+        disabled: !note || note.isLocked === 1,
       },
     );
   }
@@ -359,6 +372,53 @@ export default function KnowledgeTreeNodeMenu({
     actions.refreshNotes();
   };
 
+  const convertFormat = async () => {
+    if (!node || node.resourceType !== "note") return;
+    const current = note || await api.getNote(node.resourceId);
+    const targetFormat = getNoteFormatConversionTarget(current.contentFormat);
+    const targetLabel = targetFormat === "markdown" ? "Markdown" : "富文本";
+    const accepted = await confirm({
+      title: `转换为${targetLabel}？`,
+      description: "笔记会在原位置切换编辑器。复杂排版在两种格式之间转换时可能略有差异。",
+      confirmText: "转换",
+    });
+    if (!accepted) return;
+
+    if (state.activeNote?.id === current.id) {
+      requestActiveNoteFormatConversion({ noteId: current.id, targetFormat });
+      return;
+    }
+
+    const converted = convertNoteContent(current.content, current.contentText, targetFormat);
+    const updated = await api.updateNoteConfirmed(current.id, {
+      ...converted,
+      version: current.version,
+      ...(targetFormat === "markdown" ? { syncToYjs: true } : {}),
+    } as any);
+    if (targetFormat === "tiptap-json") {
+      try { await api.releaseYjsRoom(current.id); } catch { /* 下次打开时会重新建立房间 */ }
+    }
+    setNote(updated);
+    actions.updateNoteInList({
+      id: updated.id,
+      contentText: updated.contentText,
+      contentFormat: updated.contentFormat,
+      updatedAt: updated.updatedAt,
+      version: updated.version,
+    });
+    actions.updateNoteTab({
+      id: updated.id,
+      contentFormat: updated.contentFormat,
+      updatedAt: updated.updatedAt,
+    });
+    await onReload();
+    actions.refreshNotes();
+    window.dispatchEvent(new CustomEvent("nowen:knowledge-tree-changed", {
+      detail: { reason: "note-format-converted", noteId: current.id },
+    }));
+    toast.success(`已转换为${targetLabel}`);
+  };
+
   const exportFolder = async () => {
     if (!node || node.resourceType !== "notebook") return;
     const { ids, names } = descendantNotebookResources(node, nodes);
@@ -449,6 +509,7 @@ export default function KnowledgeTreeNodeMenu({
         case "toggle_pin": await patchNote({ isPinned: note?.isPinned === 1 ? 0 : 1 }); break;
         case "toggle_favorite": await patchNote({ isFavorite: note?.isFavorite === 1 ? 0 : 1 }); break;
         case "toggle_lock": await patchNote({ isLocked: note?.isLocked === 1 ? 0 : 1 }); break;
+        case "convert_format": await convertFormat(); break;
         case "rename": await onRename(node); break;
         case "move": onMove(node); break;
         case "permissions": onPermissions(node); break;

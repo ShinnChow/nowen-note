@@ -122,25 +122,78 @@ async function readMarkdownFile(file: File): Promise<string> {
   return text.replace(/^\uFEFF/, "");
 }
 
+interface MarkdownImportDocument {
+  title: string | null;
+  content: string;
+  targetFormat: "markdown" | "tiptap-json";
+}
+
+function parseFrontmatterValue(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed.slice(1, -1).replace(/\\"/g, '"');
+    }
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/g, "'");
+  }
+  return trimmed;
+}
+
+export function parseMarkdownImportDocument(source: string): MarkdownImportDocument {
+  const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
+  if (!match) return { title: null, content: source, targetFormat: "markdown" };
+
+  const metadata = new Map<string, string>();
+  for (const line of match[1].split(/\r?\n/)) {
+    const field = line.match(/^([A-Za-z][A-Za-z0-9_-]*):[ \t]*(.*)$/);
+    if (field) metadata.set(field[1].toLowerCase(), parseFrontmatterValue(field[2]));
+  }
+
+  const declaredFormat = (
+    metadata.get("sourcecontentformat")
+    || metadata.get("contentformat")
+    || ""
+  ).toLowerCase();
+  const isNowenExport = Boolean(declaredFormat);
+  const targetFormat = declaredFormat === "tiptap-json"
+    || declaredFormat === "html"
+    ? "tiptap-json"
+    : "markdown";
+
+  return {
+    title: isNowenExport ? metadata.get("title")?.trim() || null : null,
+    content: isNowenExport ? source.slice(match[0].length) : source,
+    targetFormat,
+  };
+}
+
 export async function importMarkdownFileIntoKnowledgeTree(
   file: File,
   parentId: string | null,
 ): Promise<Awaited<ReturnType<typeof api.getNote>>> {
-  const title = markdownDropTitle(file.name);
-  const content = await readMarkdownFile(file);
+  const imported = parseMarkdownImportDocument(await readMarkdownFile(file));
+  const title = imported.title || markdownDropTitle(file.name);
+  const isRichText = imported.targetFormat === "tiptap-json";
+  const content = isRichText
+    ? JSON.stringify((await import("@/lib/contentFormat")).markdownToTiptapJSON(imported.content))
+    : imported.content;
   let createdNode: KnowledgeTreeNode | null = null;
 
   try {
     createdNode = await knowledgeTreeApi.create({
       parentId,
-      nodeType: "markdown",
+      nodeType: isRichText ? "note" : "markdown",
       title,
     });
     const createdNote = await api.getNote(createdNode.resourceId);
     return await api.updateNoteConfirmed(createdNode.resourceId, {
       title,
       content,
-      contentFormat: "markdown",
+      contentFormat: imported.targetFormat,
       version: createdNote.version,
     });
   } catch (error) {

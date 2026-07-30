@@ -88,6 +88,11 @@ import {
   shouldPersistPendingConflictSnapshot,
   type NoteConflictAutoResolvedDetail,
 } from "@/lib/conflictResolution";
+import {
+  convertNoteContent,
+  REQUEST_NOTE_FORMAT_CONVERSION_EVENT,
+  type NoteFormatConversionRequest,
+} from "@/lib/noteFormatConversion";
 
 // ---------------------------------------------------------------------------
 // 编辑器模式切换（MD vs Tiptap）
@@ -683,6 +688,120 @@ export default function EditorPane({
   activeNoteRef.current = activeNote;
   const syncStatusRef = useRef(syncStatus);
   syncStatusRef.current = syncStatus;
+
+  const convertActiveNoteFormat = useCallback(async ({
+    noteId,
+    targetFormat,
+  }: NoteFormatConversionRequest) => {
+    const initialNote = activeNoteRef.current;
+    if (!initialNote || initialNote.id !== noteId || modeSwitchInflightRef.current) return;
+    if (initialNote.isLocked || viewLockedIdsRef.current.has(noteId)) {
+      toast.warning("请先解锁笔记再转换格式");
+      return;
+    }
+
+    modeSwitchInflightRef.current = true;
+    setModeSwitching(true);
+    let snapshot: { content: string; contentText: string } | null = null;
+
+    try {
+      snapshot = editorHandleRef.current?.getSnapshot?.() ?? {
+        content: initialNote.content,
+        contentText: initialNote.contentText,
+      };
+      editorHandleRef.current?.discardPending?.();
+
+      if (saveInflightRef.current) {
+        try { await saveInflightRef.current; } catch { /* 使用当前编辑器快照继续转换 */ }
+      }
+      if (activeNoteRef.current?.id !== noteId) return;
+
+      const persisted = await api.getNote(noteId);
+      const converted = convertNoteContent(
+        snapshot.content,
+        snapshot.contentText,
+        targetFormat,
+      );
+      actions.setSyncStatus("saving");
+      const updated = await api.updateNoteConfirmed(noteId, {
+        ...converted,
+        version: persisted.version,
+        ...(targetFormat === "markdown" ? { syncToYjs: true } : {}),
+      } as any);
+
+      activeNoteRef.current = updated;
+      actions.setActiveNote(updated);
+      actions.updateNoteInList({
+        id: updated.id,
+        contentText: updated.contentText,
+        contentFormat: updated.contentFormat,
+        updatedAt: updated.updatedAt,
+        version: updated.version,
+      });
+      actions.updateNoteTab({
+        id: updated.id,
+        contentFormat: updated.contentFormat,
+        updatedAt: updated.updatedAt,
+      });
+
+      const nextMode: EditorMode = targetFormat === "markdown" ? "md" : "tiptap";
+      persistEditorMode(nextMode);
+      clearForcedModeFromUrl();
+      setEditorMode(nextMode);
+      editorModeRef.current = nextMode;
+      try { clearDraft(noteId); } catch { /* ignore */ }
+
+      if (targetFormat === "tiptap-json") {
+        try { await api.releaseYjsRoom(noteId); } catch { /* 下次打开时会重新建立房间 */ }
+      }
+
+      actions.setSyncStatus("saved");
+      actions.setLastSynced(new Date().toISOString());
+      actions.refreshNotes();
+      window.dispatchEvent(new CustomEvent("nowen:knowledge-tree-changed", {
+        detail: { reason: "note-format-converted", noteId },
+      }));
+      toast.success(targetFormat === "markdown" ? "已转换为 Markdown" : "已转换为富文本");
+    } catch (error) {
+      console.error("[EditorPane] convert note format failed:", error);
+      const current = activeNoteRef.current;
+      if (snapshot && current?.id === noteId) {
+        const restored = {
+          ...current,
+          content: snapshot.content,
+          contentText: snapshot.contentText,
+        };
+        activeNoteRef.current = restored;
+        actions.setActiveNote(restored);
+        try {
+          saveDraft({
+            noteId,
+            editorMode: editorModeRef.current,
+            content: snapshot.content,
+            contentText: snapshot.contentText,
+            title: restored.title,
+            baseVersion: restored.version,
+            savedAt: Date.now(),
+          });
+        } catch { /* ignore */ }
+      }
+      actions.setSyncStatus("error");
+      toast.error("格式转换失败，当前内容已保留");
+    } finally {
+      modeSwitchInflightRef.current = false;
+      setModeSwitching(false);
+    }
+  }, [actions]);
+
+  useEffect(() => {
+    const handleRequest = (event: Event) => {
+      const detail = (event as CustomEvent<NoteFormatConversionRequest>).detail;
+      if (!detail?.noteId || !detail.targetFormat) return;
+      void convertActiveNoteFormat(detail);
+    };
+    window.addEventListener(REQUEST_NOTE_FORMAT_CONVERSION_EVENT, handleRequest);
+    return () => window.removeEventListener(REQUEST_NOTE_FORMAT_CONVERSION_EVENT, handleRequest);
+  }, [convertActiveNoteFormat]);
 
 
 
