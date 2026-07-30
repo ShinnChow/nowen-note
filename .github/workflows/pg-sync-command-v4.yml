@@ -1,4 +1,4 @@
-name: Guarded PostgreSQL main synchronization v4
+name: Guarded PostgreSQL main synchronization v5
 
 on:
   issue_comment:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.event.issue.number == 299 && github.event.issue.pull_request && github.event.comment.body == '/sync-main-into-pg-v4'
+    if: github.event.issue.number == 299 && github.event.issue.pull_request && github.event.comment.body == '/sync-main-into-pg-v5'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -149,13 +149,25 @@ jobs:
             "backend/tests/siyuan-issue-284-regression.test.ts",
             "  assert.equal(result.stats.unsupportedNodes.NodeCallout, 1);",
             "  assert.equal(result.stats.unsupportedNodes.NodeCallout || 0, 0);",
-            "supported markdown callout",
+            "supported markdown callout count",
+          )
+          patch(
+            "backend/tests/siyuan-issue-284-regression.test.ts",
+            "  assert.ok(result.warnings.some((warning) => /callout.*styled blockquote/i.test(warning)));",
+            "  assert.ok(!result.warnings.some((warning) => /callout.*styled blockquote/i.test(warning)));",
+            "supported markdown callout warning",
           )
           patch(
             "backend/tests/siyuan-package-tiptap-fidelity.test.ts",
             "  assert.equal(result.stats.unsupportedNodes.NodeCallout, 1);",
             "  assert.equal(result.stats.unsupportedNodes.NodeCallout || 0, 0);",
-            "supported rich-text callout",
+            "supported rich-text callout count",
+          )
+          patch(
+            "backend/tests/siyuan-package-tiptap-fidelity.test.ts",
+            '  assert.ok(result.warnings.some((item) => item.includes("callout") && item.includes("blockquote")));',
+            '  assert.ok(!result.warnings.some((item) => item.includes("callout") && item.includes("blockquote")));',
+            "supported rich-text callout warning",
           )
           PY
           rm -f \
@@ -223,4 +235,4 @@ jobs:
         if: failure()
         run: >-
           gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${{ github.event.comment.id }}"
-          -X PATCH -f body="❌ PG sync v4 failed before push. run=${{ github.run_id }}"
+          -X PATCH -f body="❌ PG sync v5 failed before push. run=${{ github.run_id }}"
