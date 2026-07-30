@@ -9,7 +9,10 @@ import {
   SIDEBAR_SEARCH_SURFACE_SELECTOR,
 } from "@/lib/sidebarSearchExperience";
 import {
+  loadMobileKnowledgeTreeCompact,
   loadMobileKnowledgeTreeViewMode,
+  MOBILE_KNOWLEDGE_TREE_COMPACT_CHANGED_EVENT,
+  MOBILE_KNOWLEDGE_TREE_COMPACT_STORAGE_KEY,
   MOBILE_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT,
   type MobileKnowledgeTreeViewMode,
 } from "@/lib/mobileKnowledgeTreeViewMode";
@@ -96,6 +99,7 @@ function sameMobileModeSurfaces(current: MobileModeSurface[], next: MobileModeSu
 
 function MobileKnowledgeTreeModeSurface({ surface }: { surface: MobileModeSurface }) {
   const [mode, setMode] = useState<MobileKnowledgeTreeViewMode>(() => loadMobileKnowledgeTreeViewMode());
+  const [compact, setCompact] = useState(() => loadMobileKnowledgeTreeCompact());
 
   useEffect(() => {
     const sync = (event: Event) => {
@@ -114,6 +118,24 @@ function MobileKnowledgeTreeModeSurface({ surface }: { surface: MobileModeSurfac
   }, []);
 
   useEffect(() => {
+    const syncCompact = (event: Event) => {
+      const next = (event as CustomEvent<{ compact?: boolean }>).detail?.compact;
+      setCompact(typeof next === "boolean" ? next : loadMobileKnowledgeTreeCompact());
+    };
+    const syncStorage = (event: StorageEvent) => {
+      if (event.key === MOBILE_KNOWLEDGE_TREE_COMPACT_STORAGE_KEY) {
+        setCompact(loadMobileKnowledgeTreeCompact());
+      }
+    };
+    window.addEventListener(MOBILE_KNOWLEDGE_TREE_COMPACT_CHANGED_EVENT, syncCompact);
+    window.addEventListener("storage", syncStorage);
+    return () => {
+      window.removeEventListener(MOBILE_KNOWLEDGE_TREE_COMPACT_CHANGED_EVENT, syncCompact);
+      window.removeEventListener("storage", syncStorage);
+    };
+  }, []);
+
+  useEffect(() => {
     surface.navigatorSurface.style.display = mode === "tree" ? "none" : "";
     return () => {
       surface.navigatorSurface.style.display = "";
@@ -121,7 +143,10 @@ function MobileKnowledgeTreeModeSurface({ surface }: { surface: MobileModeSurfac
   }, [mode, surface.navigatorSurface]);
 
   return mode === "tree" && createPortal(
-    <KnowledgeTreePanel variant="mobile" className="nowen-mobile-tree-density" />,
+    <KnowledgeTreePanel
+      variant="mobile"
+      className={compact ? "nowen-mobile-tree-density" : undefined}
+    />,
     surface.treeSlot,
     `${surface.id}:tree`,
   );

@@ -26,11 +26,15 @@ import { detectShortcutSurface } from "@/lib/shortcutRegistry";
 import {
   DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT,
   DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY,
+  loadMobileKnowledgeTreeCompact,
   loadDesktopKnowledgeTreeViewMode,
   loadMobileKnowledgeTreeViewMode,
+  MOBILE_KNOWLEDGE_TREE_COMPACT_CHANGED_EVENT,
+  MOBILE_KNOWLEDGE_TREE_COMPACT_STORAGE_KEY,
   MOBILE_KNOWLEDGE_TREE_VIEW_MODE_CHANGED_EVENT,
   MOBILE_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY,
   saveDesktopKnowledgeTreeViewMode,
+  saveMobileKnowledgeTreeCompact,
   saveMobileKnowledgeTreeViewMode,
   type DesktopKnowledgeTreeViewMode,
   type MobileKnowledgeTreeViewMode,
@@ -645,6 +649,9 @@ function SwitchesPanel() {
   const [mobileKnowledgeTreeMode, setMobileKnowledgeTreeMode] = useState<MobileKnowledgeTreeViewMode>(
     () => loadMobileKnowledgeTreeViewMode(),
   );
+  const [mobileKnowledgeTreeCompact, setMobileKnowledgeTreeCompact] = useState(
+    () => loadMobileKnowledgeTreeCompact(),
+  );
   const [desktopKnowledgeTreeMode, setDesktopKnowledgeTreeMode] = useState<DesktopKnowledgeTreeViewMode>(
     () => loadDesktopKnowledgeTreeViewMode(),
   );
@@ -690,6 +697,19 @@ function SwitchesPanel() {
   }, []);
 
   useEffect(() => {
+    const syncCompact = () => setMobileKnowledgeTreeCompact(loadMobileKnowledgeTreeCompact());
+    const syncStorage = (event: StorageEvent) => {
+      if (event.key === MOBILE_KNOWLEDGE_TREE_COMPACT_STORAGE_KEY) syncCompact();
+    };
+    window.addEventListener(MOBILE_KNOWLEDGE_TREE_COMPACT_CHANGED_EVENT, syncCompact);
+    window.addEventListener("storage", syncStorage);
+    return () => {
+      window.removeEventListener(MOBILE_KNOWLEDGE_TREE_COMPACT_CHANGED_EVENT, syncCompact);
+      window.removeEventListener("storage", syncStorage);
+    };
+  }, []);
+
+  useEffect(() => {
     const syncMode = () => setDesktopKnowledgeTreeMode(loadDesktopKnowledgeTreeViewMode());
     const syncStorage = (event: StorageEvent) => {
       if (event.key === DESKTOP_KNOWLEDGE_TREE_VIEW_MODE_STORAGE_KEY) syncMode();
@@ -706,6 +726,11 @@ function SwitchesPanel() {
     const nextMode: MobileKnowledgeTreeViewMode = treeEnabled ? "tree" : "navigator";
     setMobileKnowledgeTreeMode(nextMode);
     saveMobileKnowledgeTreeViewMode(nextMode);
+  };
+
+  const handleToggleMobileKnowledgeTreeCompact = (nextCompact: boolean) => {
+    setMobileKnowledgeTreeCompact(nextCompact);
+    saveMobileKnowledgeTreeCompact(nextCompact);
   };
 
   const handleToggleDesktopKnowledgeTreeMode = (quickEnabled: boolean) => {
@@ -840,6 +865,26 @@ function SwitchesPanel() {
             </div>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 leading-snug">
               {t("settings.mobileKnowledgeTreeModeDesc")}
+            </p>
+          </div>
+        </label>
+
+        <label
+          data-settings-switch="mobile-knowledge-tree-compact"
+          className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-white/60 dark:hover:bg-zinc-900/25 transition-colors"
+        >
+          <input
+            type="checkbox"
+            checked={mobileKnowledgeTreeCompact}
+            onChange={(event) => handleToggleMobileKnowledgeTreeCompact(event.target.checked)}
+            className="mt-0.5 w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-zinc-800 dark:text-zinc-200 leading-none">
+              {t("settings.mobileKnowledgeTreeCompact")}
+            </div>
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 leading-snug">
+              {t("settings.mobileKnowledgeTreeCompactDesc")}
             </p>
           </div>
         </label>

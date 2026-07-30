@@ -639,6 +639,8 @@
     "switchesDesc": "Manage feature switches and default behavior in one place",
     "mobileKnowledgeTreeMode": "Use tree view on mobile",
     "mobileKnowledgeTreeModeDesc": "When enabled, use the expandable tree. When disabled, show recent documents first and browse folders one level at a time under All.",
+    "mobileKnowledgeTreeCompact": "Compact mobile tree",
+    "mobileKnowledgeTreeCompactDesc": "Off by default to match desktop spacing. Turn it on to reduce row height and show more items at once.",
     "desktopKnowledgeTreeMode": "Use quick browse on desktop",
     "desktopKnowledgeTreeModeDesc": "When enabled, browse Recent and All. When disabled, use the expandable tree with drag-and-drop organization.",
     "themeMode": "Theme Mode",

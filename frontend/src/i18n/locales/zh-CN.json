@@ -656,6 +656,8 @@
     "switchesDesc": "集中管理功能开关和默认行为",
     "mobileKnowledgeTreeMode": "移动端使用树形目录",
     "mobileKnowledgeTreeModeDesc": "开启后使用可展开的树形目录；关闭时优先展示最近文档，并通过“全部”逐层浏览。",
+    "mobileKnowledgeTreeCompact": "移动端目录树紧凑模式",
+    "mobileKnowledgeTreeCompactDesc": "默认关闭并使用与桌面端一致的舒适间距；开启后缩小目录行高，适合一次浏览更多内容。",
     "desktopKnowledgeTreeMode": "桌面端使用快捷浏览",
     "desktopKnowledgeTreeModeDesc": "开启后提供“最近 / 全部”的快捷入口；关闭时使用支持展开、拖拽整理的树形目录。",
     "themeMode": "主题模式",
