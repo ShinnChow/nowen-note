@@ -1,0 +1,61 @@
+name: Apply timezone and mindmap alignment fix
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/apply-timezone-mindmap-fix.py"
+      - ".github/workflows/apply-timezone-mindmap-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+      - name: Apply implementation
+        run: python3 scripts/apply-timezone-mindmap-fix.py
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Frontend timezone and mindmap tests
+        working-directory: frontend
+        run: npm run test:run -- src/lib/__tests__/dateTime.test.ts src/components/__tests__/MindMapGeometryAlignment.test.ts src/components/__tests__/MindMapSelectionHitTest.test.ts
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npx tsc -b
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+      - name: Backend UTC contract tests
+        working-directory: backend
+        run: node --import tsx --import ./tests/setup-db-isolation.ts --test tests/utc-time.test.ts
+      - name: Backend typecheck
+        working-directory: backend
+        run: npm run build:tsc
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend backend
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+            exit 0
+          fi
+          git commit -m "fix: normalize timezone handling and mindmap geometry"
+          git push origin HEAD:${{ github.head_ref }}
