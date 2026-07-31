@@ -1,0 +1,696 @@
+name: Apply import format options
+
+on:
+  push:
+    branches:
+      - feat/import-target-format-options
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !startsWith(github.event.head_commit.message, 'feat(import): add target format options') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/import-target-format-options
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Apply implementation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = ROOT / path
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}: {old[:100]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          def regex_once(path: str, pattern: str, repl: str, flags: int = 0) -> None:
+              p = ROOT / path
+              text = p.read_text(encoding='utf-8')
+              next_text, count = re.subn(pattern, repl, text, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one regex match, found {count}: {pattern[:100]!r}')
+              p.write_text(next_text, encoding='utf-8')
+
+          # ------------------------------------------------------------------
+          # Shared import service: make the target format an explicit option.
+          # ------------------------------------------------------------------
+          replace_once(
+              'frontend/src/lib/importService.base.ts',
+              '}\n\n// 导入选项\nexport interface ImportOptions {',
+              '}\n\nexport type ImportTargetContentFormat = "tiptap-json" | "markdown";\n\n// 导入选项\nexport interface ImportOptions {',
+          )
+          replace_once(
+              'frontend/src/lib/importService.base.ts',
+              '  workspaceId?: string;\n}',
+              '  workspaceId?: string;\n  /**\n   * Markdown-capable sources can either stay native Markdown or be converted\n   * to the rich-text TipTap JSON format. Non-Markdown sources ignore this.\n   */\n  targetContentFormat?: ImportTargetContentFormat;\n}',
+          )
+          replace_once(
+              'frontend/src/lib/importService.base.ts',
+              '''function convertSiyuanImportToMarkdown(fileInfo: ImportFileInfo): string {
+  let md = fileInfo.content || "";
+  md = md.replace(/^---\\r?\\n[\\s\\S]*?\\r?\\n---[ \\t]*(?:\\r?\\n|$)/, "");
+  md = replaceMarkdownLocalAssets(md, fileInfo.imageMap);
+  return md.trim();
+}''',
+              '''function convertImportToMarkdown(fileInfo: ImportFileInfo): string {
+  let md = fileInfo.content || "";
+  // 思源导出的 frontmatter 属于迁移元数据；普通 Markdown 则保持原文，
+  // 避免用户选择“Markdown”后仍被静默改写源文件结构。
+  if (isSiyuanSource(fileInfo.source)) {
+    md = md.replace(/^---\\r?\\n[\\s\\S]*?\\r?\\n---[ \\t]*(?:\\r?\\n|$)/, "");
+  }
+  md = replaceMarkdownLocalAssets(md, fileInfo.imageMap);
+  return md.trim();
+}''',
+          )
+          replace_once(
+              'frontend/src/lib/importService.base.ts',
+              '''      const importAsMarkdown = isSiyuanSource(f.source);
+      const note: { title: string; content: string; contentText: string; contentFormat?: "tiptap-json" | "markdown" | "html"; createdAt?: string; updatedAt?: string; notebookName?: string; notebookPath?: string[] } = {
+        title: f.title,
+        content: importAsMarkdown ? convertSiyuanImportToMarkdown(f) : convertToTiptapJson(f),
+        contentText: extractPlainText(f),
+        contentFormat: importAsMarkdown ? "markdown" : "tiptap-json",
+      };''',
+              '''      const normalizedSource = String(f.source || "").toLowerCase();
+      const markdownCapable =
+        !normalizedSource ||
+        normalizedSource === "md" ||
+        normalizedSource === "markdown" ||
+        isSiyuanSource(normalizedSource);
+      // Backward compatibility: without an explicit choice, keep the historical
+      // behavior (Siyuan Markdown stays Markdown; ordinary .md becomes rich text).
+      const importAsMarkdown = markdownCapable && (
+        options?.targetContentFormat
+          ? options.targetContentFormat === "markdown"
+          : isSiyuanSource(normalizedSource)
+      );
+      const note: { title: string; content: string; contentText: string; contentFormat?: "tiptap-json" | "markdown" | "html"; createdAt?: string; updatedAt?: string; notebookName?: string; notebookPath?: string[] } = {
+        title: f.title,
+        content: importAsMarkdown ? convertImportToMarkdown(f) : convertToTiptapJson(f),
+        contentText: extractPlainText(f),
+        contentFormat: importAsMarkdown ? "markdown" : "tiptap-json",
+      };''',
+          )
+
+          replace_once(
+              'frontend/src/lib/importService.ts',
+              '''  ImportFileInfo,
+  ImportOptions,
+  ImportProgress,
+  ZipImportMeta,''',
+              '''  ImportFileInfo,
+  ImportOptions,
+  ImportProgress,
+  ImportTargetContentFormat,
+  ZipImportMeta,''',
+          )
+          replace_once(
+              'frontend/src/lib/importService.ts',
+              '''  ImportFileInfo,
+  ImportOptions,
+  ImportProgress,
+  ZipImportMeta,
+  ImportMarkdownAsNoteResult,''',
+              '''  ImportFileInfo,
+  ImportOptions,
+  ImportProgress,
+  ImportTargetContentFormat,
+  ZipImportMeta,
+  ImportMarkdownAsNoteResult,''',
+          )
+
+          # ------------------------------------------------------------------
+          # Data manager: source-aware defaults and per-module remembered choice.
+          # ------------------------------------------------------------------
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''  ImportFileInfo, ImportProgress,
+  PDF_NO_TEXT_LAYER_FLAG, PDF_TOO_LARGE_FLAG, MAX_PDF_SIZE,''',
+              '''  ImportFileInfo, ImportProgress,
+  type ImportTargetContentFormat,
+  PDF_NO_TEXT_LAYER_FLAG, PDF_TOO_LARGE_FLAG, MAX_PDF_SIZE,''',
+          )
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''type MobileMemoMethod = "xiaomi" | "oppo" | "iphone";
+
+/** 各 scope 下允许的二级 Tab 集合（顺序即展示顺序） */''',
+              '''type MobileMemoMethod = "xiaomi" | "oppo" | "iphone";
+
+const IMPORT_FORMAT_STORAGE = {
+  siyuan: "nowen-import-format:siyuan",
+  generic: "nowen-import-format:generic-markdown",
+} as const;
+
+function readImportFormat(
+  key: string,
+  fallback: ImportTargetContentFormat,
+): ImportTargetContentFormat {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const value = window.localStorage.getItem(key);
+    return value === "markdown" || value === "tiptap-json" ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function persistImportFormat(key: string, value: ImportTargetContentFormat): void {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(key, value); } catch { /* storage may be disabled */ }
+}
+
+function isMarkdownImportSource(source?: string): boolean {
+  const value = String(source || "").toLowerCase();
+  return !value || value === "md" || value === "markdown" || value === "siyuan";
+}
+
+/** 各 scope 下允许的二级 Tab 集合（顺序即展示顺序） */''',
+          )
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''  const [serverSiyuanFile, setServerSiyuanFile] = useState<File | null>(null);
+  const [siyuanImportContentFormat, setSiyuanImportContentFormat] = useState<"tiptap-json" | "markdown">("tiptap-json");
+  const [activeImportMethod, setActiveImportMethod] = useState<ImportMethod>(() => readImportMethod());
+  const [activeMobileMemoMethod, setActiveMobileMemoMethod] = useState<MobileMemoMethod>("xiaomi");
+  useEffect(() => persistImportMethod(activeImportMethod), [activeImportMethod]);''',
+              '''  const [serverSiyuanFile, setServerSiyuanFile] = useState<File | null>(null);
+  const [siyuanImportContentFormat, setSiyuanImportContentFormat] = useState<ImportTargetContentFormat>(
+    () => readImportFormat(IMPORT_FORMAT_STORAGE.siyuan, "tiptap-json"),
+  );
+  const [genericImportContentFormat, setGenericImportContentFormat] = useState<ImportTargetContentFormat>(
+    () => readImportFormat(IMPORT_FORMAT_STORAGE.generic, "markdown"),
+  );
+  const [activeImportMethod, setActiveImportMethod] = useState<ImportMethod>(() => readImportMethod());
+  const [activeMobileMemoMethod, setActiveMobileMemoMethod] = useState<MobileMemoMethod>("xiaomi");
+  useEffect(() => persistImportMethod(activeImportMethod), [activeImportMethod]);
+  useEffect(
+    () => persistImportFormat(IMPORT_FORMAT_STORAGE.siyuan, siyuanImportContentFormat),
+    [siyuanImportContentFormat],
+  );
+  useEffect(
+    () => persistImportFormat(IMPORT_FORMAT_STORAGE.generic, genericImportContentFormat),
+    [genericImportContentFormat],
+  );''',
+          )
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''        if (activeImportMethod === "siyuan" && isSiyuanSyZip) {
+          setServerSiyuanFile(zipFile);''',
+              '''        if (activeImportMethod === "siyuan" && isSiyuanSyZip) {
+          // .sy 是结构化块数据，富文本能保留更多结构，按来源切换推荐默认值。
+          setSiyuanImportContentFormat("tiptap-json");
+          setServerSiyuanFile(zipFile);''',
+          )
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''        r = await readMarkdownFromZipWithMeta(zipFile);
+        result = r.files;
+        setHasZip(true);''',
+              '''        r = await readMarkdownFromZipWithMeta(zipFile);
+        result = r.files;
+        if (activeImportMethod === "siyuan") {
+          // 思源 Markdown ZIP 的来源已经是 Markdown，默认原样保留。
+          setSiyuanImportContentFormat("markdown");
+        }
+        setHasZip(true);''',
+          )
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''      } else {
+        result = await readMarkdownFiles(files);
+        setHasZip(false);''',
+              '''      } else {
+        result = await readMarkdownFiles(files);
+        if (activeImportMethod === "siyuan") {
+          setSiyuanImportContentFormat("markdown");
+        }
+        setHasZip(false);''',
+          )
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''    // perFileNotebook 与 selectedNotebookId 互斥：只要选了具体笔记本，就不启用 per-file
+    const usePerFile = !safeNotebookId && perFileNotebook;
+    let result: { success: boolean; count: number };''',
+              '''    // perFileNotebook 与 selectedNotebookId 互斥：只要选了具体笔记本，就不启用 per-file
+    const usePerFile = !safeNotebookId && perFileNotebook;
+    const selectedFiles = importFiles.filter((file) => file.selected);
+    const genericMarkdownOnly =
+      selectedFiles.length > 0 && selectedFiles.every((file) => isMarkdownImportSource(file.source));
+    let result: { success: boolean; count: number };''',
+          )
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''            duplicateStrategy,
+            workspaceId: effectiveWorkspaceId,
+          }''',
+              '''            duplicateStrategy,
+            workspaceId: effectiveWorkspaceId,
+            targetContentFormat:
+              activeImportMethod === "siyuan"
+                ? siyuanImportContentFormat
+                : activeImportMethod === "generic" && genericMarkdownOnly
+                  ? genericImportContentFormat
+                  : "tiptap-json",
+          }''',
+          )
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''  const selectedCount = importFiles.filter((f) => f.selected).length;
+
+  // Danger Zone state''',
+              '''  const selectedCount = importFiles.filter((f) => f.selected).length;
+  const selectedFilesAreMarkdownOnly =
+    selectedCount > 0 &&
+    importFiles.filter((file) => file.selected).every((file) => isMarkdownImportSource(file.source));
+
+  // Danger Zone state''',
+          )
+          replace_once(
+              'frontend/src/components/DataManager.tsx',
+              '''                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {importFiles.length === 0 && (''',
+              '''                          </p>
+                        </div>
+                      )}
+                      {activeImportMethod === "generic" && selectedFilesAreMarkdownOnly && (
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1.5">
+                            {t('dataManager.siyuanImportFormatLabel')}
+                          </p>
+                          <div className="inline-flex rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => setGenericImportContentFormat("markdown")}
+                              className={`px-3 py-1.5 text-xs font-medium transition-colors ${genericImportContentFormat === "markdown"
+                                ? "bg-indigo-600 text-white"
+                                : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                                }`}
+                            >
+                              {t('dataManager.siyuanImportFormatMarkdown')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGenericImportContentFormat("tiptap-json")}
+                              className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-zinc-200 dark:border-zinc-700 ${genericImportContentFormat === "tiptap-json"
+                                ? "bg-indigo-600 text-white"
+                                : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                                }`}
+                            >
+                              {t('dataManager.siyuanImportFormatRichText')}
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1.5">
+                            {genericImportContentFormat === "markdown"
+                              ? t('dataManager.siyuanImportFormatMarkdownHint')
+                              : t('dataManager.siyuanImportFormatRichTextHint')}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {importFiles.length === 0 && (''',
+          )
+
+          # ------------------------------------------------------------------
+          # Obsidian: default to Markdown, with explicit rich-text conversion.
+          # ------------------------------------------------------------------
+          replace_once(
+              'frontend/src/lib/obsidianImportTypes.ts',
+              'import type { ImportProgress } from "./importService";',
+              'import type { ImportProgress, ImportTargetContentFormat } from "./importService";',
+          )
+          replace_once(
+              'frontend/src/lib/obsidianImportTypes.ts',
+              '''export interface ObsidianImportOptions {
+  rootName: string;
+  onProgress?: (progress: ImportProgress) => void;
+}''',
+              '''export interface ObsidianImportOptions {
+  rootName: string;
+  contentFormat: ImportTargetContentFormat;
+  onProgress?: (progress: ImportProgress) => void;
+}''',
+          )
+          replace_once(
+              'frontend/src/lib/obsidianImportService.ts',
+              '''import { convertToTiptapJson, extractPlainText, type ImportFileInfo } from "./importService";''',
+              '''import {
+  convertToTiptapJson,
+  extractPlainText,
+  type ImportFileInfo,
+  type ImportTargetContentFormat,
+} from "./importService";''',
+          )
+          replace_once(
+              'frontend/src/lib/obsidianImportService.ts',
+              '''function tiptap(markdown: string, entry: ObsidianEntry): { content: string; text: string } {
+  const info: ImportFileInfo = { name: entry.vaultPath, title: entry.fileName.replace(/\\.(?:md|markdown)$/i, ""), content: markdown, size: entry.size, selected: true, source: "md" };
+  return { content: convertToTiptapJson(info), text: extractPlainText(info).slice(0, 20_000) };
+}''',
+              '''function formatNote(
+  markdown: string,
+  entry: ObsidianEntry,
+  contentFormat: ImportTargetContentFormat,
+): { content: string; text: string } {
+  const info: ImportFileInfo = { name: entry.vaultPath, title: entry.fileName.replace(/\\.(?:md|markdown)$/i, ""), content: markdown, size: entry.size, selected: true, source: "md" };
+  return {
+    content: contentFormat === "markdown" ? markdown : convertToTiptapJson(info),
+    text: extractPlainText(info).slice(0, 20_000),
+  };
+}''',
+          )
+          replace_once(
+              'frontend/src/lib/obsidianImportService.ts',
+              '''      const placeholder = tiptap(`# ${title}\\n\\n正在导入 Obsidian 笔记及附件…`, entry);
+      const createdResult = await api.importNotes([{ title, content: placeholder.content, contentText: title, contentFormat: "tiptap-json", notebookPath, notebookName: notebookPath.at(-1), updatedAt: entry.lastModified ? new Date(entry.lastModified).toISOString() : undefined }]);''',
+              '''      const placeholder = formatNote(`# ${title}\\n\\n正在导入 Obsidian 笔记及附件…`, entry, options.contentFormat);
+      const createdResult = await api.importNotes([{ title, content: placeholder.content, contentText: title, contentFormat: options.contentFormat, notebookPath, notebookName: notebookPath.at(-1), updatedAt: entry.lastModified ? new Date(entry.lastModified).toISOString() : undefined }]);''',
+          )
+          replace_once(
+              'frontend/src/lib/obsidianImportService.ts',
+              '''      const final = tiptap(rewriteObsidianMarkdown(source, entry.vaultPath, index, urls), entry);
+      await api.updateNote(noteId, { content: final.content, contentText: final.text, contentFormat: "tiptap-json", version: typeof created.version === "number" ? created.version : 1 });''',
+              '''      const final = formatNote(
+        rewriteObsidianMarkdown(source, entry.vaultPath, index, urls),
+        entry,
+        options.contentFormat,
+      );
+      await api.updateNote(noteId, { content: final.content, contentText: final.text, contentFormat: options.contentFormat, version: typeof created.version === "number" ? created.version : 1 });''',
+          )
+          replace_once(
+              'frontend/src/lib/obsidianImportService.ts',
+              '''          const failed = tiptap(`# 导入未完成\\n\\n${message}`, entry);
+          await api.updateNote(noteId, { content: failed.content, contentText: message, version: latest.version });''',
+              '''          const failed = formatNote(`# 导入未完成\\n\\n${message}`, entry, options.contentFormat);
+          await api.updateNote(noteId, { content: failed.content, contentText: message, contentFormat: options.contentFormat, version: latest.version });''',
+          )
+
+          replace_once(
+              'frontend/src/components/ObsidianImport.tsx',
+              'import React, { useCallback, useMemo, useRef, useState } from "react";',
+              'import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";',
+          )
+          replace_once(
+              'frontend/src/components/ObsidianImport.tsx',
+              'import type { ImportProgress } from "@/lib/importService";',
+              'import type { ImportProgress, ImportTargetContentFormat } from "@/lib/importService";',
+          )
+          replace_once(
+              'frontend/src/components/ObsidianImport.tsx',
+              '''type Phase = "idle" | "scanning" | "ready" | "importing" | "done" | "error";
+
+export default function ObsidianImport() {''',
+              '''type Phase = "idle" | "scanning" | "ready" | "importing" | "done" | "error";
+const OBSIDIAN_FORMAT_STORAGE_KEY = "nowen-import-format:obsidian";
+
+function readObsidianFormat(): ImportTargetContentFormat {
+  try {
+    const value = window.localStorage.getItem(OBSIDIAN_FORMAT_STORAGE_KEY);
+    return value === "tiptap-json" || value === "markdown" ? value : "markdown";
+  } catch {
+    return "markdown";
+  }
+}
+
+export default function ObsidianImport() {''',
+          )
+          replace_once(
+              'frontend/src/components/ObsidianImport.tsx',
+              '''  const [progress, setProgress] = useState<ImportProgress | null>(null);
+  const [result, setResult] = useState<ObsidianImportResult | null>(null);
+
+  const reset = useCallback(() => {''',
+              '''  const [progress, setProgress] = useState<ImportProgress | null>(null);
+  const [result, setResult] = useState<ObsidianImportResult | null>(null);
+  const [contentFormat, setContentFormat] = useState<ImportTargetContentFormat>(readObsidianFormat);
+
+  useEffect(() => {
+    try { window.localStorage.setItem(OBSIDIAN_FORMAT_STORAGE_KEY, contentFormat); } catch { /* ignore */ }
+  }, [contentFormat]);
+
+  const reset = useCallback(() => {''',
+          )
+          replace_once(
+              'frontend/src/components/ObsidianImport.tsx',
+              '''      const imported = await runObsidianImport(scan, { rootName, onProgress: setProgress });''',
+              '''      const imported = await runObsidianImport(scan, { rootName, contentFormat, onProgress: setProgress });''',
+          )
+          replace_once(
+              'frontend/src/components/ObsidianImport.tsx',
+              '''  }, [actions, rootName, scan]);''',
+              '''  }, [actions, contentFormat, rootName, scan]);''',
+          )
+          replace_once(
+              'frontend/src/components/ObsidianImport.tsx',
+              '''        <label className="block text-xs text-zinc-500">最外层笔记本名称
+          <input value={rootName} onChange={(e) => setRootName(e.target.value)} disabled={phase === "importing"} className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" />
+        </label>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">''',
+              '''        <label className="block text-xs text-zinc-500">最外层笔记本名称
+          <input value={rootName} onChange={(e) => setRootName(e.target.value)} disabled={phase === "importing"} className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" />
+        </label>
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">导入后笔记格式</p>
+          <div className="inline-flex overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
+            <button type="button" disabled={phase === "importing"} onClick={() => setContentFormat("markdown")} className={`px-3 py-1.5 text-xs font-medium transition-colors ${contentFormat === "markdown" ? "bg-violet-600 text-white" : "bg-white text-zinc-600 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}>Markdown（推荐）</button>
+            <button type="button" disabled={phase === "importing"} onClick={() => setContentFormat("tiptap-json")} className={`border-l border-zinc-200 px-3 py-1.5 text-xs font-medium transition-colors dark:border-zinc-700 ${contentFormat === "tiptap-json" ? "bg-violet-600 text-white" : "bg-white text-zinc-600 hover:bg-zinc-50 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}>富文本</button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+            {contentFormat === "markdown" ? "保留原始 Markdown、Frontmatter 和链接语法，附件地址会自动迁移。" : "转换为可视化编辑格式；部分 Obsidian 专有语法可能降级。"}
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">''',
+          )
+
+          # ------------------------------------------------------------------
+          # Regression tests.
+          # ------------------------------------------------------------------
+          p = ROOT / 'frontend/src/lib/__tests__/importServiceSiyuanMarkdown.test.ts'
+          text = p.read_text(encoding='utf-8')
+          marker = '\n});\n'
+          if not text.endswith(marker):
+              raise SystemExit('unexpected importServiceSiyuanMarkdown.test.ts ending')
+          addition = r'''
+
+  it("honors explicit Markdown and rich-text choices for ordinary Markdown files", async () => {
+    importNotesMock.mockResolvedValue({ success: true, count: 1 });
+    const { importNotes } = await import("@/lib/importService");
+    const file = {
+      name: "plain.md",
+      title: "Plain",
+      content: "---\ncreated: 2026-07-31\n---\n# Plain\n\nbody",
+      size: 42,
+      selected: true,
+      source: "md",
+    } as const;
+
+    await importNotes([file], undefined, undefined, { targetContentFormat: "markdown" });
+    let [[notes]] = importNotesMock.mock.calls;
+    expect(notes[0].contentFormat).toBe("markdown");
+    expect(notes[0].content).toContain("created: 2026-07-31");
+    expect(notes[0].content).toContain("# Plain");
+
+    importNotesMock.mockClear();
+    await importNotes([file], undefined, undefined, { targetContentFormat: "tiptap-json" });
+    [[notes]] = importNotesMock.mock.calls;
+    expect(notes[0].contentFormat).toBe("tiptap-json");
+    expect(notes[0].content).toMatch(/^\s*\{"type":"doc"/);
+  });
+
+  it("lets a Siyuan Markdown source be explicitly converted to rich text", async () => {
+    importNotesMock.mockResolvedValue({ success: true, count: 1 });
+    const { importNotes } = await import("@/lib/importService");
+
+    await importNotes([{
+      name: "Notebook/Doc.md",
+      title: "Doc",
+      content: "# Doc\n\nbody",
+      size: 12,
+      selected: true,
+      source: "siyuan",
+    }], undefined, undefined, { targetContentFormat: "tiptap-json" });
+
+    const [[notes]] = importNotesMock.mock.calls;
+    expect(notes[0].contentFormat).toBe("tiptap-json");
+    expect(notes[0].content).toMatch(/^\s*\{"type":"doc"/);
+  });'''
+          p.write_text(text[:-len(marker)] + addition + marker, encoding='utf-8')
+
+          (ROOT / 'frontend/src/lib/__tests__/obsidianImportFormat.test.ts').write_text(r'''import { afterEach, describe, expect, it, vi } from "vitest";
+
+const importNotesMock = vi.fn();
+const updateNoteMock = vi.fn();
+const getNoteMock = vi.fn();
+const uploadMock = vi.fn();
+
+vi.mock("@/lib/api", () => ({
+  api: {
+    importNotes: importNotesMock,
+    updateNote: updateNoteMock,
+    getNote: getNoteMock,
+    attachments: { upload: uploadMock },
+  },
+}));
+
+function scanFor(markdown: string) {
+  const file = new File([markdown], "Demo.md", { type: "text/markdown", lastModified: 1_700_000_000_000 });
+  return {
+    source: "folder" as const,
+    rootFolderName: "Vault",
+    entries: [{
+      relPath: "Vault/Demo.md",
+      vaultPath: "Demo.md",
+      fileName: "Demo.md",
+      notebookPath: [],
+      size: file.size,
+      lastModified: file.lastModified,
+      kind: "note" as const,
+      selected: true,
+      file,
+    }],
+    stats: { notes: 1, attachments: 0, images: 0, videos: 0, pdfs: 0, skipped: 0, folders: 0, totalBytes: file.size },
+  };
+}
+
+describe("Obsidian import target format", () => {
+  afterEach(() => {
+    importNotesMock.mockReset();
+    updateNoteMock.mockReset();
+    getNoteMock.mockReset();
+    uploadMock.mockReset();
+  });
+
+  it("keeps rewritten Obsidian content as native Markdown", async () => {
+    importNotesMock.mockResolvedValue({ success: true, count: 1, notes: [{ id: "n1", version: 1 }] });
+    updateNoteMock.mockResolvedValue({ success: true });
+    const { runObsidianImport } = await import("@/lib/obsidianImportService");
+
+    const result = await runObsidianImport(scanFor("---\ntags: [demo]\n---\n# Demo\n\nBody"), {
+      rootName: "Vault",
+      contentFormat: "markdown",
+    });
+
+    expect(result.noteCount).toBe(1);
+    expect(importNotesMock.mock.calls[0][0][0].contentFormat).toBe("markdown");
+    const finalUpdate = updateNoteMock.mock.calls.at(-1)?.[1];
+    expect(finalUpdate.contentFormat).toBe("markdown");
+    expect(finalUpdate.content).toContain("tags: [demo]");
+    expect(finalUpdate.content).toContain("# Demo");
+  });
+
+  it("converts Obsidian Markdown to TipTap JSON when rich text is selected", async () => {
+    importNotesMock.mockResolvedValue({ success: true, count: 1, notes: [{ id: "n2", version: 1 }] });
+    updateNoteMock.mockResolvedValue({ success: true });
+    const { runObsidianImport } = await import("@/lib/obsidianImportService");
+
+    const result = await runObsidianImport(scanFor("# Demo\n\n**Body**"), {
+      rootName: "Vault",
+      contentFormat: "tiptap-json",
+    });
+
+    expect(result.noteCount).toBe(1);
+    expect(importNotesMock.mock.calls[0][0][0].contentFormat).toBe("tiptap-json");
+    const finalUpdate = updateNoteMock.mock.calls.at(-1)?.[1];
+    expect(finalUpdate.contentFormat).toBe("tiptap-json");
+    expect(finalUpdate.content).toMatch(/^\s*\{"type":"doc"/);
+  });
+});
+''', encoding='utf-8')
+
+          (ROOT / '.github/workflows/import-format-ci.yml').write_text('''name: Import Format CI
+
+on:
+  pull_request:
+    paths:
+      - "frontend/src/components/DataManager.tsx"
+      - "frontend/src/components/ObsidianImport.tsx"
+      - "frontend/src/lib/importService.ts"
+      - "frontend/src/lib/importService.base.ts"
+      - "frontend/src/lib/obsidianImportTypes.ts"
+      - "frontend/src/lib/obsidianImportService.ts"
+      - "frontend/src/lib/__tests__/importServiceSiyuanMarkdown.test.ts"
+      - "frontend/src/lib/__tests__/obsidianImportFormat.test.ts"
+      - ".github/workflows/import-format-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "frontend/src/components/DataManager.tsx"
+      - "frontend/src/components/ObsidianImport.tsx"
+      - "frontend/src/lib/importService.ts"
+      - "frontend/src/lib/importService.base.ts"
+      - "frontend/src/lib/obsidianImportTypes.ts"
+      - "frontend/src/lib/obsidianImportService.ts"
+      - "frontend/src/lib/__tests__/importServiceSiyuanMarkdown.test.ts"
+      - "frontend/src/lib/__tests__/obsidianImportFormat.test.ts"
+      - ".github/workflows/import-format-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Import format regression tests
+        run: npm run test:run -- src/lib/__tests__/importServiceSiyuanMarkdown.test.ts src/lib/__tests__/obsidianImportFormat.test.ts
+      - name: Frontend typecheck
+        if: always()
+        run: npx tsc -b
+''', encoding='utf-8')
+
+          # Remove the one-shot workflow before committing the actual feature.
+          (ROOT / '.github/workflows/apply-import-format-options.yml').unlink()
+          PY
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run targeted tests
+        working-directory: frontend
+        run: npm run test:run -- src/lib/__tests__/importServiceSiyuanMarkdown.test.ts src/lib/__tests__/obsidianImportFormat.test.ts
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npx tsc -b
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(import): add target format options"
+          git push origin HEAD:feat/import-target-format-options
