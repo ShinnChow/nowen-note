@@ -51,6 +51,17 @@ jobs:
           Path('/tmp/apply-import-formats.py').write_text(script, encoding='utf-8')
           PY
           python3 /tmp/apply-import-formats.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          test_path = Path('frontend/src/lib/__tests__/obsidianImportFormat.test.ts')
+          text = test_path.read_text(encoding='utf-8')
+          old = 'vi.mock("@/lib/api", () => ({'
+          new = 'vi.mock("../api", () => ({'
+          if old not in text:
+              raise SystemExit('Obsidian API mock marker not found')
+          test_path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
