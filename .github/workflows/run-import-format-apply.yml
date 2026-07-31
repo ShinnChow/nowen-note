@@ -56,11 +56,22 @@ jobs:
 
           test_path = Path('frontend/src/lib/__tests__/obsidianImportFormat.test.ts')
           text = test_path.read_text(encoding='utf-8')
-          old = 'vi.mock("@/lib/api", () => ({'
-          new = 'vi.mock("../api", () => ({'
-          if old not in text:
+          mock_old = 'vi.mock("@/lib/api", () => ({'
+          mock_new = 'vi.mock("../api", () => ({'
+          if mock_old not in text:
               raise SystemExit('Obsidian API mock marker not found')
-          test_path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          text = text.replace(mock_old, mock_new, 1)
+          file_old = '  const file = new File([markdown], "Demo.md", { type: "text/markdown", lastModified: 1_700_000_000_000 });'
+          file_new = '''  const file = {
+    name: "Demo.md",
+    size: new TextEncoder().encode(markdown).byteLength,
+    type: "text/markdown",
+    lastModified: 1_700_000_000_000,
+    text: async () => markdown,
+  } as unknown as File;'''
+          if file_old not in text:
+              raise SystemExit('Obsidian File fixture marker not found')
+          test_path.write_text(text.replace(file_old, file_new, 1), encoding='utf-8')
           PY
       - name: Install frontend dependencies
         working-directory: frontend
