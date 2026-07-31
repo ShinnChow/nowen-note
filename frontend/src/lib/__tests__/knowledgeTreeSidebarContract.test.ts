@@ -76,8 +76,8 @@ describe("knowledge tree sidebar contract", () => {
     expect(compactCss).toContain(".nowen-mobile-tree-density");
 
     // Root folders remain readable, nested folders are tighter, and documents are dense.
-    expect(compactCss).toContain("--nowen-mobile-tree-root-folder-row-height: 22px");
-    expect(compactCss).toContain("--nowen-mobile-tree-folder-row-height: 20px");
+    expect(compactCss).toContain("--nowen-mobile-tree-root-folder-row-height: 20px");
+    expect(compactCss).toContain("--nowen-mobile-tree-folder-row-height: 18px");
     expect(compactCss).toContain("--nowen-mobile-tree-note-row-height: 16px");
     expect(compactCss).toContain("font-size: 11px !important");
     expect(compactCss).toContain("line-height: 14px !important");
@@ -93,7 +93,7 @@ describe("knowledge tree sidebar contract", () => {
     expect(compactCss).not.toContain("@media (max-width: 767px)");
 
     // Existing interaction and title/status behavior must remain intact.
-    expect(panel).toContain("onClick={() => hasChildren && void toggle(node)}");
+    expect(panel).toContain("onClick={() => hasChildren && void openDocument(node)}");
     expect(panel).toContain('className="min-w-0 flex-1 truncate"');
     expect(panel).toContain('aria-label={`在“${node.title}”下新建文档`}');
     expect(panel).toContain('title="更多"');
