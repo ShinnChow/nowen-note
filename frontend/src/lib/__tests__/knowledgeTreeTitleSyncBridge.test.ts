@@ -26,7 +26,7 @@ function createApi(initialTitle = "旧标题") {
 const listeners: Array<(event: Event) => void> = [];
 
 function listenForTreeChanges() {
-  const listener = vi.fn<(event: Event) => void>();
+  const listener = vi.fn<[Event], void>();
   window.addEventListener(KNOWLEDGE_TREE_CHANGED_EVENT, listener);
   listeners.push(listener);
   return listener;
