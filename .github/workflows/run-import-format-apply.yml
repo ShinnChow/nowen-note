@@ -62,13 +62,7 @@ jobs:
               raise SystemExit('Obsidian API mock marker not found')
           text = text.replace(mock_old, mock_new, 1)
           file_old = '  const file = new File([markdown], "Demo.md", { type: "text/markdown", lastModified: 1_700_000_000_000 });'
-          file_new = '''  const file = {
-    name: "Demo.md",
-    size: new TextEncoder().encode(markdown).byteLength,
-    type: "text/markdown",
-    lastModified: 1_700_000_000_000,
-    text: async () => markdown,
-  } as unknown as File;'''
+          file_new = '  const file = {\n    name: "Demo.md",\n    size: new TextEncoder().encode(markdown).byteLength,\n    type: "text/markdown",\n    lastModified: 1_700_000_000_000,\n    text: async () => markdown,\n  } as unknown as File;'
           if file_old not in text:
               raise SystemExit('Obsidian File fixture marker not found')
           test_path.write_text(text.replace(file_old, file_new, 1), encoding='utf-8')
