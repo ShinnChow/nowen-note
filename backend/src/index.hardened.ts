@@ -7,8 +7,10 @@ import "./runtime/knowledge-tree-migration-bootstrap.js";
 import "./runtime/notebook-permission-management.js";
 // Install schema/route hardening before the main backend module evaluates.
 import "./runtime/task-stats-hardening.js";
-// Replace the fragile batch Xiaomi import with an isolated, idempotent route before /api/micloud mounts.
+// Keep the legacy Xiaomi route as a reusable, single-row-safe import pipeline.
 import "./runtime/micloud-import-hardening.js";
+// Mount persistent Xiaomi background jobs and one SSE progress stream before /api/micloud mounts.
+import "./runtime/micloud-import-jobs.js";
 // Recover interrupted embedding jobs before the legacy worker starts polling.
 import "./runtime/embedding-queue-hardening.js";
 // Must load after task-stats-hardening so this wrapper registers selected-section splitting before
