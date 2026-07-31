@@ -1,0 +1,44 @@
+name: PostgreSQL Latest Main Merge Command
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/pg-main-merge-command.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  merge-main:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: pg-migration-unified
+          fetch-depth: 0
+      - name: Merge latest main with PostgreSQL resolutions
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-commit --no-ff origin/main || true
+          git checkout --ours backend/src/index.hardened.ts
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('backend/src/index.hardened.ts')
+          text = path.read_text(encoding='utf-8')
+          marker = 'import "./runtime/task-stats-hardening.js";\n'
+          addition = '// Replace the fragile batch Xiaomi import with an isolated, idempotent route before /api/micloud mounts.\nimport "./runtime/micloud-import-hardening.js";\n'
+          if addition not in text:
+              if marker not in text:
+                  raise SystemExit('task-stats import marker missing')
+              text = text.replace(marker, marker + addition, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git add backend/src/index.hardened.ts
+          git rm -f --ignore-unmatch .github/workflows/micloud-import-ci.yml
+          git rm -f --ignore-unmatch .github/workflows/pg-main-merge-command.yml
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git commit -m "chore(pg): merge latest main after structure migration"
+          git push origin HEAD:pg-migration-unified
