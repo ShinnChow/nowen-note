@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "scripts/apply-timezone-mindmap-fix.py"
+      - "scripts/fix-timezone-mindmap-typecheck.py"
       - ".github/workflows/apply-timezone-mindmap-fix.yml"
 
 permissions:
@@ -28,7 +29,9 @@ jobs:
             frontend/package-lock.json
             backend/package-lock.json
       - name: Apply implementation
-        run: python3 scripts/apply-timezone-mindmap-fix.py
+        run: |
+          python3 scripts/apply-timezone-mindmap-fix.py
+          python3 scripts/fix-timezone-mindmap-typecheck.py
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
