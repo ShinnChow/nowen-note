@@ -28,7 +28,8 @@ describe("knowledge tree sidebar contract", () => {
   it("keeps loading recovery inside one embedded panel without a legacy fallback", () => {
     const panel = source("../../components/KnowledgeTreePanel.tsx");
     expect(panel).toContain('data-nowen-knowledge-tree="embedded"');
-    expect(panel).toContain("内容树加载失败");
+    expect(panel).toContain("内容暂时未加载");
+    expect(panel).toContain("重新加载");
     expect(panel).toContain("不能移动到自己的子节点中");
     expect(panel).not.toContain("onRequestLegacy");
     expect(panel).not.toContain("使用旧树");
@@ -70,7 +71,8 @@ describe("knowledge tree sidebar contract", () => {
 
     expect(main).toContain('import "./mobile-knowledge-tree-compact.css"');
     expect(main).not.toContain('import "./desktop-knowledge-tree-compact.css"');
-    expect(bridge).toContain('<KnowledgeTreePanel variant="mobile" className="nowen-mobile-tree-density" />');
+    expect(bridge).toContain('variant="mobile"');
+    expect(bridge).toContain('className={compact ? "nowen-mobile-tree-density" : undefined}');
     expect(compactCss).toContain(".nowen-mobile-tree-density");
 
     // Root folders remain readable, nested folders are tighter, and documents are dense.
