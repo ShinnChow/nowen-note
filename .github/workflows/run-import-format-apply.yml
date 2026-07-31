@@ -1,0 +1,61 @@
+name: Run import format implementation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-import-format-options.yml"
+      - ".github/workflows/run-import-format-apply.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Extract and run implementation script
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/apply-import-format-options.yml').read_text(encoding='utf-8').splitlines()
+          start = next(i for i, line in enumerate(source) if "python3 - <<'PY'" in line) + 1
+          end = next(i for i in range(start, len(source)) if source[i].strip() == 'PY')
+          lines = source[start:end]
+          indents = [len(line) - len(line.lstrip()) for line in lines if line.strip()]
+          trim = min(indents) if indents else 0
+          script = '\n'.join(line[trim:] if len(line) >= trim else '' for line in lines) + '\n'
+          Path('/tmp/apply-import-formats.py').write_text(script, encoding='utf-8')
+          PY
+          python3 /tmp/apply-import-formats.py
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run targeted tests
+        working-directory: frontend
+        run: npm run test:run -- src/lib/__tests__/importServiceSiyuanMarkdown.test.ts src/lib/__tests__/obsidianImportFormat.test.ts
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npx tsc -b
+      - name: Commit implementation
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-import-format-options.yml .github/workflows/run-import-format-apply.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(import): add target format options"
+          git push origin HEAD:${{ github.head_ref }}
