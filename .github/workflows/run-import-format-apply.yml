@@ -79,9 +79,16 @@ jobs:
       - name: Commit implementation
         shell: bash
         run: |
-          rm -f .github/workflows/apply-import-format-options.yml .github/workflows/run-import-format-apply.yml
+          rm -f .github/workflows/import-format-ci.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add frontend/src/components/DataManager.tsx
+          git add frontend/src/components/ObsidianImport.tsx
+          git add frontend/src/lib/importService.ts
+          git add frontend/src/lib/importService.base.ts
+          git add frontend/src/lib/obsidianImportTypes.ts
+          git add frontend/src/lib/obsidianImportService.ts
+          git add frontend/src/lib/__tests__/importServiceSiyuanMarkdown.test.ts
+          git add frontend/src/lib/__tests__/obsidianImportFormat.test.ts
           git commit -m "feat(import): add target format options"
           git push origin HEAD:${{ github.head_ref }}
