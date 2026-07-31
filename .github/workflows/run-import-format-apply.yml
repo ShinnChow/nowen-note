@@ -38,7 +38,14 @@ jobs:
           first = next((line for line in lines if line.strip()), '')
           trim = len(first) - len(first.lstrip())
           prefix = ' ' * trim
-          script = '\n'.join(line[trim:] if line.startswith(prefix) else line for line in lines) + '\n'
+          output = []
+          inside_triple = False
+          for line in lines:
+              normalized = line if inside_triple else (line[trim:] if line.startswith(prefix) else line)
+              output.append(normalized)
+              if normalized.count("'''") % 2 == 1:
+                  inside_triple = not inside_triple
+          script = '\n'.join(output) + '\n'
           script = script.replace("if count != 1:", "if count < 1:", 1)
           script = script.replace("expected exactly one match", "expected at least one match", 1)
           Path('/tmp/apply-import-formats.py').write_text(script, encoding='utf-8')
