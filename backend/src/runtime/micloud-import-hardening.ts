@@ -64,12 +64,12 @@ function ensureImportOriginSchema(): void {
 
 function normalizeNoteIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return Array.from(new Set(
-    value
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter(Boolean),
-  )).slice(0, MAX_IMPORT_NOTE_IDS);
+  // 小米云返回多少行就处理多少行：只过滤无效空值，保留原始顺序与重复 ID。
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, MAX_IMPORT_NOTE_IDS);
 }
 
 function safeErrorText(value: unknown, fallback: string): string {
@@ -163,21 +163,6 @@ function ensureDefaultPersonalNotebook(userId: string): NotebookScope {
     workspaceId: null,
     workspaceScope: "personal",
   };
-}
-
-function findImportedOrigin(userId: string, scope: NotebookScope, externalId: string) {
-  return getDb().prepare(`
-    SELECT o.noteId, n.title, n.notebookId
-    FROM note_import_origins o
-    JOIN notes n ON n.id = o.noteId
-    WHERE o.userId = ?
-      AND o.workspaceScope = ?
-      AND o.sourceType = ?
-      AND o.externalId = ?
-    LIMIT 1
-  `).get(userId, scope.workspaceScope, SOURCE_TYPE, externalId) as
-    | { noteId: string; title: string; notebookId: string }
-    | undefined;
 }
 
 function recordImportedOrigin(
@@ -318,20 +303,11 @@ async function hardenedMiCloudImport(c: Context) {
 
   const imported: Array<{ id: string; title: string }> = [];
   const errors: string[] = [];
-  let skippedCount = 0;
-  let targetNotebookId = scope.notebookId;
+  const targetNotebookId = scope.notebookId;
 
-  // 旧实现把一个批次的所有 DB INSERT 放在同一事务中：任意一条旧笔记含异常字符、
-  // FTS 写入失败或附件过大，整个批次都会回滚并冒泡为纯文本 500。
-  // 这里按单条调用旧转换器，把故障隔离到具体笔记，其余笔记继续导入。
+  // 每个输入行都独立调用旧转换器。即使多个行拥有相同的小米 noteId，也不做去重、
+  // 不做幂等跳过，确保“小米返回多少条，Nowen 就实际创建多少条”。
   for (const externalId of noteIds) {
-    const existing = findImportedOrigin(userId, scope, externalId);
-    if (existing) {
-      skippedCount += 1;
-      imported.push({ id: existing.noteId, title: existing.title });
-      continue;
-    }
-
     try {
       const { response, payload, raw } = await invokeLegacySingleImport(
         cookie,
@@ -384,7 +360,7 @@ async function hardenedMiCloudImport(c: Context) {
       success: false,
       count: 0,
       createdCount: 0,
-      skippedCount,
+      skippedCount: 0,
       notebookId: targetNotebookId,
       notes: [],
       errors,
@@ -395,10 +371,9 @@ async function hardenedMiCloudImport(c: Context) {
 
   return c.json({
     success: true,
-    // 兼容现有前端：count 表示本批已成功处理数量，包含幂等跳过项。
     count: acceptedCount,
-    createdCount: acceptedCount - skippedCount,
-    skippedCount,
+    createdCount: acceptedCount,
+    skippedCount: 0,
     notebookId: targetNotebookId,
     notes: imported,
     errors,
