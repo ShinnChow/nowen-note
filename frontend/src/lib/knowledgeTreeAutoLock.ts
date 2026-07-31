@@ -12,7 +12,7 @@ export const FOLDER_AUTO_LOCK_OPTIONS: ReadonlyArray<{
   value: FolderAutoLockMinutes;
   label: string;
 }> = [
-  { value: 0, label: "仅关闭应用或会话时" },
+  { value: 0, label: "不按闲置时间锁定" },
   { value: 5, label: "闲置 5 分钟" },
   { value: 15, label: "闲置 15 分钟（推荐）" },
   { value: 30, label: "闲置 30 分钟" },
@@ -149,7 +149,11 @@ export function installKnowledgeTreeAutoLock(options: KnowledgeTreeAutoLockOptio
     clearFolderUnlockTokens({ reason: "remote", broadcast: false });
   };
 
-  const onAccountChanged = () => lock("account-changed", false);
+  const onAccountChanged = () => {
+    cancelTimers();
+    backgroundAt = null;
+    clearFolderUnlockTokens({ reason: "account-changed", broadcast: false });
+  };
   const activityEvents: Array<keyof WindowEventMap> = [
     "pointerdown",
     "keydown",
