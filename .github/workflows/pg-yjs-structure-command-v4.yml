@@ -1,9 +1,7 @@
 name: PostgreSQL Yjs Structure Command V4
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
     paths:
       - ".github/workflows/pg-yjs-structure-command-v4.yml"
 
@@ -35,5 +33,3 @@ jobs:
           git diff --cached --stat
           git commit -m "feat(pg): support atomic subdocument structure changes"
           git push origin HEAD:pg-migration-unified
-
-# Triggered after workflow registration on main.
