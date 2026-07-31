@@ -37,6 +37,12 @@ import {
 import SayCalendarView from "@/components/diary/SayCalendarView";
 import DiarySidebar from "@/components/diary/DiarySidebar";
 import { useApp } from "@/store/AppContext";
+import {
+  localDateRangeToUtcSqlBounds,
+  localDateTimeInputToUtcIso,
+  parseServerTime,
+  utcSqlToLocalDateTimeInput,
+} from "@/lib/dateTime";
 
 // 心情选项
 const MOODS = [
@@ -84,7 +90,8 @@ const ALLOWED_VIDEO_MIMES = new Set([
 // 相对时间显示
 function timeAgo(dateStr: string, t: (key: string) => string): string {
   const now = new Date();
-  const date = new Date(dateStr.replace(" ", "T") + "Z");
+  const date = parseServerTime(dateStr);
+  if (!date) return dateStr;
   const diffMs = now.getTime() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);
   const diffMin = Math.floor(diffSec / 60);
@@ -576,7 +583,9 @@ function ComposeBox({ onPost }: { onPost: () => void }) {
         mood,
         media: readyMedia,
         images: readyImageIds,
-        createdAt: customDate || undefined,
+        createdAt: customDate
+          ? localDateTimeInputToUtcIso(customDate) || undefined
+          : undefined,
       });
       // 重置：先 revoke 所有 blob URL（已发布图片由后端持久化，前端不再需要 blob）
       for (const item of pendingMediaRef.current) {
@@ -1274,13 +1283,9 @@ function DiaryEditor({
   const [showMoods, setShowMoods] = useState(false);
   const [saving, setSaving] = useState(false);
   // 编辑发布日期
-  const [createdAt, setCreatedAt] = useState(() => {
-    // 将 "YYYY-MM-DD HH:MM:SS" 转为 "YYYY-MM-DDTHH:MM" 格式供 input[type=datetime-local] 使用
-    if (item.createdAt) {
-      return item.createdAt.replace(" ", "T").slice(0, 16);
-    }
-    return "";
-  });
+  const [createdAt, setCreatedAt] = useState(() =>
+    utcSqlToLocalDateTimeInput(item.createdAt),
+  );
   const [showDatePicker, setShowDatePicker] = useState(false);
   // 复用 PendingMedia 结构：原有媒体初始化为 ready 状态（id 已知，预览用远端 URL）
   const [images, setImages] = useState<PendingMedia[]>(() =>
@@ -1491,7 +1496,9 @@ function DiaryEditor({
         mood,
         media: readyMedia,
         images: readyImageIds,
-        createdAt: createdAt || undefined,
+        createdAt: createdAt
+          ? localDateTimeInputToUtcIso(createdAt) || undefined
+          : undefined,
       });
       onSaved(updated);
     } catch (e: any) {
@@ -1811,11 +1818,8 @@ function DiaryEditor({
  *   - today / week / month 用本地时间计算 from（本地 00:00:00），不传 to（即到现在）
  *   - custom 由用户在弹层里输入 YYYY-MM-DD（input[type=date]）
  *
- * 后端约定：from/to 直接走字符串比较（createdAt 是 UTC "YYYY-MM-DD HH:MM:SS"）。
- * 这里前端发出的 from 也是不带时区的 "YYYY-MM-DD"，后端会补 00:00:00、23:59:59。
- * 由于 createdAt 是 UTC 而用户输入是本地日期，会有最多 ±1 天的边界偏差；
- * 对"说说时间筛选"这种轻量功能可接受 —— 真要完全准确得在前端把本地日期转成
- * UTC ISO 再传，复杂度上去而收益有限，先按简单方案做。
+ * UI 保存的是用户本地日期；请求前转换成 UTC SQL 边界，确保上海等非 UTC
+ * 时区的“今天/近 7 天/自定义日期”不会跨日偏移。
  */
 type RangePreset = "all" | "today" | "week" | "month" | "custom";
 
@@ -1841,21 +1845,21 @@ function presetToRange(
     case "all":
       return null;
     case "today":
-      return { from: ymd(now) };
+      return localDateRangeToUtcSqlBounds({ from: ymd(now) });
     case "week": {
       const d = new Date(now);
       d.setDate(d.getDate() - 6); // 含今天共 7 天
-      return { from: ymd(d) };
+      return localDateRangeToUtcSqlBounds({ from: ymd(d) });
     }
     case "month": {
       const d = new Date(now);
       d.setDate(d.getDate() - 29); // 含今天共 30 天
-      return { from: ymd(d) };
+      return localDateRangeToUtcSqlBounds({ from: ymd(d) });
     }
     case "custom":
       // 没填或都为空时退化为"全部"，避免空查询条件让用户困惑
       if (!customRange?.from && !customRange?.to) return null;
-      return { from: customRange.from, to: customRange.to };
+      return localDateRangeToUtcSqlBounds(customRange);
   }
 }
 
@@ -2502,7 +2506,8 @@ function groupByDate(
   const yesterdayStr = formatDateKey(yesterday);
 
   for (const item of items) {
-    const date = new Date(item.createdAt.replace(" ", "T") + "Z");
+    const date = parseServerTime(item.createdAt);
+    if (!date) continue;
     const key = formatDateKey(date);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(item);
