@@ -192,7 +192,7 @@ function hardenImportedNote(noteId: string, userId: string, scope: NotebookScope
       db,
       noteId,
       actorUserId: userId,
-      reason: "import",
+      reason: "create",
       parentMode: "resource",
     });
   } catch (error) {
