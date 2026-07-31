@@ -76,6 +76,27 @@ describe("importMiNotes", () => {
     });
   });
 
+  it("preserves every returned row, including repeated Xiaomi note IDs", async () => {
+    const requestBodies: Array<{ noteIds: string[] }> = [];
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || "{}")) as { noteIds: string[] };
+      requestBodies.push(body);
+      return response({
+        success: true,
+        count: body.noteIds.length,
+        notebookId: "created-notebook",
+        errors: [],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const noteIds = ["note-1", "note-1", "note-2", "note-1"];
+    const result = await importMiNotes("cookie", noteIds);
+
+    expect(result).toEqual({ success: true, count: 4, errors: [] });
+    expect(requestBodies.flatMap((body) => body.noteIds)).toEqual(noteIds);
+  });
+
   it("reports how many notes were imported before a later batch fails", async () => {
     const fetchMock = vi
       .fn()
