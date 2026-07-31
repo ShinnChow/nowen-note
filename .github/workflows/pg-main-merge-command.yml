@@ -28,11 +28,11 @@ jobs:
           from pathlib import Path
           path = Path('backend/src/index.hardened.ts')
           text = path.read_text(encoding='utf-8')
-          marker = 'import "./runtime/task-stats-hardening.js";\n'
-          addition = '// Replace the fragile batch Xiaomi import with an isolated, idempotent route before /api/micloud mounts.\nimport "./runtime/micloud-import-hardening.js";\n'
+          marker = '  await import("./runtime/task-stats-hardening.js");\n'
+          addition = '  // Replace the fragile batch Xiaomi import with an isolated, idempotent route before /api/micloud mounts.\n  await import("./runtime/micloud-import-hardening.js");\n'
           if addition not in text:
               if marker not in text:
-                  raise SystemExit('task-stats import marker missing')
+                  raise SystemExit('async task-stats import marker missing')
               text = text.replace(marker, marker + addition, 1)
           path.write_text(text, encoding='utf-8')
           PY
