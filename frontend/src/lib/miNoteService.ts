@@ -158,18 +158,19 @@ async function importMiNoteBatch(
 // 后端接口会在响应前逐条读取小米云详情和图片。这里按固定小批次串行调用：
 // 1. 避免通用 POST 30 秒超时终止整个 600+ 条导入；
 // 2. 避免一次请求体和服务端内存过大；
-// 3. 第一批自动创建目标笔记本后，后续批次复用返回的 notebookId。
+// 3. 第一批自动创建目标笔记本后，后续批次复用返回的 notebookId；
+// 4. 严格保留小米云列表返回的每一行及原始顺序，不按 noteId 去重。
 export async function importMiNotes(
   cookie: string,
   noteIds: string[],
   notebookId?: string
 ): Promise<{ success: boolean; count: number; errors: string[] }> {
-  const uniqueNoteIds = Array.from(new Set(noteIds.filter((id) => typeof id === "string" && id.length > 0)));
-  if (uniqueNoteIds.length === 0) {
+  const selectedNoteIds = noteIds.filter((id) => typeof id === "string" && id.length > 0);
+  if (selectedNoteIds.length === 0) {
     return { success: false, count: 0, errors: ["请选择要导入的笔记"] };
   }
 
-  const batches = splitIntoImportBatches(uniqueNoteIds);
+  const batches = splitIntoImportBatches(selectedNoteIds);
   const errors: string[] = [];
   let importedCount = 0;
   let processedCount = 0;
@@ -185,7 +186,7 @@ export async function importMiNotes(
         targetNotebookId = result.notebookId;
       }
     } catch (error) {
-      const remainingCount = uniqueNoteIds.length - processedCount;
+      const remainingCount = selectedNoteIds.length - processedCount;
       const reason = error instanceof Error ? error.message : String(error || "未知错误");
       const prefix = importedCount > 0
         ? `已成功导入 ${importedCount} 条，剩余 ${remainingCount} 条未完成。`
