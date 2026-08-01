@@ -91,7 +91,7 @@ function createApi() {
       task: task({ id, isCompleted: 1, status: "done" }),
       generatedTask: null,
     })),
-    deleteTask: vi.fn(async () => ({ success: true })),
+    deleteTask: vi.fn(async (_id: string) => ({ success: true })),
     getHabits: vi.fn(async (_includeArchived?: boolean, _checkinDate?: string) => [habit()]),
     getHabitStats: vi.fn(async (_includeArchived?: boolean, _checkinDate?: string) => habitStats),
     getHabitCheckinLog: vi.fn(async (_params?: { from?: string; to?: string; includeArchived?: boolean }) => []),
@@ -103,7 +103,7 @@ function createApi() {
       id,
       archivedAt: archived ? "2026-08-01T01:00:00.000Z" : null,
     })),
-    deleteHabit: vi.fn(async () => ({ success: true })),
+    deleteHabit: vi.fn(async (_id: string) => ({ success: true })),
     checkInHabit: vi.fn(async (id: string, data: { status: "success" | "partial" | "failure"; note?: string; checkinDate?: string }) => ({
       id: "server-checkin",
       habitId: id,
