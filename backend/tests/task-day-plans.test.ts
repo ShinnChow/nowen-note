@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Hono } from "hono";
+import { closeDb, getDb } from "../src/db/schema";
 import taskDayPlans, {
   isTaskDayPlanDate,
   normalizeTaskDayPlanIds,
 } from "../src/routes/task-day-plans";
 
+const USER_ID = "my-day-test-user";
 const app = new Hono();
 app.route("/user-preferences/task-day-plans", taskDayPlans);
 
@@ -13,12 +15,22 @@ function request(path: string, init?: RequestInit) {
   return app.request(path, {
     ...init,
     headers: {
-      "X-User-Id": "my-day-test-user",
+      "X-User-Id": USER_ID,
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers || {}),
     },
   });
 }
+
+test.before(() => {
+  getDb().prepare(
+    "INSERT OR IGNORE INTO users (id, username, passwordHash) VALUES (?, ?, ?)",
+  ).run(USER_ID, USER_ID, "hash");
+});
+
+test.after(() => {
+  closeDb();
+});
 
 test("task day plan date validation accepts real calendar dates", () => {
   assert.equal(isTaskDayPlanDate("2026-08-02"), true);
@@ -59,24 +71,21 @@ test("My Day route works without a trailing slash and persists an empty plan", a
     }),
   });
   assert.equal(saved.status, 200);
-  assert.deepEqual(await saved.json(), {
-    date: "2026-08-02",
-    workspaceId: "personal",
-    taskIds: [],
-    focusTaskIds: [],
-    updatedAt: (await request(
-      "/user-preferences/task-day-plans?date=2026-08-02&workspaceId=personal",
-    ).then((response) => response.json())).updatedAt,
-  });
+  const savedPayload = await saved.json() as Record<string, unknown>;
+  assert.equal(savedPayload.date, "2026-08-02");
+  assert.equal(savedPayload.workspaceId, "personal");
+  assert.deepEqual(savedPayload.taskIds, []);
+  assert.deepEqual(savedPayload.focusTaskIds, []);
+  assert.equal(typeof savedPayload.updatedAt, "string");
 
   const loaded = await request(
     "/user-preferences/task-day-plans?date=2026-08-02&workspaceId=personal",
   );
   assert.equal(loaded.status, 200);
-  const payload = await loaded.json() as Record<string, unknown>;
-  assert.equal(payload.date, "2026-08-02");
-  assert.equal(payload.workspaceId, "personal");
-  assert.deepEqual(payload.taskIds, []);
-  assert.deepEqual(payload.focusTaskIds, []);
-  assert.equal(typeof payload.updatedAt, "string");
+  const loadedPayload = await loaded.json() as Record<string, unknown>;
+  assert.equal(loadedPayload.date, "2026-08-02");
+  assert.equal(loadedPayload.workspaceId, "personal");
+  assert.deepEqual(loadedPayload.taskIds, []);
+  assert.deepEqual(loadedPayload.focusTaskIds, []);
+  assert.equal(loadedPayload.updatedAt, savedPayload.updatedAt);
 });
