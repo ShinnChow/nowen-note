@@ -74,6 +74,16 @@ function ensureAllNotesHost(root: HTMLElement): HTMLElement | null {
   const scroll = panel.querySelector<HTMLElement>('[data-swipe-blocker="knowledge-tree-scroll"]');
   if (!scroll || scroll.parentElement !== panel) return null;
 
+  const mobileToolbarHost = panel.querySelector<HTMLElement>(
+    `[${ALL_NOTES_HOST_ATTR}="mobile-toolbar"]`,
+  );
+  if (mobileToolbarHost) {
+    for (const host of panel.querySelectorAll<HTMLElement>(`[${ALL_NOTES_HOST_ATTR}]`)) {
+      if (host !== mobileToolbarHost) host.remove();
+    }
+    return mobileToolbarHost;
+  }
+
   let host = panel.querySelector<HTMLElement>(`[${ALL_NOTES_HOST_ATTR}]`);
   if (!host) {
     host = document.createElement("div");
@@ -84,7 +94,13 @@ function ensureAllNotesHost(root: HTMLElement): HTMLElement | null {
   return host;
 }
 
-function AllNotesEntry({ variant }: { variant: "desktop" | "mobile" }) {
+function AllNotesEntry({
+  variant,
+  compact,
+}: {
+  variant: "desktop" | "mobile";
+  compact: boolean;
+}) {
   const { state } = useApp();
   const actions = useAppActions();
   const active = state.viewMode === "all"
@@ -120,21 +136,31 @@ function AllNotesEntry({ variant }: { variant: "desktop" | "mobile" }) {
       type="button"
       onClick={openAllNotes}
       className={cn(
-        "group flex h-9 w-full items-center gap-2 rounded-lg border px-2.5 text-left text-xs font-medium transition-colors",
+        "group flex w-full items-center text-left font-medium transition-colors",
+        compact
+          ? "h-8 gap-1.5 rounded-md px-2 text-[11px]"
+          : "h-9 gap-2 rounded-lg border px-2.5 text-xs",
         active
-          ? "border-accent-primary/15 bg-accent-primary/10 text-accent-primary"
-          : "border-transparent text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
+          ? compact
+            ? "bg-accent-primary/10 text-accent-primary"
+            : "border-accent-primary/15 bg-accent-primary/10 text-accent-primary"
+          : compact
+            ? "text-tx-secondary hover:bg-app-bg hover:text-tx-primary"
+            : "border-transparent text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
       )}
       aria-current={active ? "page" : undefined}
       aria-label={allNotesCount === null ? "查看所有笔记" : `查看所有笔记，共 ${allNotesCount} 条`}
       data-knowledge-tree-all-notes=""
     >
-      <Files size={15} className="shrink-0 text-accent-primary" aria-hidden="true" />
+      <Files size={compact ? 14 : 15} className="shrink-0 text-accent-primary" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate">所有笔记</span>
-      {allNotesCount !== null && (
+      {!compact && allNotesCount !== null && (
         <span
           className={cn(
-            "min-w-6 shrink-0 rounded-full px-1.5 text-center text-[10px] leading-5 tabular-nums",
+            "shrink-0 rounded-full text-center tabular-nums",
+            compact
+              ? "min-w-4 px-1 text-[9px] leading-4"
+              : "min-w-6 px-1.5 text-[10px] leading-5",
             active ? "bg-accent-primary/10 text-accent-primary" : "bg-app-hover text-tx-tertiary",
           )}
           data-knowledge-tree-all-notes-count=""
@@ -292,8 +318,14 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
     if (!root) return;
     const syncRuntimeEnhancements = () => {
       markCreateButtons(root);
-      const existingHost = root.querySelector<HTMLElement>(`[${ALL_NOTES_HOST_ATTR}]`);
-      if (!showAllNotesEntry) existingHost?.remove();
+      if (!showAllNotesEntry) {
+        for (const host of root.querySelectorAll<HTMLElement>(`[${ALL_NOTES_HOST_ATTR}]`)) {
+          // The compact toolbar host belongs to React. Removing it directly leaves
+          // React's virtual tree out of sync, so a later three-column switch can
+          // only recreate "All notes" in the fallback position.
+          if (host.getAttribute(ALL_NOTES_HOST_ATTR) !== "mobile-toolbar") host.remove();
+        }
+      }
       const host = showAllNotesEntry ? ensureAllNotesHost(root) : null;
       setAllNotesHost((current) => current === host ? current : host);
     };
@@ -348,9 +380,20 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
   return (
     <>
       <div ref={rootRef} className="contents" onClickCapture={handleClickCapture}>
-        <KnowledgeTreePanelBase {...props} createRequest={createRequest} importRequest={importRequest} />
+        <KnowledgeTreePanelBase
+          {...props}
+          createRequest={createRequest}
+          importRequest={importRequest}
+          showAllNotesToolbar={showAllNotesEntry}
+        />
       </div>
-      {allNotesHost && createPortal(<AllNotesEntry variant={variant} />, allNotesHost)}
+      {allNotesHost && createPortal(
+        <AllNotesEntry
+          variant={variant}
+          compact={allNotesHost.getAttribute(ALL_NOTES_HOST_ATTR) === "mobile-toolbar"}
+        />,
+        allNotesHost,
+      )}
       <KnowledgeTreeCreateDropdown
         menu={createMenu}
         onClose={() => setCreateMenu(null)}

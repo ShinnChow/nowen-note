@@ -6,14 +6,12 @@ export default function KnowledgeSearchScopeSwitch({
   scope,
   onChange,
   compact = false,
-  fullWidth = false,
   treeLabel = "目录",
   contentLabel = "全文",
 }: {
   scope: KnowledgeSearchScope;
   onChange: (scope: KnowledgeSearchScope) => void;
   compact?: boolean;
-  fullWidth?: boolean;
   treeLabel?: string;
   contentLabel?: string;
 }) {
@@ -24,7 +22,6 @@ export default function KnowledgeSearchScopeSwitch({
       className={cn(
         "inline-flex shrink-0 items-center bg-app-hover",
         compact ? "gap-0 rounded-md p-0.5" : "gap-1 rounded-xl p-1",
-        fullWidth && "w-full",
       )}
     >
       {([
@@ -40,7 +37,6 @@ export default function KnowledgeSearchScopeSwitch({
           className={cn(
             "rounded-[5px] font-medium transition-colors",
             compact ? "px-1.5 py-1 text-[10px]" : "px-2.5 py-1.5 text-xs",
-            fullWidth && "flex-1",
             scope === value
               ? "bg-app-surface text-accent-primary shadow-sm"
               : "text-tx-tertiary hover:text-tx-primary",

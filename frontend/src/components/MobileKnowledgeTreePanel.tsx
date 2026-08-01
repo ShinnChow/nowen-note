@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 
 import FolderPasswordDialog from "@/components/FolderPasswordDialog";
+import KnowledgeTreeDropdownMenu from "@/components/KnowledgeTreeDropdownMenu";
+import KnowledgeSearchScopeMenuButton from "@/components/KnowledgeSearchScopeMenuButton";
 import KnowledgeSearchScopeSwitch from "@/components/KnowledgeSearchScopeSwitch";
 import KnowledgeTreeNodeMenu from "@/components/KnowledgeTreeNodeMenu";
 import KnowledgeTreePermissionsDialog from "@/components/KnowledgeTreePermissionsDialog";
@@ -59,7 +61,7 @@ import {
 } from "@/lib/knowledgeTreePassword";
 import {
   buildFirstLevelNoteCounts,
-  countOwnedNotebooks,
+  countOwnedNotes,
 } from "@/lib/knowledgeTreeStats";
 import {
   buildMobileKnowledgeTreePath,
@@ -76,6 +78,7 @@ import {
   type MobileKnowledgeTreeRecentEntry,
   type MobileKnowledgeTreeSortMode,
 } from "@/lib/mobileKnowledgeTree";
+import { detectNoteWorkspaceSurface } from "@/lib/noteWorkspaceLayout";
 import { isSharedRoot } from "@/lib/sharedKnowledgeTree";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -227,8 +230,11 @@ export default function MobileKnowledgeTreePanel({
 } = {}) {
   const { state } = useApp();
   const actions = useAppActions();
+  const [workspaceSurface] = useState(() => detectNoteWorkspaceSurface());
+  const rootRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const draftInputRef = useRef<HTMLInputElement>(null);
+  const mobileActionsButtonRef = useRef<HTMLButtonElement>(null);
   const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const [nodes, setNodes] = useState<KnowledgeTreeNode[]>([]);
   const [loading, setLoading] = useState(false);
@@ -247,8 +253,36 @@ export default function MobileKnowledgeTreePanel({
   const [pendingFolderOpenId, setPendingFolderOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState<KnowledgeTreeInlineDraft | null>(null);
   const [createMenu, setCreateMenu] = useState<KnowledgeTreeCreateMenuState | null>(null);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const [compactDesktopToolbar, setCompactDesktopToolbar] = useState(false);
   const { menu, menuRef, openMenu, openMenuAt, closeMenu } = useContextMenu();
   const menuNode = menu.targetId ? nodes.find((candidate) => candidate.id === menu.targetId) || null : null;
+  const compactToolbar = variant === "mobile"
+    || workspaceSurface === "web"
+    || compactDesktopToolbar;
+
+  useEffect(() => {
+    if (variant !== "desktop" || workspaceSurface === "web") {
+      setCompactDesktopToolbar(false);
+      return;
+    }
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const update = (width: number) => {
+      if (width > 0) setCompactDesktopToolbar(width < 280);
+    };
+    update(root.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) update(entry.contentRect.width);
+    });
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [variant, workspaceSurface]);
+
+  useEffect(() => {
+    if (!compactToolbar) setMobileActionsOpen(false);
+  }, [compactToolbar]);
 
   useEffect(() => {
     if (!draft) return;
@@ -389,7 +423,7 @@ export default function MobileKnowledgeTreePanel({
   );
   const rootOwned = useMemo(() => currentChildren.filter((node) => !node.sharedRootId), [currentChildren]);
   const rootShared = useMemo(() => currentChildren.filter((node) => Boolean(node.sharedRootId)), [currentChildren]);
-  const ownedNotebookCount = useMemo(() => countOwnedNotebooks(visibleNodes), [visibleNodes]);
+  const ownedNoteCount = useMemo(() => countOwnedNotes(nodes), [nodes]);
 
   const activateNote = useCallback((note: Awaited<ReturnType<typeof api.getNote>>) => {
     actions.setActiveNote(note);
@@ -616,6 +650,20 @@ export default function MobileKnowledgeTreePanel({
     const next = choice as MobileKnowledgeTreeSortMode;
     setSortMode(next);
     saveMobileKnowledgeTreeSortMode(next);
+  };
+
+  const runMobileQuickAction = (value: string) => {
+    setMobileActionsOpen(false);
+    if (value.startsWith("sort:")) {
+      const mode = value.slice("sort:".length) as MobileKnowledgeTreeSortMode;
+      if (!(mode in SORT_LABELS)) return;
+      setSortMode(mode);
+      saveMobileKnowledgeTreeSortMode(mode);
+    } else if (value === "toggle") {
+      setAllExpanded((current) => !current);
+    } else if (value === "refresh") {
+      void reload();
+    }
   };
 
   const goBack = () => {
@@ -879,13 +927,15 @@ export default function MobileKnowledgeTreePanel({
           <section data-mobile-knowledge-tree-section="owned">
             <div className="flex items-center justify-between px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-tx-tertiary">
               <span>当前空间</span>
-              <span
-                className="min-w-4 rounded-full bg-app-hover px-1.5 text-center leading-4"
-                aria-label={`当前空间共 ${ownedNotebookCount} 个笔记本`}
-                data-mobile-knowledge-tree-notebook-count=""
-              >
-                {ownedNotebookCount}
-              </span>
+              {variant !== "mobile" && (
+                <span
+                  className="min-w-4 rounded-full bg-app-hover px-1.5 text-center leading-4"
+                  aria-label={`当前空间共 ${ownedNoteCount} 条笔记`}
+                  data-mobile-knowledge-tree-notebook-count=""
+                >
+                  {ownedNoteCount}
+                </span>
+              )}
             </div>
             {draft && renderDraft()}
             {rootOwned.map((node) => (
@@ -907,11 +957,13 @@ export default function MobileKnowledgeTreePanel({
 
   return (
     <section
+      ref={rootRef}
       className="relative flex min-h-0 min-w-0 flex-1 flex-col"
       data-nowen-mobile-knowledge-tree={variant === "mobile" ? "flat-navigation" : undefined}
       data-nowen-desktop-knowledge-tree={variant === "desktop" ? "quick-navigation" : undefined}
+      data-knowledge-tree-compact-toolbar={compactToolbar ? "true" : "false"}
     >
-      <div className="px-2 pb-2">
+      <div className={cn("px-2 pb-2", variant === "mobile" && "pt-2")}>
         <div className={cn("grid grid-cols-2 bg-app-hover/70", variant === "mobile" ? "rounded-xl p-1" : "rounded-lg p-0.5")} role="tablist" aria-label="内容浏览方式">
           <button
             type="button"
@@ -945,79 +997,106 @@ export default function MobileKnowledgeTreePanel({
       <div className={cn(
         "flex",
         variant === "mobile"
-          ? "flex-col items-stretch gap-2.5 px-3 pb-3"
+          ? "items-center gap-1 px-3 pb-1.5"
+          : compactToolbar
+            ? "items-center gap-1 px-2 pb-1.5"
           : "items-center gap-0.5 px-2 pb-1.5",
       )}>
-        {variant === "mobile" && (
-          <KnowledgeSearchScopeSwitch
-            scope={state.viewMode === "search" ? "content" : "tree"}
-            fullWidth
-            treeLabel="目录筛选"
-            contentLabel="全文搜索"
-            onChange={changeSearchScope}
-          />
-        )}
-        <div className={cn(
-          "flex min-w-0 items-center border border-app-border bg-app-bg",
-          variant === "mobile"
-            ? "w-full gap-2 rounded-xl px-3 py-2.5 shadow-sm"
-            : "flex-1 gap-1.5 rounded-lg px-1.5 py-1",
-        )}>
-          {variant !== "mobile" && (
-            <KnowledgeSearchScopeSwitch
-              scope={state.viewMode === "search" ? "content" : "tree"}
-              compact
-              onChange={changeSearchScope}
+        <div className={compactToolbar ? "flex w-full items-center gap-2" : "contents"}>
+          <div className={cn(
+            "flex min-w-0 items-center border border-app-border bg-app-bg",
+            variant === "mobile"
+              ? "flex-1 gap-1.5 rounded-lg px-2 py-1.5 shadow-sm"
+              : compactToolbar
+                ? "flex-1 gap-1.5 rounded-lg px-1.5 py-1 shadow-sm"
+              : "flex-1 gap-1.5 rounded-lg px-1.5 py-1",
+          )}>
+            {!compactToolbar && (
+              <KnowledgeSearchScopeSwitch
+                scope={state.viewMode === "search" ? "content" : "tree"}
+                compact
+                onChange={changeSearchScope}
+              />
+            )}
+            <Search size={variant === "mobile" ? 14 : 15} className="shrink-0 text-tx-tertiary" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={compactToolbar ? "搜索…" : "搜索目录与文档"}
+              className="min-w-0 flex-1 bg-transparent text-xs text-tx-primary outline-none placeholder:text-tx-tertiary"
+              data-mobile-knowledge-tree-search=""
+              data-search-scope="tree"
             />
-          )}
-          <Search size={variant === "mobile" ? 16 : 15} className="shrink-0 text-tx-tertiary" />
-          <input
-            ref={searchRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索目录与文档"
-            className={cn("min-w-0 flex-1 bg-transparent text-tx-primary outline-none placeholder:text-tx-tertiary", variant === "mobile" ? "text-sm" : "text-xs")}
-            data-mobile-knowledge-tree-search=""
-            data-search-scope="tree"
-          />
-          {variant === "desktop" && (
-            !query ? (
-              <kbd
-                aria-label="快捷键 Ctrl+K"
-                className="inline-flex h-5 shrink-0 items-center rounded border border-app-border bg-app-hover px-1.5 font-sans text-[9px] font-medium text-tx-tertiary shadow-sm"
+            {variant === "desktop" && !compactToolbar && (
+              !query ? (
+                <kbd
+                  aria-label="快捷键 Ctrl+K"
+                  className="inline-flex h-5 shrink-0 items-center rounded border border-app-border bg-app-hover px-1.5 font-sans text-[9px] font-medium text-tx-tertiary shadow-sm"
+                >
+                  Ctrl K
+                </kbd>
+              ) : null
+            )}
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
+                aria-label="清空搜索"
               >
-                Ctrl K
-              </kbd>
-            ) : null
-          )}
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery("")}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
-              aria-label="清空搜索"
-            >
-              <X size={14} />
-            </button>
+                <X size={14} />
+              </button>
+            )}
+            {compactToolbar && (
+              <KnowledgeSearchScopeMenuButton
+                scope={state.viewMode === "search" ? "content" : "tree"}
+                onChange={changeSearchScope}
+              />
+            )}
+          </div>
+          {compactToolbar && (
+            <>
+              <button
+                type="button"
+                onClick={(event) => openCreateDropdown(event, view === "browse" ? currentFolder : null)}
+                disabled={view === "browse" && !!currentFolder && !currentFolder.access.capabilities.canCreate}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-40"
+                title={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
+                aria-label={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
+                aria-haspopup="menu"
+              >
+                <Plus size={15} />
+              </button>
+              <button
+                ref={mobileActionsButtonRef}
+                type="button"
+                onClick={() => setMobileActionsOpen((current) => !current)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
+                title="更多目录操作"
+                aria-label="更多目录操作"
+                aria-haspopup="menu"
+                aria-expanded={mobileActionsOpen}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            </>
           )}
         </div>
-        <div className={variant === "mobile"
-          ? "grid w-full grid-flow-col auto-cols-fr gap-1 rounded-xl border border-app-border/70 bg-app-hover/40 p-1"
-          : "contents"}
-        >
+        {variant === "desktop" && !compactToolbar && (
+          <div className="contents">
           {view === "browse" && (
             <button
               type="button"
               onClick={() => void chooseSortMode()}
               className={cn(
                 "flex shrink-0 items-center justify-center text-accent-primary",
-                variant === "mobile" ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
+                variant === "mobile" ? "h-8 w-full rounded-md hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
               )}
               title={`排序：${SORT_LABELS[sortMode]}`}
               aria-label={`目录排序，当前为${SORT_LABELS[sortMode]}`}
             >
-              <ArrowUpDown size={variant === "mobile" ? 17 : 13} />
-              {variant === "mobile" && <span className="text-[11px] leading-none">排序</span>}
+              <ArrowUpDown size={variant === "mobile" ? 14 : 13} />
             </button>
           )}
           {variant === "desktop" && view === "browse" && (
@@ -1036,14 +1115,13 @@ export default function MobileKnowledgeTreePanel({
             disabled={view === "browse" && !!currentFolder && !currentFolder.access.capabilities.canCreate}
             className={cn(
               "flex shrink-0 items-center justify-center text-tx-tertiary hover:text-tx-primary disabled:opacity-40",
-              variant === "mobile" ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
+              variant === "mobile" ? "h-8 w-full rounded-md hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
             )}
             title={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
             aria-label={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
             aria-haspopup="menu"
           >
-            <Plus size={variant === "mobile" ? 18 : 14} />
-            {variant === "mobile" && <span className="text-[11px] leading-none">新建</span>}
+            <Plus size={variant === "mobile" ? 15 : 14} />
           </button>
           <button
             type="button"
@@ -1051,15 +1129,48 @@ export default function MobileKnowledgeTreePanel({
             disabled={loading}
             className={cn(
               "flex shrink-0 items-center justify-center text-tx-tertiary hover:text-tx-primary disabled:opacity-50",
-              variant === "mobile" ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
+              variant === "mobile" ? "h-8 w-full rounded-md hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
             )}
             title="刷新内容"
           >
-            <RefreshCw size={variant === "mobile" ? 17 : 13} className={loading ? "animate-spin" : undefined} />
-            {variant === "mobile" && <span className="text-[11px] leading-none">刷新</span>}
+            <RefreshCw size={variant === "mobile" ? 14 : 13} className={loading ? "animate-spin" : undefined} />
           </button>
-        </div>
+          </div>
+        )}
       </div>
+
+      {compactToolbar && (
+        <KnowledgeTreeDropdownMenu
+          open={mobileActionsOpen}
+          anchor={mobileActionsButtonRef.current}
+          ariaLabel="快捷目录操作"
+          items={[
+            ...(view === "browse"
+              ? (Object.keys(SORT_LABELS) as MobileKnowledgeTreeSortMode[]).map((mode, index) => ({
+                value: `sort:${mode}`,
+                label: SORT_LABELS[mode],
+                checked: sortMode === mode,
+                sectionLabel: index === 0 ? "排序方式" : undefined,
+              }))
+              : []),
+            ...(variant === "desktop" && view === "browse"
+              ? [{
+                value: "toggle",
+                label: allExpanded ? "全部收起" : "全部展开",
+                disabled: Boolean(query.trim()) || (!allExpanded && !hasExpandableContent),
+                separatorBefore: true,
+              }]
+              : []),
+            {
+              value: "refresh",
+              label: "刷新目录",
+              separatorBefore: view === "browse" && variant !== "desktop",
+            },
+          ]}
+          onSelect={runMobileQuickAction}
+          onClose={() => setMobileActionsOpen(false)}
+        />
+      )}
 
       {view === "browse" && !query && (
         <div className="flex min-h-10 items-center gap-1 border-y border-app-border/60 px-2 py-1.5" data-mobile-knowledge-tree-breadcrumb="">
