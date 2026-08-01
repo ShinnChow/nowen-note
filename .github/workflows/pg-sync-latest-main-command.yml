@@ -1,0 +1,117 @@
+name: PostgreSQL Latest Main Sync Command
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/pg-sync-latest-main-trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pg-sync-latest-main-command
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout PostgreSQL migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: pg-migration-unified
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge latest main and resolve known integration points
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main pg-migration-unified
+
+          set +e
+          git merge --no-ff --no-commit origin/main
+          merge_status=$?
+          set -e
+
+          mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+          printf 'Conflicts (%s):\n' "${#conflicts[@]}"
+          printf ' - %s\n' "${conflicts[@]:-none}"
+
+          for path in "${conflicts[@]}"; do
+            case "$path" in
+              backend/src/index.hardened.ts)
+                git checkout --ours -- "$path"
+                python - <<'PY'
+          from pathlib import Path
+          path = Path("backend/src/index.hardened.ts")
+          source = path.read_text()
+          anchor = '  await import("./runtime/micloud-import-hardening.js");\n'
+          addition = anchor + '  // Mount persistent Xiaomi background jobs and one SSE progress stream before /api/micloud mounts.\n  await import("./runtime/micloud-import-jobs.js");\n'
+          if 'micloud-import-jobs.js' not in source:
+              if anchor not in source:
+                  raise SystemExit("MiCloud hardening anchor missing")
+              source = source.replace(anchor, addition, 1)
+          path.write_text(source)
+          PY
+                ;;
+              frontend/src/main.tsx)
+                git checkout --theirs -- "$path"
+                python - <<'PY'
+          from pathlib import Path
+          path = Path("frontend/src/main.tsx")
+          source = path.read_text()
+          import_anchor = 'import { installKnowledgeTreeScrollbarBridge } from "./lib/knowledgeTreeScrollbarBridge";\n'
+          import_line = 'import { installWorkspaceRealtimeSubscription } from "./lib/workspaceRealtimeSubscription";\n'
+          if import_line not in source:
+              if import_anchor not in source:
+                  raise SystemExit("workspace realtime import anchor missing")
+              source = source.replace(import_anchor, import_anchor + import_line, 1)
+          call_anchor = 'installKnowledgeTreeScrollbarBridge();\n'
+          call_line = 'installWorkspaceRealtimeSubscription();\n'
+          if call_line not in source:
+              if call_anchor not in source:
+                  raise SystemExit("workspace realtime call anchor missing")
+              source = source.replace(call_anchor, call_anchor + call_line, 1)
+          path.write_text(source)
+          PY
+                ;;
+              *)
+                # Mainline product behavior wins for shared files. PostgreSQL-only files are not conflicted.
+                git checkout --theirs -- "$path"
+                ;;
+            esac
+            git add -- "$path"
+          done
+
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "Unresolved conflicts remain"
+            git diff --name-only --diff-filter=U
+            exit 1
+          fi
+
+          # Reapply the migration branch's known cross-driver reconciliation rules when still applicable.
+          if [[ -f backend/scripts/reconcile-pg-main-merge.py ]]; then
+            python backend/scripts/reconcile-pg-main-merge.py
+          fi
+
+          git add -A
+          git diff --check
+          git status --short
+
+          if git diff --cached --quiet; then
+            echo "No merge changes to commit"
+            exit 0
+          fi
+
+          git commit -m "chore(pg): sync latest main into migration branch"
+          git push origin HEAD:pg-migration-unified
+
+      - name: Report synchronized head
+        run: |
+          echo "pg-migration-unified=$(git rev-parse HEAD)"
+          echo "main=$(git rev-parse origin/main)"
