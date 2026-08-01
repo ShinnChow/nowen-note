@@ -18,6 +18,7 @@ import {
   supportsWideNoteWorkspaceLayout,
   type NoteWorkspaceLayoutMode,
 } from "@/lib/noteWorkspaceLayout";
+import { usesFunctionalNoteList } from "@/lib/unifiedTreeOnlyLayout";
 import { cn } from "@/lib/utils";
 
 type DisplayLayoutMode = NoteWorkspaceLayoutMode | "focus";
@@ -54,6 +55,7 @@ export default function NoteWorkspaceLayoutController() {
   const wideLayoutSupported = supportsWideNoteWorkspaceLayout(surface);
   const noteWorkspaceActive = wideLayoutSupported
     && !NON_NOTE_WORKSPACE_VIEWS.has(state.viewMode);
+  const functionalListView = usesFunctionalNoteList(state.viewMode);
   const [preferredMode, setPreferredMode] = useState<NoteWorkspaceLayoutMode>(() =>
     loadNoteWorkspaceLayoutMode(state.noteListCollapsed),
   );
@@ -70,7 +72,10 @@ export default function NoteWorkspaceLayoutController() {
   const observedCollapsedRef = useRef(state.noteListCollapsed);
   const expectedCollapsedRef = useRef<boolean | null>(null);
 
-  const automaticCollapseReason = noteWorkspaceActive
+  // Favorites, tags, search and Trash are result-set surfaces. They require the
+  // middle list even when the saved everyday workspace mode is "standard".
+  // Leaving those views restores the user's standard/three-column preference.
+  const automaticCollapseReason = noteWorkspaceActive && !functionalListView
     ? getAutomaticCollapseReason({
       editorFullscreen: state.editorFullscreen,
       viewportWidth,
@@ -160,13 +165,16 @@ export default function NoteWorkspaceLayoutController() {
   useEffect(() => {
     if (!noteWorkspaceActive) return;
     const automatic = automaticCollapseReason !== null;
+    const forceExpanded = functionalListView;
     const collapsedChanged = observedCollapsedRef.current !== state.noteListCollapsed;
 
     if (collapsedChanged) {
       observedCollapsedRef.current = state.noteListCollapsed;
       if (expectedCollapsedRef.current === state.noteListCollapsed) {
         expectedCollapsedRef.current = null;
-      } else if (!automatic) {
+      } else if (!automatic && !forceExpanded) {
+        // A change not requested by this controller is treated as the user's
+        // legacy expand/collapse action and becomes the new saved base mode.
         const inferredMode: NoteWorkspaceLayoutMode = state.noteListCollapsed
           ? "standard"
           : "three-column";
@@ -178,7 +186,9 @@ export default function NoteWorkspaceLayoutController() {
       }
     }
 
-    const desiredCollapsed = automatic || preferredMode === "standard";
+    const desiredCollapsed = forceExpanded
+      ? false
+      : automatic || preferredMode === "standard";
     if (
       state.noteListCollapsed !== desiredCollapsed
       && expectedCollapsedRef.current !== desiredCollapsed
@@ -189,6 +199,7 @@ export default function NoteWorkspaceLayoutController() {
   }, [
     actions,
     automaticCollapseReason,
+    functionalListView,
     noteWorkspaceActive,
     preferredMode,
     state.noteListCollapsed,
