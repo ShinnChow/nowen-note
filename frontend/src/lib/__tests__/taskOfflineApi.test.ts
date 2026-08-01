@@ -226,6 +226,7 @@ describe("taskOfflineApi", () => {
 
     setOnline(false);
     await api.deleteTask(created.id);
+    native.getTasks.mockResolvedValueOnce([task({ id: "server-task", title: "稍后删除" })]);
     await expect(api.getTasks("all")).resolves.toEqual([]);
 
     setOnline(true);
