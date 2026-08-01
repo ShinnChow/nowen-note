@@ -63,6 +63,21 @@ describe("knowledge tree sidebar contract", () => {
     expect(menu).toContain("onNotePatched(node.id, patch)");
   });
 
+  it("renders all notes as a fixed first-level navigation entry", () => {
+    const runtime = source("../../components/KnowledgeTreeCreateMenuRuntime.tsx");
+
+    expect(runtime).toContain('data-knowledge-tree-all-notes=""');
+    expect(runtime).toContain('data-knowledge-tree-all-notes-count=""');
+    expect(runtime).toContain("panel.insertBefore(host, scroll)");
+    expect(runtime).toContain('actions.setViewMode("all")');
+    expect(runtime).toContain("actions.setSelectedNotebook(null)");
+    expect(runtime).toContain("actions.clearSelectedTags()");
+    expect(runtime).toContain('actions.setSearchQuery("")');
+    expect(runtime).toContain("notebook.noteCount");
+    expect(runtime).toContain("state.noteListCollapsed");
+    expect(runtime).toContain("actions.toggleNoteListCollapsed()");
+  });
+
   it("applies an unmistakably compact mobile density with a safe fallback", () => {
     const main = source("../../main.tsx");
     const compactCss = source("../../mobile-knowledge-tree-compact.css");
