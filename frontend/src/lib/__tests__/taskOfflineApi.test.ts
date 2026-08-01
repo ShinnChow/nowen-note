@@ -189,6 +189,51 @@ describe("taskOfflineApi", () => {
     expect(controller.pending()).toBe(0);
   });
 
+  it("keeps a blocked local update on top of a newer server snapshot", async () => {
+    const { api, native } = createApi();
+    const controller = installTaskOfflineApi(api, {
+      getServerUrl: () => "https://example.test",
+      getWorkspaceId: () => "personal",
+      getScopeKey: () => "pending-overlay",
+    });
+
+    await api.getTasks("all");
+    setOnline(false);
+    await api.updateTask("task-1", { title: "离线标题" });
+
+    setOnline(true);
+    native.updateTask.mockRejectedValueOnce(Object.assign(new Error("forbidden"), { status: 403 }));
+    native.getTasks.mockResolvedValueOnce([task({ title: "服务器旧标题" })]);
+
+    await expect(api.getTasks("all")).resolves.toMatchObject([
+      { id: "task-1", title: "离线标题" },
+    ]);
+    expect(controller.pending()).toBe(1);
+  });
+
+  it("can delete with the original local id after the create was remapped", async () => {
+    setOnline(false);
+    const { api, native } = createApi();
+    const controller = installTaskOfflineApi(api, {
+      getServerUrl: () => "https://example.test",
+      getWorkspaceId: () => "personal",
+      getScopeKey: () => "mapped-delete",
+    });
+
+    const created = await api.createTask({ title: "稍后删除" });
+    setOnline(true);
+    await controller.flush();
+
+    setOnline(false);
+    await api.deleteTask(created.id);
+    await expect(api.getTasks("all")).resolves.toEqual([]);
+
+    setOnline(true);
+    await controller.flush();
+    expect(native.deleteTask).toHaveBeenCalledWith("server-task");
+    expect(controller.pending()).toBe(0);
+  });
+
   it("keeps an offline habit check-in and replays it after reconnect", async () => {
     const { api, native } = createApi();
     const controller = installTaskOfflineApi(api, {
@@ -223,11 +268,11 @@ describe("taskOfflineApi", () => {
   });
 
   it("derives filters and statistics from the cached task snapshot", () => {
-    const today = new Date();
+    const current = new Date();
     const key = [
-      today.getFullYear(),
-      String(today.getMonth() + 1).padStart(2, "0"),
-      String(today.getDate()).padStart(2, "0"),
+      current.getFullYear(),
+      String(current.getMonth() + 1).padStart(2, "0"),
+      String(current.getDate()).padStart(2, "0"),
     ].join("-");
     const tasks = [
       task({ id: "today", dueDate: key }),
