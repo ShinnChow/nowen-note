@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import FolderPasswordDialog from "@/components/FolderPasswordDialog";
+import KnowledgeSearchScopeSwitch from "@/components/KnowledgeSearchScopeSwitch";
 import KnowledgeTreeNodeMenu from "@/components/KnowledgeTreeNodeMenu";
 import KnowledgeTreePermissionsDialog from "@/components/KnowledgeTreePermissionsDialog";
 import {
@@ -234,7 +235,7 @@ export default function MobileKnowledgeTreePanel({
   const [error, setError] = useState<string | null>(null);
   const [sharedLoadError, setSharedLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<MobileView>("recent");
+  const [view, setView] = useState<MobileView>("browse");
   const [parentId, setParentId] = useState<string | null>(null);
   const [allExpanded, setAllExpanded] = useState(false);
   const [sortMode, setSortMode] = useState<MobileKnowledgeTreeSortMode>(() => loadMobileKnowledgeTreeSortMode());
@@ -309,7 +310,11 @@ export default function MobileKnowledgeTreePanel({
   }, [reload]);
 
   useEffect(() => {
-    const focus = () => requestAnimationFrame(() => searchRef.current?.focus());
+    const focus = (event: Event) => {
+      const nextQuery = (event as CustomEvent<{ query?: string }>).detail?.query;
+      if (typeof nextQuery === "string") setQuery(nextQuery);
+      requestAnimationFrame(() => searchRef.current?.focus());
+    };
     window.addEventListener(FOCUS_KNOWLEDGE_TREE_EVENT, focus);
     return () => window.removeEventListener(FOCUS_KNOWLEDGE_TREE_EVENT, focus);
   }, []);
@@ -328,6 +333,22 @@ export default function MobileKnowledgeTreePanel({
     const node = nodes.find((candidate) => candidate.resourceType === "note" && candidate.resourceId === activeNoteId);
     if (node) rememberOpened(node.id);
   }, [nodes, rememberOpened, state.activeNote?.id]);
+
+  const openFullTextSearch = useCallback(() => {
+    actions.setSearchQuery(query.trim());
+    actions.setViewMode("search");
+    actions.setMobileSidebar(false);
+    actions.setMobileView("list");
+  }, [actions, query]);
+
+  const changeSearchScope = useCallback((scope: "tree" | "content") => {
+    if (scope === "content") {
+      openFullTextSearch();
+      return;
+    }
+    actions.setSearchQuery("");
+    actions.setViewMode(state.selectedNotebookId ? "notebook" : "all");
+  }, [actions, openFullTextSearch, state.selectedNotebookId]);
 
   const visibleNodes = useMemo(
     () => hideLockedFolderDescendants(nodes, unlockedFolderIds),
@@ -921,12 +942,35 @@ export default function MobileKnowledgeTreePanel({
         </div>
       </div>
 
-      <div className={cn("flex items-center px-2", variant === "mobile" ? "gap-1.5 pb-2" : "gap-0.5 pb-1.5")}>
+      <div className={cn(
+        "flex",
+        variant === "mobile"
+          ? "flex-col items-stretch gap-2.5 px-3 pb-3"
+          : "items-center gap-0.5 px-2 pb-1.5",
+      )}>
+        {variant === "mobile" && (
+          <KnowledgeSearchScopeSwitch
+            scope={state.viewMode === "search" ? "content" : "tree"}
+            fullWidth
+            treeLabel="目录筛选"
+            contentLabel="全文搜索"
+            onChange={changeSearchScope}
+          />
+        )}
         <div className={cn(
-          "flex min-w-0 flex-1 items-center gap-2 border border-app-border bg-app-bg",
-          variant === "mobile" ? "rounded-xl px-3 py-2" : "rounded-lg px-2.5 py-1.5",
+          "flex min-w-0 items-center border border-app-border bg-app-bg",
+          variant === "mobile"
+            ? "w-full gap-2 rounded-xl px-3 py-2.5 shadow-sm"
+            : "flex-1 gap-1.5 rounded-lg px-1.5 py-1",
         )}>
-          <Search size={15} className="shrink-0 text-tx-tertiary" />
+          {variant !== "mobile" && (
+            <KnowledgeSearchScopeSwitch
+              scope={state.viewMode === "search" ? "content" : "tree"}
+              compact
+              onChange={changeSearchScope}
+            />
+          )}
+          <Search size={variant === "mobile" ? 16 : 15} className="shrink-0 text-tx-tertiary" />
           <input
             ref={searchRef}
             value={query}
@@ -934,6 +978,7 @@ export default function MobileKnowledgeTreePanel({
             placeholder="搜索目录与文档"
             className={cn("min-w-0 flex-1 bg-transparent text-tx-primary outline-none placeholder:text-tx-tertiary", variant === "mobile" ? "text-sm" : "text-xs")}
             data-mobile-knowledge-tree-search=""
+            data-search-scope="tree"
           />
           {variant === "desktop" && (
             !query ? (
@@ -945,56 +990,75 @@ export default function MobileKnowledgeTreePanel({
               </kbd>
             ) : null
           )}
-          {query && <button type="button" onClick={() => setQuery("")} className="text-tx-tertiary hover:text-tx-primary" aria-label="清空搜索"><X size={14} /></button>}
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
+              aria-label="清空搜索"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
-        {view === "browse" && (
-          <button
-            type="button"
-            onClick={() => void chooseSortMode()}
-            className={cn(
-              "flex shrink-0 items-center justify-center text-accent-primary hover:bg-app-hover",
-              variant === "mobile" ? "h-9 w-9 rounded-lg" : "h-7 w-6 rounded-md",
-            )}
-            title={`排序：${SORT_LABELS[sortMode]}`}
-            aria-label={`目录排序，当前为${SORT_LABELS[sortMode]}`}
-          >
-            <ArrowUpDown size={variant === "mobile" ? 16 : 13} />
-          </button>
-        )}
-        {variant === "desktop" && view === "browse" && (
-          <button
-            type="button"
-            onClick={() => setAllExpanded((current) => !current)}
-            disabled={Boolean(query.trim()) || (!allExpanded && !hasExpandableContent)}
-            className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-tx-tertiary"
-            title={query.trim() ? "清除搜索后可批量展开或收起" : allExpanded ? "全部收起" : "全部展开"}
-            aria-label={allExpanded ? "全部收起" : "全部展开"}
-          >{allExpanded ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />}</button>
-        )}
-        <button
-          type="button"
-          onClick={(event) => openCreateDropdown(event, view === "browse" ? currentFolder : null)}
-          disabled={view === "browse" && !!currentFolder && !currentFolder.access.capabilities.canCreate}
-          className={cn(
-            "flex shrink-0 items-center justify-center text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-40",
-            variant === "mobile" ? "h-9 w-9 rounded-lg" : "h-7 w-6 rounded-md",
-          )}
-          title={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
-          aria-label={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
-          aria-haspopup="menu"
+        <div className={variant === "mobile"
+          ? "grid w-full grid-flow-col auto-cols-fr gap-1 rounded-xl border border-app-border/70 bg-app-hover/40 p-1"
+          : "contents"}
         >
-          <Plus size={variant === "mobile" ? 17 : 14} />
-        </button>
-        <button
-          type="button"
-          onClick={() => void reload()}
-          disabled={loading}
-          className={cn(
-            "flex shrink-0 items-center justify-center text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-50",
-            variant === "mobile" ? "h-9 w-9 rounded-lg" : "h-7 w-6 rounded-md",
+          {view === "browse" && (
+            <button
+              type="button"
+              onClick={() => void chooseSortMode()}
+              className={cn(
+                "flex shrink-0 items-center justify-center text-accent-primary",
+                variant === "mobile" ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
+              )}
+              title={`排序：${SORT_LABELS[sortMode]}`}
+              aria-label={`目录排序，当前为${SORT_LABELS[sortMode]}`}
+            >
+              <ArrowUpDown size={variant === "mobile" ? 17 : 13} />
+              {variant === "mobile" && <span className="text-[11px] leading-none">排序</span>}
+            </button>
           )}
-          title="刷新内容"
-        ><RefreshCw size={variant === "mobile" ? 15 : 13} className={loading ? "animate-spin" : undefined} /></button>
+          {variant === "desktop" && view === "browse" && (
+            <button
+              type="button"
+              onClick={() => setAllExpanded((current) => !current)}
+              disabled={Boolean(query.trim()) || (!allExpanded && !hasExpandableContent)}
+              className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-tx-tertiary"
+              title={query.trim() ? "清除搜索后可批量展开或收起" : allExpanded ? "全部收起" : "全部展开"}
+              aria-label={allExpanded ? "全部收起" : "全部展开"}
+            >{allExpanded ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />}</button>
+          )}
+          <button
+            type="button"
+            onClick={(event) => openCreateDropdown(event, view === "browse" ? currentFolder : null)}
+            disabled={view === "browse" && !!currentFolder && !currentFolder.access.capabilities.canCreate}
+            className={cn(
+              "flex shrink-0 items-center justify-center text-tx-tertiary hover:text-tx-primary disabled:opacity-40",
+              variant === "mobile" ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
+            )}
+            title={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
+            aria-label={currentFolder ? `在“${currentFolder.title}”中新建` : "新建"}
+            aria-haspopup="menu"
+          >
+            <Plus size={variant === "mobile" ? 18 : 14} />
+            {variant === "mobile" && <span className="text-[11px] leading-none">新建</span>}
+          </button>
+          <button
+            type="button"
+            onClick={() => void reload()}
+            disabled={loading}
+            className={cn(
+              "flex shrink-0 items-center justify-center text-tx-tertiary hover:text-tx-primary disabled:opacity-50",
+              variant === "mobile" ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
+            )}
+            title="刷新内容"
+          >
+            <RefreshCw size={variant === "mobile" ? 17 : 13} className={loading ? "animate-spin" : undefined} />
+            {variant === "mobile" && <span className="text-[11px] leading-none">刷新</span>}
+          </button>
+        </div>
       </div>
 
       {view === "browse" && !query && (

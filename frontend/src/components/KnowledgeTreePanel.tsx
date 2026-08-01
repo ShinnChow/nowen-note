@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 
 import FolderPasswordDialog from "@/components/FolderPasswordDialog";
+import KnowledgeSearchScopeSwitch from "@/components/KnowledgeSearchScopeSwitch";
 import KnowledgeTreeNodeMenu from "@/components/KnowledgeTreeNodeMenu";
 import KnowledgeTreePermissionsDialog from "@/components/KnowledgeTreePermissionsDialog";
 import {
@@ -320,7 +321,11 @@ export function KnowledgeTreePanel({
 
   useEffect(() => {
     if (!surfaceActive) return;
-    const focus = () => requestAnimationFrame(() => searchRef.current?.focus());
+    const focus = (event: Event) => {
+      const nextQuery = (event as CustomEvent<{ query?: string }>).detail?.query;
+      if (typeof nextQuery === "string") setQuery(nextQuery);
+      requestAnimationFrame(() => searchRef.current?.focus());
+    };
     window.addEventListener(FOCUS_KNOWLEDGE_TREE_EVENT, focus);
     return () => window.removeEventListener(FOCUS_KNOWLEDGE_TREE_EVENT, focus);
   }, [surfaceActive]);
@@ -907,36 +912,118 @@ export function KnowledgeTreePanel({
   const ownedNotebookCount = countOwnedNotebooks(nodes);
   const hasRootDraft = draft?.parentId === null;
 
+  const openFullTextSearch = useCallback(() => {
+    actions.setSearchQuery(query.trim());
+    actions.setViewMode("search");
+    actions.setMobileSidebar(false);
+    actions.setMobileView("list");
+  }, [actions, query]);
+
+  const changeSearchScope = useCallback((scope: "tree" | "content") => {
+    if (scope === "content") {
+      openFullTextSearch();
+      return;
+    }
+    actions.setSearchQuery("");
+    actions.setViewMode(state.selectedNotebookId ? "notebook" : "all");
+  }, [actions, openFullTextSearch, state.selectedNotebookId]);
+
   return (
-    <section ref={rootRef} className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col", className)} data-nowen-knowledge-tree="embedded" data-sidebar-surface-active={surfaceActive ? "true" : "false"}>
-      <div className="flex items-center gap-0.5 px-2 pb-1.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-app-border bg-app-bg px-2 py-1.5">
-          <Search size={13} className="shrink-0 text-tx-tertiary" />
+    <section
+      ref={rootRef}
+      className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col", className)}
+      data-nowen-knowledge-tree="embedded"
+      data-knowledge-tree-variant={variant}
+      data-sidebar-surface-active={surfaceActive ? "true" : "false"}
+    >
+      <div className={cn(
+        "flex",
+        variant === "mobile"
+          ? "flex-col items-stretch gap-2.5 px-3 pb-3"
+          : "items-center gap-0.5 px-2 pb-1.5",
+      )}>
+        {variant === "mobile" && (
+          <KnowledgeSearchScopeSwitch
+            scope={state.viewMode === "search" ? "content" : "tree"}
+            fullWidth
+            treeLabel="目录筛选"
+            contentLabel="全文搜索"
+            onChange={changeSearchScope}
+          />
+        )}
+        <div className={cn(
+          "flex min-w-0 items-center border border-app-border bg-app-bg",
+          variant === "mobile"
+            ? "w-full gap-2 rounded-xl px-3 py-2.5 shadow-sm"
+            : "flex-1 gap-1.5 rounded-md px-1.5 py-1",
+        )}>
+          {variant !== "mobile" && (
+            <KnowledgeSearchScopeSwitch
+              scope={state.viewMode === "search" ? "content" : "tree"}
+              compact
+              onChange={changeSearchScope}
+            />
+          )}
+          <Search size={variant === "mobile" ? 16 : 13} className="shrink-0 text-tx-tertiary" />
           <input
             ref={searchRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="筛选内容树…"
-            className="min-w-0 flex-1 bg-transparent text-xs text-tx-primary outline-none placeholder:text-tx-tertiary"
+            placeholder="筛选目录与文档…"
+            className={cn(
+              "min-w-0 flex-1 bg-transparent text-tx-primary outline-none placeholder:text-tx-tertiary",
+              variant === "mobile" ? "text-sm" : "text-xs",
+            )}
             data-knowledge-tree-search=""
+            data-search-scope="tree"
           />
-          {query && <button type="button" onClick={() => setQuery("")} className="text-tx-tertiary hover:text-tx-primary" aria-label="清空筛选"><X size={12} /></button>}
+          {query && <button type="button" onClick={() => setQuery("")} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary" aria-label="清空筛选"><X size={variant === "mobile" ? 15 : 12} /></button>}
         </div>
-        <button
-          type="button"
-          onClick={toggleAll}
-          disabled={Boolean(query.trim()) || expandableFolderIds.length === 0}
-          className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-tx-tertiary"
-          title={query.trim() ? "清除筛选后可批量展开或收起" : toggleAllLabel}
-          aria-label={toggleAllLabel}
-        >{hasExpandedFolders ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />}</button>
-        <button
-          type="button"
-          onClick={() => startInlineCreate(null, "folder")}
-          className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
-          title="新建根文件夹"
-        ><Plus size={14} /></button>
-        <button type="button" onClick={() => void reload()} disabled={loading} className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary disabled:opacity-50" title="刷新内容树"><RefreshCw size={13} className={loading ? "animate-spin" : undefined} /></button>
+        <div className={variant === "mobile"
+          ? "grid w-full grid-cols-4 gap-1 rounded-xl border border-app-border/70 bg-app-hover/40 p-1"
+          : "contents"}
+        >
+          {variant === "mobile" && <span className="min-w-0" data-knowledge-tree-sort-slot="" />}
+          <button
+            type="button"
+            onClick={toggleAll}
+            disabled={Boolean(query.trim()) || expandableFolderIds.length === 0}
+            className={cn(
+              "flex shrink-0 items-center justify-center text-tx-tertiary hover:text-tx-primary disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-tx-tertiary",
+              variant === "mobile" ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
+            )}
+            title={query.trim() ? "清除筛选后可批量展开或收起" : toggleAllLabel}
+            aria-label={toggleAllLabel}
+          >
+            {hasExpandedFolders ? <ChevronsUp size={variant === "mobile" ? 17 : 14} /> : <ChevronsDown size={variant === "mobile" ? 17 : 14} />}
+            {variant === "mobile" && <span className="text-[11px] leading-none">{hasExpandedFolders ? "收起" : "展开"}</span>}
+          </button>
+          <button
+            type="button"
+            onClick={() => startInlineCreate(null, "folder")}
+            className={cn(
+              "flex shrink-0 items-center justify-center text-tx-tertiary hover:text-tx-primary",
+              variant === "mobile" ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
+            )}
+            title="新建根文件夹"
+          >
+            <Plus size={variant === "mobile" ? 18 : 14} />
+            {variant === "mobile" && <span className="text-[11px] leading-none">新建</span>}
+          </button>
+          <button
+            type="button"
+            onClick={() => void reload()}
+            disabled={loading}
+            className={cn(
+              "flex shrink-0 items-center justify-center text-tx-tertiary hover:text-tx-primary disabled:opacity-50",
+              variant === "mobile" ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
+            )}
+            title="刷新内容树"
+          >
+            <RefreshCw size={variant === "mobile" ? 17 : 13} className={loading ? "animate-spin" : undefined} />
+            {variant === "mobile" && <span className="text-[11px] leading-none">刷新</span>}
+          </button>
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1 pb-3" data-swipe-blocker="knowledge-tree-scroll">

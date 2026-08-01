@@ -10,7 +10,7 @@ import {
 } from "@/lib/knowledgeTreeSort";
 import { cn } from "@/lib/utils";
 
-export default function KnowledgeTreeSortButton() {
+export default function KnowledgeTreeSortButton({ mobile = false }: { mobile?: boolean }) {
   const [mode, setMode] = useState<KnowledgeTreeSortMode>(() => loadKnowledgeTreeSortMode());
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
@@ -49,12 +49,19 @@ export default function KnowledgeTreeSortButton() {
   };
 
   return (
-    <span ref={rootRef} className="relative flex h-7 w-6 shrink-0 items-center justify-center">
+    <span
+      ref={rootRef}
+      className={cn(
+        "relative flex shrink-0 items-center justify-center",
+        mobile ? "h-12 w-full" : "h-7 w-6",
+      )}
+    >
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          "flex h-7 w-6 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary",
+          "flex items-center justify-center text-tx-tertiary hover:text-tx-primary",
+          mobile ? "h-12 w-full flex-col gap-0.5 rounded-lg hover:bg-app-bg" : "h-7 w-6 rounded-md hover:bg-app-hover",
           open && "bg-app-active text-tx-primary",
           mode !== "manual" && "text-accent-primary",
         )}
@@ -64,13 +71,17 @@ export default function KnowledgeTreeSortButton() {
         aria-expanded={open}
         data-knowledge-tree-sort-button=""
       >
-        <ArrowUpDown size={13} />
+        <ArrowUpDown size={mobile ? 17 : 13} />
+        {mobile && <span className="text-[11px] leading-none">排序</span>}
       </button>
 
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-8 z-[240] w-36 overflow-hidden rounded-lg border border-app-border bg-app-elevated py-1 shadow-xl"
+          className={cn(
+            "absolute right-0 z-[240] w-36 overflow-hidden rounded-lg border border-app-border bg-app-elevated py-1 shadow-xl",
+            mobile ? "top-11" : "top-8",
+          )}
           data-knowledge-tree-sort-menu=""
         >
           {KNOWLEDGE_TREE_SORT_OPTIONS.map((option) => (

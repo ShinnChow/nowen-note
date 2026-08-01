@@ -44,14 +44,19 @@ function collectSortSlots(): HTMLElement[] {
     const toolbar = filterSurface?.parentElement;
     if (!(filterSurface instanceof HTMLElement) || !(toolbar instanceof HTMLElement)) continue;
 
-    let slot = directChildWithAttribute(toolbar, SORT_SLOT_ATTRIBUTE);
+    let slot = toolbar.querySelector<HTMLElement>(`[${SORT_SLOT_ATTRIBUTE}]`);
     if (!slot) {
       slot = document.createElement("span");
       slot.setAttribute(SORT_SLOT_ATTRIBUTE, "");
-      slot.dataset.knowledgeTreeSortSlotId = `sort-slot-${++sortSlotSequence}`;
       slot.className = "contents";
       toolbar.insertBefore(slot, filterSurface.nextSibling);
     }
+    if (!slot.dataset.knowledgeTreeSortSlotId) {
+      slot.dataset.knowledgeTreeSortSlotId = `sort-slot-${++sortSlotSequence}`;
+    }
+    slot.dataset.knowledgeTreeSortMobile = input.closest<HTMLElement>(
+      '[data-knowledge-tree-variant="mobile"]',
+    ) ? "true" : "false";
     slots.push(slot);
   }
 
@@ -210,7 +215,7 @@ export default function SidebarSearchExperienceBridge() {
   return (
     <>
       {sortSlots.map((slot) => createPortal(
-        <KnowledgeTreeSortButton />,
+        <KnowledgeTreeSortButton mobile={slot.dataset.knowledgeTreeSortMobile === "true"} />,
         slot,
         slot.dataset.knowledgeTreeSortSlotId,
       ))}
