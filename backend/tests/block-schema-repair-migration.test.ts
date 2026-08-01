@@ -58,10 +58,10 @@ test("detects a missing historical migration even when MAX(version) is newer", (
       insert.run(migration.version, migration.name);
     }
 
-    assert.equal(
-      db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version,
-      62,
-    );
+    const latest = db.prepare(
+      "SELECT MAX(version) AS version FROM schema_migrations",
+    ).get() as { version: number };
+    assert.equal(latest.version, 62);
     assert.deepEqual(
       getPendingMigrations(db).map((migration) => migration.version),
       [48, 63],
