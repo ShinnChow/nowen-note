@@ -225,10 +225,10 @@ export function MyDayPanel({ onTaskMutated }: MyDayPanelProps) {
     if (completingId) return;
     setCompletingId(task.id);
     try {
-      const updated = await api.updateTask(task.id, {
+      const result = await api.updateTask(task.id, {
         isCompleted: task.isCompleted ? 0 : 1,
       });
-      setTasks((current) => current.map((item) => item.id === task.id ? updated : item));
+      setTasks((current) => current.map((item) => item.id === task.id ? result.task : item));
       onTaskMutated?.();
     } catch (error) {
       console.error("[MyDay] update task failed", error);
