@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import TaskCenterImpl from "./TaskCenterImpl";
 import { MyDayPanel } from "./tasks/MyDayPanel";
 import { shouldConfirmHabitDelete } from "./tasks/taskCenterHardening";
@@ -8,9 +8,9 @@ export * from "./TaskCenterImpl";
 export default function TaskCenter() {
   const [workspaceGeneration, setWorkspaceGeneration] = useState(0);
 
-  const remountTaskWorkspace = () => {
+  const remountTaskWorkspace = useCallback(() => {
     setWorkspaceGeneration((value) => value + 1);
-  };
+  }, []);
 
   useEffect(() => {
     const handleWorkspaceChange = () => {
@@ -21,7 +21,7 @@ export default function TaskCenter() {
     };
     window.addEventListener("nowen:workspace-changed", handleWorkspaceChange);
     return () => window.removeEventListener("nowen:workspace-changed", handleWorkspaceChange);
-  }, []);
+  }, [remountTaskWorkspace]);
 
   useEffect(() => {
     const handleDeleteCapture = (event: MouseEvent) => {
