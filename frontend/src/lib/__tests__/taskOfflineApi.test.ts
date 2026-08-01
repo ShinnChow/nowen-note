@@ -78,7 +78,7 @@ function createApi() {
     habitCount: 1,
   };
 
-  return {
+  const native = {
     getTasks: vi.fn(async () => [task()]),
     getTaskStats: vi.fn(async () => taskStats),
     createTask: vi.fn(async (data: Partial<Task>) => task({ id: "server-task", ...data })),
@@ -115,6 +115,8 @@ function createApi() {
       updatedAt: "2026-08-01T01:00:00.000Z",
     } satisfies HabitCheckin)),
   };
+
+  return { api: { ...native }, native };
 }
 
 beforeEach(() => {
@@ -124,7 +126,7 @@ beforeEach(() => {
 
 describe("taskOfflineApi", () => {
   it("uses cached task and habit lists when the network is unavailable", async () => {
-    const api = createApi();
+    const { api, native } = createApi();
     installTaskOfflineApi(api, {
       getServerUrl: () => "https://example.test",
       getWorkspaceId: () => "personal",
@@ -135,8 +137,8 @@ describe("taskOfflineApi", () => {
     await api.getHabits(true, "2026-08-01");
 
     setOnline(false);
-    api.getTasks.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    api.getHabits.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    native.getTasks.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    native.getHabits.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
     await expect(api.getTasks("all")).resolves.toMatchObject([{ id: "task-1" }]);
     await expect(api.getHabits(true, "2026-08-01")).resolves.toMatchObject([{ id: "habit-1" }]);
@@ -144,7 +146,7 @@ describe("taskOfflineApi", () => {
 
   it("queues an offline task create and remaps it after reconnect", async () => {
     setOnline(false);
-    const api = createApi();
+    const { api, native } = createApi();
     const controller = installTaskOfflineApi(api, {
       getServerUrl: () => "https://example.test",
       getWorkspaceId: () => "personal",
@@ -154,18 +156,18 @@ describe("taskOfflineApi", () => {
     const created = await api.createTask({ title: "离线创建" });
     expect(created.id).toMatch(/^local-task:/);
     expect(controller.pending()).toBe(1);
-    expect(api.createTask).not.toHaveBeenCalled();
+    expect(native.createTask).not.toHaveBeenCalled();
 
     setOnline(true);
     await controller.flush();
 
     expect(controller.pending()).toBe(0);
-    expect(api.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: "离线创建" }));
+    expect(native.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: "离线创建" }));
   });
 
   it("compacts updates into an offline create before replay", async () => {
     setOnline(false);
-    const api = createApi();
+    const { api, native } = createApi();
     const controller = installTaskOfflineApi(api, {
       getServerUrl: () => "https://example.test",
       getWorkspaceId: () => "personal",
@@ -179,7 +181,7 @@ describe("taskOfflineApi", () => {
     setOnline(true);
     await controller.flush();
 
-    expect(api.createTask).toHaveBeenCalledWith(expect.objectContaining({
+    expect(native.createTask).toHaveBeenCalledWith(expect.objectContaining({
       title: "最终标题",
       priority: 3,
     }));
@@ -187,7 +189,7 @@ describe("taskOfflineApi", () => {
   });
 
   it("keeps an offline habit check-in and replays it after reconnect", async () => {
-    const api = createApi();
+    const { api, native } = createApi();
     const controller = installTaskOfflineApi(api, {
       getServerUrl: () => "https://example.test",
       getWorkspaceId: () => "personal",
@@ -205,14 +207,14 @@ describe("taskOfflineApi", () => {
     expect(checkin.id).toMatch(/^local-checkin:/);
     expect(controller.pending()).toBe(1);
 
-    api.getHabits.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    native.getHabits.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await expect(api.getHabits(true, "2026-08-01")).resolves.toMatchObject([
       { id: "habit-1", todayStatus: "success", todayNote: "完成" },
     ]);
 
     setOnline(true);
     await controller.flush();
-    expect(api.checkInHabit).toHaveBeenCalledWith("habit-1", expect.objectContaining({
+    expect(native.checkInHabit).toHaveBeenCalledWith("habit-1", expect.objectContaining({
       status: "success",
       checkinDate: "2026-08-01",
     }));
