@@ -4,6 +4,7 @@ import type {
   HabitCheckin,
   HabitStats,
   Task,
+  TaskFilter,
   TaskStats,
 } from "@/types";
 import {
@@ -79,7 +80,7 @@ function createApi() {
   };
 
   const native = {
-    getTasks: vi.fn(async () => [task()]),
+    getTasks: vi.fn(async (_filter?: TaskFilter, _noteId?: string, _projectId?: string) => [task()]),
     getTaskStats: vi.fn(async () => taskStats),
     createTask: vi.fn(async (data: Partial<Task>) => task({ id: "server-task", ...data })),
     updateTask: vi.fn(async (id: string, data: Partial<Task>) => ({
@@ -91,9 +92,9 @@ function createApi() {
       generatedTask: null,
     })),
     deleteTask: vi.fn(async () => ({ success: true })),
-    getHabits: vi.fn(async () => [habit()]),
-    getHabitStats: vi.fn(async () => habitStats),
-    getHabitCheckinLog: vi.fn(async () => []),
+    getHabits: vi.fn(async (_includeArchived?: boolean, _checkinDate?: string) => [habit()]),
+    getHabitStats: vi.fn(async (_includeArchived?: boolean, _checkinDate?: string) => habitStats),
+    getHabitCheckinLog: vi.fn(async (_params?: { from?: string; to?: string; includeArchived?: boolean }) => []),
     createHabit: vi.fn(async (data: { title: string; icon?: string; color?: string; sortOrder?: number }) => (
       habit({ id: "server-habit", ...data })
     )),
