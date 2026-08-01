@@ -6,12 +6,14 @@ on:
     paths:
       - "frontend/src/lib/api.ts"
       - "frontend/src/lib/taskOfflineApi.ts"
+      - "frontend/src/lib/taskOfflineRuntime.ts"
       - "frontend/src/lib/__tests__/taskOfflineApi.test.ts"
       - ".github/workflows/issue-175-offline-tasks-ci.yml"
   pull_request:
     paths:
       - "frontend/src/lib/api.ts"
       - "frontend/src/lib/taskOfflineApi.ts"
+      - "frontend/src/lib/taskOfflineRuntime.ts"
       - "frontend/src/lib/__tests__/taskOfflineApi.test.ts"
       - ".github/workflows/issue-175-offline-tasks-ci.yml"
 
