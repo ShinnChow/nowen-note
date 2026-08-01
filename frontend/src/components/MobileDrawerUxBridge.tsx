@@ -3,10 +3,7 @@ import KnowledgeTreeDrawer from "@/components/KnowledgeTreeDrawer";
 import ShortcutHelpCenter from "@/components/ShortcutHelpCenter";
 import ShortcutRuntimeBridge from "@/components/ShortcutRuntimeBridge";
 import { useApp, useAppActions } from "@/store/AppContext";
-import {
-  shouldCollapseLegacyNoteList,
-  usesFunctionalNoteList,
-} from "@/lib/unifiedTreeOnlyLayout";
+import { usesFunctionalNoteList } from "@/lib/unifiedTreeOnlyLayout";
 
 export const MOBILE_DRAWER_SEARCH_BLUR_DELAY_MS = 160;
 
@@ -120,9 +117,10 @@ export const ANDROID_DRAWER_SAFE_AREA_CSS = `
 }
 `;
 
-const UNIFIED_TREE_ONLY_CSS = `
-/* Legacy notebook-list layout controls are retired. Runtime state is enforced below,
-   and these selectors prevent stale large components from exposing a dead control. */
+const LEGACY_NOTE_LIST_CONTROL_CSS = `
+/* The canonical standard/three-column/focus selector lives in the knowledge-tree
+   header. Hide older direct expand/collapse controls so two independent layout
+   controls cannot compete for the same panel state. */
 button[title="展开笔记列表"],
 button[title="收起笔记列表"],
 button[aria-label="展开笔记列表"],
@@ -147,27 +145,22 @@ export default function MobileDrawerUxBridge() {
   }, [state.mobileSidebarOpen]);
 
   /**
-   * Unified content tree is the only everyday hierarchy on desktop and mobile.
-   * Favorites, tags, Trash and legacy persistent-search results remain dedicated
-   * list surfaces because they are cross-tree result sets, not notebook navigation.
+   * This bridge owns progressive mobile navigation only. Wide Web/Electron
+   * note-list visibility is owned exclusively by NoteWorkspaceLayoutController.
+   *
+   * The previous implementation also forced noteListCollapsed for every view.
+   * That legacy rule immediately undid a user's three-column selection, making
+   * the Web layout menu appear unresponsive.
    */
   useLayoutEffect(() => {
-    document.documentElement.setAttribute("data-unified-tree-only", "");
-
-    const collapse = shouldCollapseLegacyNoteList(state.viewMode);
-    if (state.noteListCollapsed !== collapse) {
-      actions.toggleNoteListCollapsed();
-    }
-
     const functionalList = usesFunctionalNoteList(state.viewMode);
     const viewChanged = previousViewModeRef.current !== state.viewMode;
 
     if (functionalList) {
       if (viewChanged && state.mobileView !== "list") actions.setMobileView("list");
     } else if (state.mobileView !== "editor") {
-      // The retired note-list route now maps to the editor shell. On phones, open the
-      // unified tree immediately on first boot as well as after a later Android-back
-      // navigation, so users never have to press Back once just to reach their notebooks.
+      // Ordinary note navigation uses the unified tree drawer on phones. The
+      // desktop-width middle list remains controlled by the workspace mode.
       actions.setMobileView("editor");
       if (typeof window !== "undefined" && isMobileDrawerViewport(window.innerWidth)) {
         actions.setMobileSidebar(true);
@@ -175,7 +168,7 @@ export default function MobileDrawerUxBridge() {
     }
 
     previousViewModeRef.current = state.viewMode;
-  }, [actions, state.mobileView, state.noteListCollapsed, state.viewMode]);
+  }, [actions, state.mobileView, state.viewMode]);
 
   useEffect(() => {
     const clearBlurTimer = () => {
@@ -230,7 +223,7 @@ export default function MobileDrawerUxBridge() {
   return (
     <>
       <style data-mobile-drawer-ux="">{ANDROID_DRAWER_SAFE_AREA_CSS}</style>
-      <style data-unified-tree-only-layout="">{UNIFIED_TREE_ONLY_CSS}</style>
+      <style data-note-workspace-layout-controls="">{LEGACY_NOTE_LIST_CONTROL_CSS}</style>
       <KnowledgeTreeDrawer />
       <ShortcutHelpCenter />
       <ShortcutRuntimeBridge />
