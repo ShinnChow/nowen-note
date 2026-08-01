@@ -63,7 +63,7 @@ describe("knowledge tree sidebar contract", () => {
     expect(menu).toContain("onNotePatched(node.id, patch)");
   });
 
-  it("renders all notes as a fixed first-level navigation entry", () => {
+  it("renders all notes as a three-column-only desktop navigation entry", () => {
     const runtime = source("../../components/KnowledgeTreeCreateMenuRuntime.tsx");
 
     expect(runtime).toContain('data-knowledge-tree-all-notes=""');
@@ -76,6 +76,9 @@ describe("knowledge tree sidebar contract", () => {
     expect(runtime).toContain("notebook.noteCount");
     expect(runtime).toContain("state.noteListCollapsed");
     expect(runtime).toContain("actions.toggleNoteListCollapsed()");
+    expect(runtime).toContain('layoutMode === "three-column"');
+    expect(runtime).toContain('variant === "mobile"');
+    expect(runtime).toContain("existingHost?.remove()");
   });
 
   it("applies an unmistakably compact mobile density with a safe fallback", () => {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  NOTE_WORKSPACE_LAYOUT_CHANGED_EVENT,
   NOTE_WORKSPACE_LAYOUT_STORAGE_KEY,
   THREE_COLUMN_MIN_VIEWPORT_WIDTH,
   detectNoteWorkspaceSurface,
@@ -8,6 +9,7 @@ import {
   persistNoteWorkspaceLayoutMode,
   resolveNoteWorkspaceVisibility,
   supportsWideNoteWorkspaceLayout,
+  type NoteWorkspaceLayoutMode,
 } from "@/lib/noteWorkspaceLayout";
 
 describe("note workspace layout", () => {
@@ -39,9 +41,15 @@ describe("note workspace layout", () => {
   });
 
   it("persists an explicit device-local preference", () => {
+    const changed = new Promise<NoteWorkspaceLayoutMode>((resolve) => {
+      window.addEventListener(NOTE_WORKSPACE_LAYOUT_CHANGED_EVENT, (event) => {
+        resolve((event as CustomEvent<NoteWorkspaceLayoutMode>).detail);
+      }, { once: true });
+    });
     persistNoteWorkspaceLayoutMode("standard");
     expect(localStorage.getItem(NOTE_WORKSPACE_LAYOUT_STORAGE_KEY)).toBe("standard");
     expect(loadNoteWorkspaceLayoutMode(false)).toBe("standard");
+    return expect(changed).resolves.toBe("standard");
   });
 
   it("shows the middle list when three-column mode has enough room", () => {

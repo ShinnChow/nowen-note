@@ -2,6 +2,7 @@ export type NoteWorkspaceLayoutMode = "standard" | "three-column";
 export type NoteWorkspaceSurface = "web" | "desktop" | "native-mobile";
 
 export const NOTE_WORKSPACE_LAYOUT_STORAGE_KEY = "nowen-note-workspace-layout";
+export const NOTE_WORKSPACE_LAYOUT_CHANGED_EVENT = "nowen-note-workspace-layout-changed";
 export const THREE_COLUMN_MIN_VIEWPORT_WIDTH = 1120;
 
 export type NoteWorkspaceAutoCollapseReason = "viewport" | "right-split" | "focus" | null;
@@ -69,6 +70,12 @@ export function persistNoteWorkspaceLayoutMode(mode: NoteWorkspaceLayoutMode): v
     localStorage.setItem(NOTE_WORKSPACE_LAYOUT_STORAGE_KEY, mode);
   } catch {
     // Ignore unavailable or full storage.
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent<NoteWorkspaceLayoutMode>(
+      NOTE_WORKSPACE_LAYOUT_CHANGED_EVENT,
+      { detail: mode },
+    ));
   }
 }
 

@@ -10,6 +10,12 @@ import KnowledgeTreePanelBase, {
   type KnowledgeTreePanelProps,
 } from "./KnowledgeTreePanel";
 import { type KnowledgeTreeInlineCreateKind } from "@/lib/knowledgeTreeInlineCreate";
+import {
+  loadNoteWorkspaceLayoutMode,
+  NOTE_WORKSPACE_LAYOUT_CHANGED_EVENT,
+  NOTE_WORKSPACE_LAYOUT_STORAGE_KEY,
+  type NoteWorkspaceLayoutMode,
+} from "@/lib/noteWorkspaceLayout";
 import { cn } from "@/lib/utils";
 import { useApp, useAppActions } from "@/store/AppContext";
 
@@ -250,26 +256,52 @@ export function KnowledgeTreeCreateDropdown({
 }
 
 export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
+  const { state } = useApp();
   const rootRef = useRef<HTMLDivElement>(null);
   const requestCounterRef = useRef(0);
   const [createMenu, setCreateMenu] = useState<KnowledgeTreeCreateMenuState | null>(null);
   const [createRequest, setCreateRequest] = useState<KnowledgeTreeInlineCreateRequest | undefined>();
   const [importRequest, setImportRequest] = useState<KnowledgeTreeImportRequest | undefined>();
   const [allNotesHost, setAllNotesHost] = useState<HTMLElement | null>(null);
+  const [layoutMode, setLayoutMode] = useState<NoteWorkspaceLayoutMode>(() =>
+    loadNoteWorkspaceLayoutMode(state.noteListCollapsed),
+  );
+  const variant = props.variant ?? "desktop";
+  const showAllNotesEntry = variant === "mobile"
+    || (layoutMode === "three-column" && !state.editorFullscreen);
+
+  useEffect(() => {
+    const updateFromPreference = (event: Event) => {
+      const mode = (event as CustomEvent<NoteWorkspaceLayoutMode>).detail;
+      if (mode === "standard" || mode === "three-column") setLayoutMode(mode);
+    };
+    const updateFromStorage = (event: StorageEvent) => {
+      if (event.key !== NOTE_WORKSPACE_LAYOUT_STORAGE_KEY) return;
+      setLayoutMode(loadNoteWorkspaceLayoutMode(state.noteListCollapsed));
+    };
+    window.addEventListener(NOTE_WORKSPACE_LAYOUT_CHANGED_EVENT, updateFromPreference);
+    window.addEventListener("storage", updateFromStorage);
+    return () => {
+      window.removeEventListener(NOTE_WORKSPACE_LAYOUT_CHANGED_EVENT, updateFromPreference);
+      window.removeEventListener("storage", updateFromStorage);
+    };
+  }, [state.noteListCollapsed]);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     const syncRuntimeEnhancements = () => {
       markCreateButtons(root);
-      const host = ensureAllNotesHost(root);
+      const existingHost = root.querySelector<HTMLElement>(`[${ALL_NOTES_HOST_ATTR}]`);
+      if (!showAllNotesEntry) existingHost?.remove();
+      const host = showAllNotesEntry ? ensureAllNotesHost(root) : null;
       setAllNotesHost((current) => current === host ? current : host);
     };
     syncRuntimeEnhancements();
     const observer = new MutationObserver(syncRuntimeEnhancements);
     observer.observe(root, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, []);
+  }, [showAllNotesEntry]);
 
   const requestInlineCreate = useCallback((
     parentId: string | null,
@@ -312,8 +344,6 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
     const anchor = button.getBoundingClientRect();
     setCreateMenu((current) => current?.parentId === parentId ? null : { parentId, anchor });
   }, []);
-
-  const variant = props.variant ?? "desktop";
 
   return (
     <>
