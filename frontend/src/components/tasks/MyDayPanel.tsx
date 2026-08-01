@@ -63,7 +63,7 @@ export function MyDayPanel({ onTaskMutated }: MyDayPanelProps) {
   const [saving, setSaving] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
 
-  const labels = chinese
+  const labels = useMemo(() => chinese
     ? {
         title: "我的一天",
         subtitle: "主动选择今天要完成的任务，不修改原截止日期",
@@ -111,7 +111,7 @@ export function MyDayPanel({ onTaskMutated }: MyDayPanelProps) {
         overdue: "Overdue",
         dueToday: "Due today",
         noSuggestions: "No urgent suggestions right now",
-      };
+      }, [chinese]);
 
   const load = useCallback(async () => {
     setLoading(true);
