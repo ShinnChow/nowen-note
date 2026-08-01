@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
+  activeNote: null as null | { id: string },
   mobileSidebarOpen: false,
   mobileView: "editor" as "list" | "editor",
   noteListCollapsed: false,
@@ -42,6 +43,7 @@ describe("MobileDrawerUxBridge layout ownership", () => {
     document.body.innerHTML = "";
     state.mobileSidebarOpen = false;
     state.mobileView = "editor";
+    state.activeNote = null;
     state.noteListCollapsed = false;
     state.viewMode = "all";
     actions.toggleNoteListCollapsed.mockClear();
@@ -81,5 +83,14 @@ describe("MobileDrawerUxBridge layout ownership", () => {
 
     expect(actions.setMobileView).toHaveBeenCalledWith("list");
     expect(actions.toggleNoteListCollapsed).not.toHaveBeenCalled();
+  });
+
+  it("shows the note list when mobile starts without an active note", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+
+    act(() => root.render(<MobileDrawerUxBridge />));
+
+    expect(actions.setMobileView).toHaveBeenCalledWith("list");
+    expect(actions.setMobileSidebar).not.toHaveBeenCalled();
   });
 });

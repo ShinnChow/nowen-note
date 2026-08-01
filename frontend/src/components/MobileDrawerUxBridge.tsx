@@ -138,7 +138,6 @@ export default function MobileDrawerUxBridge() {
   const actions = useAppActions();
   const mobileSidebarOpenRef = useRef(state.mobileSidebarOpen);
   const blurTimerRef = useRef<number | null>(null);
-  const previousViewModeRef = useRef(state.viewMode);
 
   useEffect(() => {
     mobileSidebarOpenRef.current = state.mobileSidebarOpen;
@@ -154,21 +153,15 @@ export default function MobileDrawerUxBridge() {
    */
   useLayoutEffect(() => {
     const functionalList = usesFunctionalNoteList(state.viewMode);
-    const viewChanged = previousViewModeRef.current !== state.viewMode;
 
-    if (functionalList) {
-      if (viewChanged && state.mobileView !== "list") actions.setMobileView("list");
-    } else if (state.mobileView !== "editor") {
-      // Ordinary note navigation uses the unified tree drawer on phones. The
-      // desktop-width middle list remains controlled by the workspace mode.
-      actions.setMobileView("editor");
-      if (typeof window !== "undefined" && isMobileDrawerViewport(window.innerWidth)) {
-        actions.setMobileSidebar(true);
-      }
+    // The phone workspace is list-first: result-set views always need their
+    // list, and an ordinary notes view without an active note must never land
+    // on the empty editor. The directory remains available from the menu and
+    // opening a note still switches explicitly to the editor.
+    if ((functionalList || !state.activeNote) && state.mobileView !== "list") {
+      actions.setMobileView("list");
     }
-
-    previousViewModeRef.current = state.viewMode;
-  }, [actions, state.mobileView, state.viewMode]);
+  }, [actions, state.activeNote, state.mobileView, state.viewMode]);
 
   useEffect(() => {
     const clearBlurTimer = () => {
