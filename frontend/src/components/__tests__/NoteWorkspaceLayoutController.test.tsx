@@ -156,6 +156,25 @@ describe("NoteWorkspaceLayoutController", () => {
     expect(actions.toggleNoteListCollapsed).toHaveBeenCalledTimes(2);
   });
 
+  it("forces functional result lists open and restores the saved base mode afterwards", () => {
+    localStorage.setItem(NOTE_WORKSPACE_LAYOUT_STORAGE_KEY, "standard");
+    state.noteListCollapsed = true;
+    act(() => root.render(<NoteWorkspaceLayoutController />));
+
+    state.viewMode = "favorites";
+    act(() => root.render(<NoteWorkspaceLayoutController />));
+    expect(actions.toggleNoteListCollapsed).toHaveBeenCalledTimes(1);
+    expect(state.noteListCollapsed).toBe(false);
+    expect(localStorage.getItem(NOTE_WORKSPACE_LAYOUT_STORAGE_KEY)).toBe("standard");
+
+    act(() => root.render(<NoteWorkspaceLayoutController />));
+    state.viewMode = "all";
+    act(() => root.render(<NoteWorkspaceLayoutController />));
+    expect(actions.toggleNoteListCollapsed).toHaveBeenCalledTimes(2);
+    expect(state.noteListCollapsed).toBe(true);
+    expect(localStorage.getItem(NOTE_WORKSPACE_LAYOUT_STORAGE_KEY)).toBe("standard");
+  });
+
   it("does not expose note layout controls in non-note modules", () => {
     state.viewMode = "tasks";
     act(() => root.render(<NoteWorkspaceLayoutController />));
