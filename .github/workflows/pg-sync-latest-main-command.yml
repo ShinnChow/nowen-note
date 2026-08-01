@@ -94,6 +94,10 @@ jobs:
             exit 1
           fi
 
+          # The GitHub App token cannot update workflow files. Keep the migration branch's existing
+          # workflow definitions and sync application/test/docs changes in this merge.
+          git restore --source=HEAD --staged --worktree .github/workflows
+
           # Reapply the migration branch's known cross-driver reconciliation rules when still applicable.
           if [[ -f backend/scripts/reconcile-pg-main-merge.py ]]; then
             python backend/scripts/reconcile-pg-main-merge.py
