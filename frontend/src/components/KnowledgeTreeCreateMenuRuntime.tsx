@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FileCode, FileText, FileType2, Folder, Link2 } from "lucide-react";
+import { FileCode, Files, FileText, FileType2, Folder, Link2 } from "lucide-react";
 
 import KnowledgeTreePanelBase, {
   FOCUS_KNOWLEDGE_TREE_EVENT,
@@ -10,11 +10,14 @@ import KnowledgeTreePanelBase, {
   type KnowledgeTreePanelProps,
 } from "./KnowledgeTreePanel";
 import { type KnowledgeTreeInlineCreateKind } from "@/lib/knowledgeTreeInlineCreate";
+import { cn } from "@/lib/utils";
+import { useApp, useAppActions } from "@/store/AppContext";
 
 export { FOCUS_KNOWLEDGE_TREE_EVENT, KNOWLEDGE_TREE_CHANGED_EVENT };
 export type { KnowledgeTreePanelProps };
 
 const CREATE_SCOPE_ATTR = "data-nowen-create-scope";
+const ALL_NOTES_HOST_ATTR = "data-knowledge-tree-all-notes-host";
 const CREATE_MENU_WIDTH = 184;
 const CREATE_MENU_HEIGHT = 252;
 
@@ -57,6 +60,84 @@ function markCreateButtons(root: HTMLElement): void {
     button.setAttribute("aria-label", title ? `在“${title}”下新建` : "在当前节点下新建");
     button.setAttribute("aria-haspopup", "menu");
   }
+}
+
+function ensureAllNotesHost(root: HTMLElement): HTMLElement | null {
+  const panel = root.querySelector<HTMLElement>('[data-nowen-knowledge-tree="embedded"]');
+  if (!panel) return null;
+  const scroll = panel.querySelector<HTMLElement>('[data-swipe-blocker="knowledge-tree-scroll"]');
+  if (!scroll || scroll.parentElement !== panel) return null;
+
+  let host = panel.querySelector<HTMLElement>(`[${ALL_NOTES_HOST_ATTR}]`);
+  if (!host) {
+    host = document.createElement("div");
+    host.setAttribute(ALL_NOTES_HOST_ATTR, "");
+    host.className = "shrink-0 px-2 pb-1.5";
+    panel.insertBefore(host, scroll);
+  }
+  return host;
+}
+
+function AllNotesEntry({ variant }: { variant: "desktop" | "mobile" }) {
+  const { state } = useApp();
+  const actions = useAppActions();
+  const active = state.viewMode === "all"
+    && state.selectedNotebookId === null
+    && state.selectedTagIds.length === 0;
+  const allNotesCount = useMemo(() => {
+    const countedNotebooks = state.notebooks.filter(
+      (notebook) => typeof notebook.noteCount === "number",
+    );
+    if (countedNotebooks.length === state.notebooks.length) {
+      return countedNotebooks.reduce(
+        (total, notebook) => total + Math.max(0, notebook.noteCount || 0),
+        0,
+      );
+    }
+    return active ? state.notes.length : null;
+  }, [active, state.notebooks, state.notes.length]);
+
+  const openAllNotes = useCallback(() => {
+    actions.setSelectedNotebook(null);
+    actions.clearSelectedTags();
+    actions.setSearchQuery("");
+    actions.setViewMode("all");
+    actions.setMobileView("list");
+    if (variant === "desktop" && state.noteListCollapsed) {
+      actions.toggleNoteListCollapsed();
+    }
+    if (variant === "mobile") actions.setMobileSidebar(false);
+  }, [actions, state.noteListCollapsed, variant]);
+
+  return (
+    <button
+      type="button"
+      onClick={openAllNotes}
+      className={cn(
+        "group flex h-9 w-full items-center gap-2 rounded-lg border px-2.5 text-left text-xs font-medium transition-colors",
+        active
+          ? "border-accent-primary/15 bg-accent-primary/10 text-accent-primary"
+          : "border-transparent text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
+      )}
+      aria-current={active ? "page" : undefined}
+      aria-label={allNotesCount === null ? "查看所有笔记" : `查看所有笔记，共 ${allNotesCount} 条`}
+      data-knowledge-tree-all-notes=""
+    >
+      <Files size={15} className="shrink-0 text-accent-primary" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">所有笔记</span>
+      {allNotesCount !== null && (
+        <span
+          className={cn(
+            "min-w-6 shrink-0 rounded-full px-1.5 text-center text-[10px] leading-5 tabular-nums",
+            active ? "bg-accent-primary/10 text-accent-primary" : "bg-app-hover text-tx-tertiary",
+          )}
+          data-knowledge-tree-all-notes-count=""
+        >
+          {allNotesCount}
+        </span>
+      )}
+    </button>
+  );
 }
 
 function menuPosition(anchor: DOMRect): React.CSSProperties {
@@ -174,13 +255,18 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
   const [createMenu, setCreateMenu] = useState<KnowledgeTreeCreateMenuState | null>(null);
   const [createRequest, setCreateRequest] = useState<KnowledgeTreeInlineCreateRequest | undefined>();
   const [importRequest, setImportRequest] = useState<KnowledgeTreeImportRequest | undefined>();
+  const [allNotesHost, setAllNotesHost] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    const mark = () => markCreateButtons(root);
-    mark();
-    const observer = new MutationObserver(mark);
+    const syncRuntimeEnhancements = () => {
+      markCreateButtons(root);
+      const host = ensureAllNotesHost(root);
+      setAllNotesHost((current) => current === host ? current : host);
+    };
+    syncRuntimeEnhancements();
+    const observer = new MutationObserver(syncRuntimeEnhancements);
     observer.observe(root, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
@@ -227,11 +313,14 @@ export function KnowledgeTreePanel(props: KnowledgeTreePanelProps) {
     setCreateMenu((current) => current?.parentId === parentId ? null : { parentId, anchor });
   }, []);
 
+  const variant = props.variant ?? "desktop";
+
   return (
     <>
       <div ref={rootRef} className="contents" onClickCapture={handleClickCapture}>
         <KnowledgeTreePanelBase {...props} createRequest={createRequest} importRequest={importRequest} />
       </div>
+      {allNotesHost && createPortal(<AllNotesEntry variant={variant} />, allNotesHost)}
       <KnowledgeTreeCreateDropdown
         menu={createMenu}
         onClose={() => setCreateMenu(null)}
