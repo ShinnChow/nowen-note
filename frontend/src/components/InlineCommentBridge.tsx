@@ -542,10 +542,23 @@ export default function InlineCommentBridge() {
 
   useEffect(() => {
     let cancelled = false;
-    api.getMe()
-      .then((user) => { if (!cancelled) setCurrentUser(user); })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
+    const loadCurrentUser = () => {
+      let token = "";
+      try { token = localStorage.getItem("nowen-token") || ""; } catch { /* ignore */ }
+      if (!token) {
+        setCurrentUser(null);
+        return;
+      }
+      api.getMe()
+        .then((user) => { if (!cancelled) setCurrentUser(user); })
+        .catch(() => { if (!cancelled) setCurrentUser(null); });
+    };
+    loadCurrentUser();
+    window.addEventListener("nowen:token-changed", loadCurrentUser);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("nowen:token-changed", loadCurrentUser);
+    };
   }, []);
 
   const loadComments = useCallback(async (noteId: string, quiet = false) => {

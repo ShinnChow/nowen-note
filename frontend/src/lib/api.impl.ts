@@ -870,7 +870,7 @@ async function request<T>(url: string, options?: RequestOptions): Promise<T> {
       code === "USER_NOT_FOUND" ||
       code === "TOKEN_INVALID" ||
       code === "UNAUTHENTICATED";
-    if (sessionRevoked && !isSharePage) {
+    if (token && sessionRevoked && !isSharePage) {
       // L10: session 被后端吊销 → 广播给其他 tab 一起下线
       // 桌面端必须等主进程清除本地认证缓存后再刷新，避免旧 token 被重新注入形成循环。
       await broadcastLogout("session_revoked");
