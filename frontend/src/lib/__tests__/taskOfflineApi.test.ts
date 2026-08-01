@@ -1,0 +1,242 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  Habit,
+  HabitCheckin,
+  HabitStats,
+  Task,
+  TaskStats,
+} from "@/types";
+import {
+  deriveOfflineTaskStats,
+  filterOfflineTasks,
+  installTaskOfflineApi,
+} from "@/lib/taskOfflineApi";
+
+function setOnline(value: boolean) {
+  Object.defineProperty(navigator, "onLine", {
+    configurable: true,
+    value,
+  });
+}
+
+function task(overrides: Partial<Task> = {}): Task {
+  return {
+    id: "task-1",
+    userId: "user-1",
+    workspaceId: null,
+    title: "任务",
+    description: "",
+    priority: 2,
+    dueDate: null,
+    dueAt: null,
+    startDate: null,
+    noteId: null,
+    parentId: null,
+    isCompleted: 0,
+    completedAt: null,
+    sortOrder: 0,
+    projectId: null,
+    status: "todo",
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    ...overrides,
+  } as Task;
+}
+
+function habit(overrides: Partial<Habit> = {}): Habit {
+  return {
+    id: "habit-1",
+    userId: "user-1",
+    workspaceId: null,
+    title: "喝水",
+    icon: "💧",
+    color: "#6366f1",
+    sortOrder: 0,
+    archivedAt: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function createApi() {
+  const taskStats: TaskStats = {
+    total: 1,
+    completed: 0,
+    pending: 1,
+    today: 0,
+    overdue: 0,
+    week: 0,
+  };
+  const habitStats: HabitStats = {
+    totalCheckins: 0,
+    checkinDays: 0,
+    currentStreak: 0,
+    successCount: 0,
+    partialCount: 0,
+    failureCount: 0,
+    habitCount: 1,
+  };
+
+  return {
+    getTasks: vi.fn(async () => [task()]),
+    getTaskStats: vi.fn(async () => taskStats),
+    createTask: vi.fn(async (data: Partial<Task>) => task({ id: "server-task", ...data })),
+    updateTask: vi.fn(async (id: string, data: Partial<Task>) => ({
+      task: task({ id, ...data }),
+      generatedTask: null,
+    })),
+    toggleTask: vi.fn(async (id: string) => ({
+      task: task({ id, isCompleted: 1, status: "done" }),
+      generatedTask: null,
+    })),
+    deleteTask: vi.fn(async () => ({ success: true })),
+    getHabits: vi.fn(async () => [habit()]),
+    getHabitStats: vi.fn(async () => habitStats),
+    getHabitCheckinLog: vi.fn(async () => []),
+    createHabit: vi.fn(async (data: { title: string; icon?: string; color?: string; sortOrder?: number }) => (
+      habit({ id: "server-habit", ...data })
+    )),
+    updateHabit: vi.fn(async (id: string, data: Partial<Habit>) => habit({ id, ...data })),
+    archiveHabit: vi.fn(async (id: string, archived = true) => habit({
+      id,
+      archivedAt: archived ? "2026-08-01T01:00:00.000Z" : null,
+    })),
+    deleteHabit: vi.fn(async () => ({ success: true })),
+    checkInHabit: vi.fn(async (id: string, data: { status: "success" | "partial" | "failure"; note?: string; checkinDate?: string }) => ({
+      id: "server-checkin",
+      habitId: id,
+      userId: "user-1",
+      workspaceId: null,
+      checkinDate: data.checkinDate || "2026-08-01",
+      status: data.status,
+      note: data.note || "",
+      createdAt: "2026-08-01T01:00:00.000Z",
+      updatedAt: "2026-08-01T01:00:00.000Z",
+    } satisfies HabitCheckin)),
+  };
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  setOnline(true);
+});
+
+describe("taskOfflineApi", () => {
+  it("uses cached task and habit lists when the network is unavailable", async () => {
+    const api = createApi();
+    installTaskOfflineApi(api, {
+      getServerUrl: () => "https://example.test",
+      getWorkspaceId: () => "personal",
+      getScopeKey: () => "cache-fallback",
+    });
+
+    await api.getTasks("all");
+    await api.getHabits(true, "2026-08-01");
+
+    setOnline(false);
+    api.getTasks.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    api.getHabits.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await expect(api.getTasks("all")).resolves.toMatchObject([{ id: "task-1" }]);
+    await expect(api.getHabits(true, "2026-08-01")).resolves.toMatchObject([{ id: "habit-1" }]);
+  });
+
+  it("queues an offline task create and remaps it after reconnect", async () => {
+    setOnline(false);
+    const api = createApi();
+    const controller = installTaskOfflineApi(api, {
+      getServerUrl: () => "https://example.test",
+      getWorkspaceId: () => "personal",
+      getScopeKey: () => "task-create",
+    });
+
+    const created = await api.createTask({ title: "离线创建" });
+    expect(created.id).toMatch(/^local-task:/);
+    expect(controller.pending()).toBe(1);
+    expect(api.createTask).not.toHaveBeenCalled();
+
+    setOnline(true);
+    await controller.flush();
+
+    expect(controller.pending()).toBe(0);
+    expect(api.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: "离线创建" }));
+  });
+
+  it("compacts updates into an offline create before replay", async () => {
+    setOnline(false);
+    const api = createApi();
+    const controller = installTaskOfflineApi(api, {
+      getServerUrl: () => "https://example.test",
+      getWorkspaceId: () => "personal",
+      getScopeKey: () => "task-compact",
+    });
+
+    const created = await api.createTask({ title: "初始标题" });
+    await api.updateTask(created.id, { title: "最终标题", priority: 3 });
+    expect(controller.pending()).toBe(1);
+
+    setOnline(true);
+    await controller.flush();
+
+    expect(api.createTask).toHaveBeenCalledWith(expect.objectContaining({
+      title: "最终标题",
+      priority: 3,
+    }));
+    expect(controller.pending()).toBe(0);
+  });
+
+  it("keeps an offline habit check-in and replays it after reconnect", async () => {
+    const api = createApi();
+    const controller = installTaskOfflineApi(api, {
+      getServerUrl: () => "https://example.test",
+      getWorkspaceId: () => "personal",
+      getScopeKey: () => "habit-checkin",
+    });
+
+    await api.getHabits(true, "2026-08-01");
+    setOnline(false);
+
+    const checkin = await api.checkInHabit("habit-1", {
+      status: "success",
+      note: "完成",
+      checkinDate: "2026-08-01",
+    });
+    expect(checkin.id).toMatch(/^local-checkin:/);
+    expect(controller.pending()).toBe(1);
+
+    api.getHabits.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await expect(api.getHabits(true, "2026-08-01")).resolves.toMatchObject([
+      { id: "habit-1", todayStatus: "success", todayNote: "完成" },
+    ]);
+
+    setOnline(true);
+    await controller.flush();
+    expect(api.checkInHabit).toHaveBeenCalledWith("habit-1", expect.objectContaining({
+      status: "success",
+      checkinDate: "2026-08-01",
+    }));
+    expect(controller.pending()).toBe(0);
+  });
+
+  it("derives filters and statistics from the cached task snapshot", () => {
+    const today = new Date();
+    const key = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, "0"),
+      String(today.getDate()).padStart(2, "0"),
+    ].join("-");
+    const tasks = [
+      task({ id: "today", dueDate: key }),
+      task({ id: "done", dueDate: key, isCompleted: 1, status: "done" }),
+    ];
+
+    expect(filterOfflineTasks(tasks, "today").map((item) => item.id)).toEqual(["today"]);
+    expect(deriveOfflineTaskStats(tasks)).toMatchObject({
+      total: 2,
+      completed: 1,
+      pending: 1,
+      today: 1,
+    });
+  });
+});
