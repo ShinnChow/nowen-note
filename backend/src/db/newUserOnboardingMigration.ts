@@ -440,7 +440,7 @@ function noteInsert(note: GuideNote, sortOrder: number): string {
  * login, update, restart, migration, or ordinary synchronization.
  */
 export const newUserOnboardingMigration: Migration = {
-  version: 61,
+  version: 67,
   name: "new-user-bilingual-onboarding",
   up: (db: Database.Database) => {
     const noteStatements = GUIDE_NOTES.map((note, index) => (

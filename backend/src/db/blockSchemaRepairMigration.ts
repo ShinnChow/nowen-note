@@ -48,7 +48,7 @@ export function ensureBlockSchemaRepair(db: Database.Database): void {
 }
 
 export const blockSchemaRepairMigration: Migration = {
-  version: 63,
+  version: 69,
   name: "repair-skipped-block-schema",
   up: ensureBlockSchemaRepair,
 };

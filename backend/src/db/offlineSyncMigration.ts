@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import type { Migration } from "./migrations.impl.js";
 
 /**
- * v60: durable change feed for complete client-side offline workspaces.
+ * v66: durable change feed for complete client-side offline workspaces.
  *
  * The feed is intentionally trigger-backed instead of route-backed. Notes can be
  * changed by REST, import jobs, WebSocket/Yjs flushes, maintenance scripts and
@@ -10,7 +10,7 @@ import type { Migration } from "./migrations.impl.js";
  * visible to clients without duplicating logging calls across those paths.
  */
 export const offlineSyncMigration: Migration = {
-  version: 60,
+  version: 66,
   name: "offline-workspace-sync-feed",
   up: (db: Database.Database) => {
     db.exec(`

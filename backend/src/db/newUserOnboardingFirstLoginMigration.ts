@@ -28,7 +28,7 @@ function extractTriggerBody(sql: string): string {
  * - the handled marker survives guide deletion, so login never recreates it.
  */
 export const newUserOnboardingFirstLoginMigration: Migration = {
-  version: 62,
+  version: 68,
   name: "new-user-onboarding-first-login-gate",
   up: (db: Database.Database) => {
     db.exec(`
