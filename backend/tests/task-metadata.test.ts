@@ -28,17 +28,23 @@ async function requestJson(method: string, url: string, body?: unknown) {
 }
 
 test.before(async () => {
-  const [tasksModule, metadataModule, schemaModule] = await Promise.all([
+  const [tasksModule, metadataModule, schemaModule, migrationModule] = await Promise.all([
     import("../src/routes/tasks"),
     import("../src/routes/task-metadata"),
     import("../src/db/schema"),
+    import("../src/db/taskMetadataMigration"),
   ]);
   app = new Hono();
   app.route("/tasks", tasksModule.default);
   app.route("/task-metadata", metadataModule.default);
   getDb = schemaModule.getDb;
   closeDb = schemaModule.closeDb;
-  getDb().prepare(
+
+  const db = getDb();
+  // The route also installs the schema lazily on first request. Tests clean the
+  // tables in beforeEach, so initialize v71 explicitly before that hook runs.
+  migrationModule.taskMetadataMigration.up(db);
+  db.prepare(
     "INSERT OR IGNORE INTO users (id, username, passwordHash) VALUES (?, ?, ?)",
   ).run(USER_ID, USER_ID, "hash");
 });
