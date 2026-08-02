@@ -155,3 +155,26 @@ test("keeps personal estimates and blocks private to the task owner", async () =
   });
   assert.equal(otherBlock.status, 404);
 });
+
+test("inherits the estimate when a recurring task generates its next instance", async () => {
+  const task = await requestJson(USER_A, "POST", "/tasks", {
+    title: "Recurring focus session",
+    dueDate: "2026-08-03",
+    repeatRule: "daily",
+    repeatInterval: 1,
+  });
+  assert.equal(task.status, 201);
+
+  const estimate = await requestJson(
+    USER_A,
+    "PUT",
+    `/task-time-blocks/tasks/${task.json.id}/estimate`,
+    { estimatedMinutes: 45 },
+  );
+  assert.equal(estimate.status, 200);
+
+  const toggled = await requestJson(USER_A, "PATCH", `/tasks/${task.json.id}/toggle`);
+  assert.equal(toggled.status, 200);
+  assert.ok(toggled.json.generatedTask?.id);
+  assert.equal(toggled.json.generatedTask.estimatedMinutes, 45);
+});
