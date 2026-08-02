@@ -59,11 +59,8 @@ function moveDate(dateKey: string, days: number): string {
 }
 
 function timeText(iso: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(iso));
+  const date = new Date(iso);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 function dateLabel(dateKey: string, chinese: boolean): string {
@@ -236,11 +233,11 @@ export function TaskTimePlanner({ onTaskMutated }: TaskTimePlannerProps) {
     const endAt = addMinutesIso(startAt, durationMinutes);
     setSaving(true);
     try {
-      const block = await createTaskTimeBlock({ selectedTaskId, taskId: selectedTaskId, startAt, endAt, timeZone } as {
-        taskId: string;
-        startAt: string;
-        endAt: string;
-        timeZone: string;
+      const block = await createTaskTimeBlock({
+        taskId: selectedTaskId,
+        startAt,
+        endAt,
+        timeZone,
       });
       setBlocks((current) => [...current, block].sort((a, b) => a.startAt.localeCompare(b.startAt)));
       setStartTime(timeText(endAt));
