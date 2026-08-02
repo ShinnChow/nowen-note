@@ -28,6 +28,18 @@ export function ensureTaskTimePlanningSchema(db: Database.Database): void {
       ON task_time_blocks(userId, workspaceId, startAt, endAt);
     CREATE INDEX IF NOT EXISTS idx_task_time_blocks_task_user
       ON task_time_blocks(taskId, userId, startAt);
+
+    DROP TRIGGER IF EXISTS tasks_inherit_estimate_after_recurrence_insert;
+    CREATE TRIGGER tasks_inherit_estimate_after_recurrence_insert
+    AFTER INSERT ON tasks
+    WHEN NEW.repeatGeneratedFromId IS NOT NULL AND NEW.estimatedMinutes IS NULL
+    BEGIN
+      UPDATE tasks
+      SET estimatedMinutes = (
+        SELECT estimatedMinutes FROM tasks WHERE id = NEW.repeatGeneratedFromId
+      )
+      WHERE id = NEW.id;
+    END;
   `);
 }
 
