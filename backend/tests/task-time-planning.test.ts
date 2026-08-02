@@ -56,6 +56,8 @@ test.beforeEach(() => {
   db.prepare("DELETE FROM task_reminders").run();
   db.prepare("DELETE FROM task_dependencies").run();
   db.prepare("DELETE FROM tasks").run();
+  db.prepare("DELETE FROM workspace_members").run();
+  db.prepare("DELETE FROM workspaces").run();
 });
 
 test.after(() => {
@@ -177,4 +179,53 @@ test("inherits the estimate when a recurring task generates its next instance", 
   assert.equal(toggled.status, 200);
   assert.ok(toggled.json.generatedTask?.id);
   assert.equal(toggled.json.generatedTask.estimatedMinutes, 45);
+});
+
+test("lets workspace members plan the same shared task in private schedules", async () => {
+  const db = getDb();
+  const workspaceId = "time-planning-workspace";
+  db.prepare(
+    "INSERT INTO workspaces (id, name, ownerId, enabledFeatures) VALUES (?, ?, ?, ?)"
+  ).run(workspaceId, "Time Planning", USER_A, "{}");
+  db.prepare(
+    "INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)"
+  ).run(workspaceId, USER_A, "owner");
+  db.prepare(
+    "INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)"
+  ).run(workspaceId, USER_B, "editor");
+
+  const task = await requestJson(
+    USER_A,
+    "POST",
+    `/tasks?workspaceId=${workspaceId}`,
+    { title: "Shared launch task" },
+  );
+  assert.equal(task.status, 201);
+
+  const ownerBlock = await requestJson(USER_A, "POST", "/task-time-blocks", {
+    taskId: task.json.id,
+    startAt: "2026-08-03T01:00:00.000Z",
+    endAt: "2026-08-03T02:00:00.000Z",
+  });
+  const memberBlock = await requestJson(USER_B, "POST", "/task-time-blocks", {
+    taskId: task.json.id,
+    startAt: "2026-08-03T03:00:00.000Z",
+    endAt: "2026-08-03T04:00:00.000Z",
+  });
+  assert.equal(ownerBlock.status, 201);
+  assert.equal(memberBlock.status, 201);
+
+  const range = `workspaceId=${workspaceId}&from=2026-08-03T00%3A00%3A00.000Z&to=2026-08-04T00%3A00%3A00.000Z`;
+  const ownerSchedule = await requestJson(USER_A, "GET", `/task-time-blocks?${range}`);
+  const memberSchedule = await requestJson(USER_B, "GET", `/task-time-blocks?${range}`);
+  assert.deepEqual(ownerSchedule.json.blocks.map((block: { id: string }) => block.id), [ownerBlock.json.block.id]);
+  assert.deepEqual(memberSchedule.json.blocks.map((block: { id: string }) => block.id), [memberBlock.json.block.id]);
+
+  const memberCannotEditOwner = await requestJson(
+    USER_B,
+    "PUT",
+    `/task-time-blocks/${ownerBlock.json.block.id}`,
+    { startAt: "2026-08-03T05:00:00.000Z", endAt: "2026-08-03T06:00:00.000Z" },
+  );
+  assert.equal(memberCannotEditOwner.status, 404);
 });
