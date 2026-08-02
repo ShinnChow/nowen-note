@@ -1,6 +1,5 @@
 import crypto from "crypto";
 import { Hono } from "hono";
-import type { Context } from "hono";
 import { getDb } from "../db/schema";
 import { ensureTaskTimePlanningSchema } from "../db/taskTimePlanningMigration";
 import { canManageResource, getUserWorkspaceRole } from "../middleware/acl";
@@ -71,7 +70,12 @@ function normalizeTimeZone(value: unknown): string {
   if (!normalized || normalized.length > 100 || !/^[A-Za-z0-9_+\-/]+$/.test(normalized)) {
     return "UTC";
   }
-  return normalized;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: normalized }).format(new Date());
+    return normalized;
+  } catch {
+    return "UTC";
+  }
 }
 
 function normalizeEstimate(value: unknown): number | null {
@@ -254,6 +258,11 @@ taskTimeBlocks.put("/:id", async (c) => {
     "SELECT * FROM task_time_blocks WHERE id = ? AND userId = ?",
   ).get(id, userId) as TimeBlockRow | undefined;
   if (!existing) return c.json({ error: "Time block not found", code: "TIME_BLOCK_NOT_FOUND" }, 404);
+
+  const task = getTask(existing.taskId);
+  if (!task || !canReadTask(task, userId)) {
+    return c.json({ error: "Time block not found", code: "TIME_BLOCK_NOT_FOUND" }, 404);
+  }
 
   const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
   const range = validateBlockRange(
