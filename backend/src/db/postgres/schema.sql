@@ -116,3 +116,22 @@ CREATE INDEX IF NOT EXISTS idx_task_time_blocks_user_scope_start
   ON task_time_blocks("userId", "workspaceId", "startAt", "endAt");
 CREATE INDEX IF NOT EXISTS idx_task_time_blocks_task_user
   ON task_time_blocks("taskId", "userId", "startAt");
+
+CREATE OR REPLACE FUNCTION inherit_recurring_task_estimate()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW."repeatGeneratedFromId" IS NOT NULL AND NEW."estimatedMinutes" IS NULL THEN
+    SELECT "estimatedMinutes"
+      INTO NEW."estimatedMinutes"
+      FROM tasks
+      WHERE id = NEW."repeatGeneratedFromId";
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS tasks_inherit_estimate_before_recurrence_insert ON tasks;
+CREATE TRIGGER tasks_inherit_estimate_before_recurrence_insert
+BEFORE INSERT ON tasks
+FOR EACH ROW
+EXECUTE FUNCTION inherit_recurring_task_estimate();
