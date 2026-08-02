@@ -1,0 +1,99 @@
+name: PostgreSQL Audit Reconciliation Command
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/pg-reconcile-audit-trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pg-audit-reconciliation-command
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PostgreSQL migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: pg-migration-unified
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconcile latest-main SQLite boundary exceptions
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin pg-migration-unified
+          git reset --hard origin/pg-migration-unified
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("scripts/direct-db-access-deferred-exceptions.json")
+          data = json.loads(path.read_text())
+          files = data["files"]
+
+          files["routes/knowledge-tree.ts"]["reason"] = (
+              "Main expanded the unified knowledge-tree route with password, root-document, "
+              "ownership and permission operations. The PostgreSQL read-only listing is migrated "
+              "separately; remaining mutations stay owned by the complete #249 transaction batch."
+          )
+          files["routes/knowledge-tree.ts"]["counts"] = {
+              "getDb-call": 2,
+              "prepare-call": 12,
+              "transaction-call": 2,
+          }
+
+          files["routes/offline-sync.ts"] = {
+              "owner": "#249",
+              "reason": (
+                  "Main added durable offline workspace synchronization backed by SQLite reads and "
+                  "mutation metadata. PostgreSQL runtime-only does not mount this route; its snapshot "
+                  "and replay boundaries must migrate with the corresponding task/workspace repositories."
+              ),
+              "counts": {
+                  "better-sqlite3": 1,
+                  "getDb-call": 4,
+                  "prepare-call": 22,
+              },
+          }
+
+          files["services/siyuanImportedRemoteImages.ts"] = {
+              "owner": "#251",
+              "reason": (
+                  "Main extracted post-import remote-image localization for SiYuan packages. It is an "
+                  "import data-migration path and remains SQLite-only until the #251 checkpointed "
+                  "cross-driver import transaction is implemented."
+              ),
+              "counts": {"getDb-call": 1},
+          }
+
+          files["services/siyuanPackageImportLegacy.ts"]["reason"] = (
+              "The legacy SiYuan importer gained remote-image localization reads on main. Import "
+              "migration remains explicitly owned by #251 and is not mounted in PostgreSQL runtime-only."
+          )
+          files["services/siyuanPackageImportLegacy.ts"]["counts"] = {
+              "getDb-call": 6,
+              "prepare-call": 7,
+              "transaction-call": 2,
+          }
+
+          path.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n")
+          PY
+
+          node scripts/audit-direct-db-access.mjs --report-json /tmp/direct-db-access-report.json
+          node scripts/check-direct-db-access-baseline.mjs /tmp/direct-db-access-report.json
+          git diff --check
+          git add scripts/direct-db-access-deferred-exceptions.json
+          git commit -m "chore(pg): reconcile latest main DB audit baseline"
+          git push origin HEAD:pg-migration-unified
