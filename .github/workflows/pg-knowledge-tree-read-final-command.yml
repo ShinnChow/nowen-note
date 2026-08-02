@@ -1,0 +1,152 @@
+name: PostgreSQL Knowledge Tree Read Final Command
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/pg-knowledge-tree-read-final-trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pg-knowledge-tree-read-final-command
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nowen
+          POSTGRES_PASSWORD: nowen_ci_password
+          POSTGRES_DB: nowen_note_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nowen -d nowen_note_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      TEST_PG_DATABASE_URL: postgres://nowen:nowen_ci_password@127.0.0.1:5432/nowen_note_test
+      DATABASE_URL: postgres://nowen:nowen_ci_password@127.0.0.1:5432/nowen_note_test
+
+    steps:
+      - name: Checkout PostgreSQL migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: pg-migration-unified
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate and validate final knowledge-tree read runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main pg-migration-unified
+
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          workflow = subprocess.check_output(
+              ["git", "show", "origin/main:.github/workflows/pg-sync-latest-main-command.yml"],
+              text=True,
+          )
+          step_marker = "      - name: Implement and validate knowledge-tree read runtime\n"
+          run_marker = "        run: |\n"
+          section = workflow.split(step_marker, 1)[1]
+          block = section.split(run_marker, 1)[1]
+          lines: list[str] = []
+          for line in block.splitlines():
+              if line.startswith("          "):
+                  lines.append(line[10:])
+              elif not line.strip():
+                  lines.append("")
+              else:
+                  break
+          script = "\n".join(lines).rstrip() + "\n"
+
+          route_start = '  app.get("/", async (c) => {\n'
+          route_end = '  });\n\n  return app;\n}\nEOF\n\ncat > tests/knowledge-tree-runtime-pg.test.ts'
+          if route_start not in script or route_end not in script:
+              raise SystemExit("knowledge-tree route patch anchors missing")
+          script = script.replace(
+              route_start,
+              '  const listKnowledgeTree = async (c: Context) => {\n',
+              1,
+          )
+          script = script.replace(
+              route_end,
+              '  };\n\n  app.get("", listKnowledgeTree);\n  app.get("/", listKnowledgeTree);\n\n  return app;\n}\nEOF\n\ncat > tests/knowledge-tree-runtime-pg.test.ts',
+              1,
+          )
+          script = script.replace(
+              '/api/knowledge-tree/?workspaceId=',
+              '/api/knowledge-tree?workspaceId=',
+              1,
+          )
+
+          source_patches = r'''python - <<'INNERPY'
+          from pathlib import Path
+
+          migration_test = Path("tests/postgres-migrations.test.ts")
+          migration_source = migration_test.read_text()
+          migration_anchor = '    "0014_yjs_subdocument_structure_operations",\n'
+          if '"0015_knowledge_tree_read_runtime"' not in migration_source:
+              if migration_anchor not in migration_source:
+                  raise SystemExit("migration expectation anchor missing")
+              migration_source = migration_source.replace(
+                  migration_anchor,
+                  migration_anchor + '    "0015_knowledge_tree_read_runtime",\n',
+                  1,
+              )
+          migration_test.write_text(migration_source)
+
+          frontend_api = Path("../frontend/src/lib/knowledgeTreeApi.ts")
+          frontend_source = frontend_api.read_text()
+          old_request = 'return request<{ nodes: KnowledgeTreeNode[] }>(`/?${workspaceQuery(includeDeleted)}`).then(withDisplaySort);'
+          new_request = 'return request<{ nodes: KnowledgeTreeNode[] }>(`?${workspaceQuery(includeDeleted)}`).then(withDisplaySort);'
+          if old_request in frontend_source:
+              frontend_source = frontend_source.replace(old_request, new_request, 1)
+          elif new_request not in frontend_source:
+              raise SystemExit("knowledge-tree frontend list request anchor missing")
+          frontend_api.write_text(frontend_source)
+          INNERPY
+
+          '''
+          script = script.replace("git diff --check\n", source_patches + "git diff --check\n", 1)
+
+          commit_anchor = 'git commit -m "feat(postgres): add knowledge-tree read runtime"\n'
+          script = script.replace(
+              commit_anchor,
+              'git add tests/postgres-migrations.test.ts ../frontend/src/lib/knowledgeTreeApi.ts\n' + commit_anchor,
+              1,
+          )
+
+          Path("/tmp/knowledge-tree-read-final.sh").write_text(script)
+          PY
+
+          chmod +x /tmp/knowledge-tree-read-final.sh
+          cd backend
+          /tmp/knowledge-tree-read-final.sh
+
+      - name: Report migrated head
+        run: echo "pg-migration-unified=$(git rev-parse origin/pg-migration-unified)"
