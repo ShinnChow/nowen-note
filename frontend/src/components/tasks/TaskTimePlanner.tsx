@@ -176,8 +176,9 @@ export function TaskTimePlanner({ onTaskMutated }: TaskTimePlannerProps) {
   }, [dateKey, labels.loadFailed]);
 
   useEffect(() => {
+    if (!expanded) return;
     void load();
-  }, [load]);
+  }, [expanded, load]);
 
   useEffect(() => {
     try {
