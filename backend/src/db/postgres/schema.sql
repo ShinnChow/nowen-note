@@ -13,6 +13,8 @@ $$;
 
 \ir schema.base.sql
 
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS "estimatedMinutes" INTEGER;
+
 CREATE TABLE IF NOT EXISTS task_activity_events (
   id TEXT PRIMARY KEY,
   "taskId" TEXT,
@@ -96,3 +98,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_task_saved_views_user_scope_name
   ON task_saved_views("userId", "scopeKey", "normalizedName");
 CREATE INDEX IF NOT EXISTS idx_task_saved_views_user_scope_sort
   ON task_saved_views("userId", "scopeKey", "sortOrder", "createdAt");
+
+CREATE TABLE IF NOT EXISTS task_time_blocks (
+  id TEXT PRIMARY KEY,
+  "taskId" TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "workspaceId" TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+  "startAt" TIMESTAMPTZ NOT NULL,
+  "endAt" TIMESTAMPTZ NOT NULL,
+  "timeZone" TEXT NOT NULL DEFAULT 'UTC',
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK ("endAt" > "startAt")
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_time_blocks_user_scope_start
+  ON task_time_blocks("userId", "workspaceId", "startAt", "endAt");
+CREATE INDEX IF NOT EXISTS idx_task_time_blocks_task_user
+  ON task_time_blocks("taskId", "userId", "startAt");
