@@ -32,6 +32,12 @@ import {
 } from "@/lib/dailyRecords";
 import { localDateRangeToUtcSqlBounds, parseServerTime } from "@/lib/dateTime";
 import {
+  checkJournalForScope,
+  getOrCreateJournalForScope,
+  resolveJournalScope,
+  type JournalScope,
+} from "@/lib/journalScope";
+import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
@@ -53,6 +59,9 @@ interface DailyJournalViewProps {
   selectedDate: string;
   onDateChange: (dateKey: string) => void;
   onWriteMoment: () => void;
+  journalScope: JournalScope;
+  onJournalScopeChange: (scope: JournalScope) => void;
+  activeWorkspaceId: string | null;
 }
 
 function startOfCalendarGrid(dateKey: string): Date {
@@ -122,6 +131,9 @@ export default function DailyJournalView({
   selectedDate,
   onDateChange,
   onWriteMoment,
+  journalScope,
+  onJournalScopeChange,
+  activeWorkspaceId,
 }: DailyJournalViewProps) {
   const actions = useAppActions();
   const [journal, setJournal] = useState<Note | null>(null);
@@ -129,6 +141,8 @@ export default function DailyJournalView({
   const [backlinks, setBacklinks] = useState<BacklinkItem[]>([]);
   const [children, setChildren] = useState<KnowledgeTreeNode[]>([]);
   const [journalNode, setJournalNode] = useState<KnowledgeTreeNode | null>(null);
+  const [journalCanWrite, setJournalCanWrite] = useState(true);
+  const [journalRole, setJournalRole] = useState<string>("owner");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [creatingChild, setCreatingChild] = useState(false);
@@ -155,13 +169,22 @@ export default function DailyJournalView({
     setLoading(true);
     try {
       const range = localDateRangeToUtcSqlBounds({ from: selectedDate, to: selectedDate });
+      const treeWorkspaceId = journalScope.kind === "workspace"
+        ? journalScope.workspaceId
+        : "personal";
       const [check, momentResult, treeResult] = await Promise.all([
-        api.journals.checkToday(selectedDate),
+        checkJournalForScope(selectedDate, journalScope),
         api.getDiaryTimeline(undefined, 100, range || undefined),
-        knowledgeTreeApi.listForWorkspace("personal").catch(() => ({ nodes: [] as KnowledgeTreeNode[] })),
+        knowledgeTreeApi.listForWorkspace(treeWorkspaceId).catch(() => ({ nodes: [] as KnowledgeTreeNode[] })),
       ]);
 
       setMoments(momentResult.items || []);
+      setJournalCanWrite(check.canWrite);
+      setJournalRole(
+        typeof check.role === "string"
+          ? check.role
+          : journalScope.kind === "workspace" ? "viewer" : "owner",
+      );
       if (!check.exists || !check.noteId) {
         setJournal(null);
         setBacklinks([]);
@@ -193,7 +216,7 @@ export default function DailyJournalView({
     } finally {
       setLoading(false);
     }
-  }, [selectedDate]);
+  }, [journalScope, selectedDate]);
 
   useEffect(() => {
     void loadDay();
@@ -217,17 +240,20 @@ export default function DailyJournalView({
   const createOrOpenJournal = useCallback(async () => {
     setCreating(true);
     try {
-      const result = await api.journals.getOrCreateToday(selectedDate);
+      const result = await getOrCreateJournalForScope(selectedDate, journalScope);
       const note = await api.getNote(result.id);
       setJournal(note);
+      setJournalCanWrite(result.canWrite);
       openNote(note);
-      toast.success(result.existed ? "已打开该日日记" : "日记已创建");
+      toast.success(result.existed
+        ? journalScope.kind === "workspace" ? "已打开工作区日记" : "已打开该日日记"
+        : journalScope.kind === "workspace" ? "工作区日记已创建" : "日记已创建");
     } catch (error: any) {
       toast.error(error?.message || "创建日记失败");
     } finally {
       setCreating(false);
     }
-  }, [openNote, selectedDate]);
+  }, [journalScope, openNote, selectedDate]);
 
   const organizeArchive = useCallback(async () => {
     setOrganizingArchive(true);
@@ -326,13 +352,20 @@ export default function DailyJournalView({
   }, [lastCleanupId]);
 
   const createChildPage = useCallback(async () => {
+    if (!journalCanWrite) {
+      toast.info("当前工作区角色只能查看，无法创建子页面");
+      return;
+    }
     if (!journalNode) {
       toast.info("请先创建日记，稍后再添加子页面");
       return;
     }
     setCreatingChild(true);
     try {
-      const node = await knowledgeTreeApi.createForWorkspace("personal", {
+      const targetWorkspaceId = journalScope.kind === "workspace"
+        ? journalScope.workspaceId
+        : "personal";
+      const node = await knowledgeTreeApi.createForWorkspace(targetWorkspaceId, {
         parentId: journalNode.id,
         nodeType: "note",
         title: "新建子页面",
@@ -348,7 +381,7 @@ export default function DailyJournalView({
     } finally {
       setCreatingChild(false);
     }
-  }, [journalNode, openNote]);
+  }, [journalCanWrite, journalNode, journalScope, openNote]);
 
   const openLinkedNote = useCallback(async (noteId: string) => {
     try {
@@ -373,6 +406,43 @@ export default function DailyJournalView({
     <div className="min-h-0 flex-1 overflow-auto bg-app-bg">
       <div className="mx-auto grid w-full max-w-[1320px] grid-cols-1 gap-5 px-4 py-5 xl:grid-cols-[minmax(0,1fr)_320px] xl:px-6">
         <main className="min-w-0 space-y-5">
+          {activeWorkspaceId && (
+            <div
+              data-journal-scope-switch=""
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-app-border bg-app-surface px-3 py-2.5"
+            >
+              <div>
+                <div className="text-xs font-semibold text-tx-primary">日记作用域</div>
+                <div className="mt-0.5 text-[11px] text-tx-tertiary">个人沉淀与工作区协作互不覆盖</div>
+              </div>
+              <div className="flex rounded-lg bg-app-hover/70 p-1">
+                <button
+                  type="button"
+                  onClick={() => onJournalScopeChange(resolveJournalScope("personal"))}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium",
+                    journalScope.kind === "personal"
+                      ? "bg-app-surface text-accent-primary shadow-sm"
+                      : "text-tx-tertiary hover:text-tx-primary",
+                  )}
+                >
+                  个人日记
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onJournalScopeChange(resolveJournalScope(activeWorkspaceId))}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium",
+                    journalScope.kind === "workspace"
+                      ? "bg-app-surface text-accent-primary shadow-sm"
+                      : "text-tx-tertiary hover:text-tx-primary",
+                  )}
+                >
+                  工作区日记
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-2 rounded-xl border border-app-border bg-app-surface p-1.5">
             <button
               type="button"
@@ -403,6 +473,8 @@ export default function DailyJournalView({
               {isToday && (
                 <span className="rounded-full bg-accent-primary/10 px-2 py-0.5 text-xs font-medium text-accent-primary">今天</span>
               )}
+              {journalScope.kind === "personal" && (
+                <>
               <button
                 type="button"
                 onClick={() => void organizeArchive()}
@@ -413,6 +485,9 @@ export default function DailyJournalView({
                 {organizingArchive ? <Loader2 size={14} className="animate-spin" /> : <FolderTree size={14} />}
                 <span className="hidden sm:inline">整理目录</span>
               </button>
+                </>
+              )}
+              {journalScope.kind === "personal" && (
               <button
                 type="button"
                 onClick={() => void cleanupLegacyArchive()}
@@ -423,7 +498,8 @@ export default function DailyJournalView({
                 {cleaningArchive ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                 <span className="hidden lg:inline">清理空目录</span>
               </button>
-              {lastCleanupId && (
+              )}
+              {journalScope.kind === "personal" && lastCleanupId && (
                 <button
                   type="button"
                   onClick={() => void restoreLegacyArchiveCleanup()}
@@ -453,7 +529,7 @@ export default function DailyJournalView({
                     今日日记
                   </div>
                   <div className="mt-1 truncate text-[10px] text-tx-tertiary">
-                    个人日记 / {selectedDateObject.getFullYear()}年 / {selectedDateObject.getFullYear()}年{String(selectedDateObject.getMonth() + 1).padStart(2, "0")}月 / {selectedDate}
+                    {journalScope.kind === "workspace" ? "工作区日记" : "个人日记"} / {selectedDateObject.getFullYear()}年 / {selectedDateObject.getFullYear()}年{String(selectedDateObject.getMonth() + 1).padStart(2, "0")}月 / {selectedDate}
                   </div>
                 </div>
                 {journal && (
@@ -496,11 +572,11 @@ export default function DailyJournalView({
                   <button
                     type="button"
                     onClick={() => void createOrOpenJournal()}
-                    disabled={creating}
+                    disabled={creating || !journalCanWrite}
                     className="mt-4 flex items-center gap-1.5 rounded-lg bg-accent-primary px-4 py-2 text-xs font-medium text-white disabled:opacity-60"
                   >
                     {creating ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                    创建该日日记
+                    {journalCanWrite ? "创建该日日记" : "当前角色只能查看"}
                   </button>
                 </div>
               )}
@@ -619,7 +695,14 @@ export default function DailyJournalView({
               </button>
             </div>
             {children.length === 0 ? (
-              <button type="button" onClick={() => void createChildPage()} className="w-full rounded-xl border border-dashed border-app-border px-3 py-5 text-xs text-tx-tertiary hover:bg-app-hover">在该日日记下新建工作记录或专题页面</button>
+              <button
+                type="button"
+                onClick={() => void createChildPage()}
+                disabled={!journalCanWrite}
+                className="w-full rounded-xl border border-dashed border-app-border px-3 py-5 text-xs text-tx-tertiary hover:bg-app-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {journalCanWrite ? "在该日日记下新建工作记录或专题页面" : "当前角色只能查看子页面"}
+              </button>
             ) : (
               <div className="space-y-1">
                 {children.slice(0, 8).map((child) => (
