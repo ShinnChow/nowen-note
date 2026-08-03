@@ -147,7 +147,7 @@ export default function DailyJournalView({
       const [check, momentResult, treeResult] = await Promise.all([
         api.journals.checkToday(selectedDate),
         api.getDiaryTimeline(undefined, 100, range || undefined),
-        knowledgeTreeApi.list({ workspaceId: null }).catch(() => ({ nodes: [] as KnowledgeTreeNode[] })),
+        knowledgeTreeApi.listForWorkspace("personal").catch(() => ({ nodes: [] as KnowledgeTreeNode[] })),
       ]);
 
       setMoments(momentResult.items || []);
@@ -225,7 +225,7 @@ export default function DailyJournalView({
     }
     setCreatingChild(true);
     try {
-      const node = await knowledgeTreeApi.create({
+      const node = await knowledgeTreeApi.createForWorkspace("personal", {
         parentId: journalNode.id,
         nodeType: "note",
         title: "新建子页面",
