@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
+// Deterministic one-shot integration patch. Safe to run repeatedly.
 const path = "frontend/src/components/daily-records/DailyJournalView.tsx";
 let source = readFileSync(path, "utf8");
 
