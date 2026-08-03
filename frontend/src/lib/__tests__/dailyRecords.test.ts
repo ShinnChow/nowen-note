@@ -54,6 +54,6 @@ describe("daily journal preview", () => {
   });
 
   it("normalizes markdown and truncates long content", () => {
-    expect(extractJournalPreview("# 标题\n\n**正文**", "", 4)).toBe("标题\n\n正…");
+    expect(extractJournalPreview("# 标题\n\n**正文**", "", 5)).toBe("标题\n\n正…");
   });
 });
