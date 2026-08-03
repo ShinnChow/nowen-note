@@ -39,9 +39,9 @@ jobs:
         working-directory: frontend
         run: >-
           npx vitest run --reporter=basic
+          src/lib/__tests__/dailyRecordCommandDefinitions.test.ts
           src/components/daily-records/__tests__/dailyRecordSlashCommands.test.tsx
           src/components/daily-records/__tests__/markdownDailyRecordSlashCommands.test.tsx
-          src/components/daily-records/__tests__/dailyRecordSlashMenu.integration.test.tsx
           src/components/__tests__/SlashCommandExtension.test.ts
 
       - name: Frontend typecheck
