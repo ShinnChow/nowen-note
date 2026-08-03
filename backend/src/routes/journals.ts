@@ -30,6 +30,11 @@ import {
   previewJournalArchiveCleanup,
   restoreJournalArchiveCleanup,
 } from "../services/journalArchiveCleanup.js";
+import {
+  checkWorkspaceJournal,
+  getOrCreateWorkspaceJournal,
+  WorkspaceJournalError,
+} from "../services/workspaceJournals.js";
 
 const app = new Hono();
 
@@ -227,6 +232,64 @@ app.get("/check", (c) => {
     noteId: existing?.id || null,
     title: existing?.title || null,
   });
+});
+
+function workspaceJournalErrorResponse(c: any, error: unknown) {
+  if (error instanceof WorkspaceJournalError) {
+    return c.json({ error: error.message, code: error.code }, error.status);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("INVALID_JOURNAL_DATE:")) {
+    return c.json({ error: "日期格式无效，请使用 YYYY-MM-DD", code: "INVALID_JOURNAL_DATE" }, 400);
+  }
+  throw error;
+}
+
+/** 检查当前成员能否访问指定工作区的某日日记；只读，不创建。 */
+app.get("/workspace/:workspaceId/check", (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  if (!userId) return c.json({ error: "未授权" }, 401);
+  const workspaceId = c.req.param("workspaceId");
+  let dateKey: string;
+  try {
+    dateKey = getLocalDateKey(c.req.query("date"));
+    const result = checkWorkspaceJournal({
+      db, workspaceId, actorUserId: userId, dateKey,
+    });
+    return c.json({
+      ...result,
+      scope: "workspace",
+      workspaceId,
+    });
+  } catch (error) {
+    return workspaceJournalErrorResponse(c, error);
+  }
+});
+
+/** 获取或创建工作区共享日记。只读成员可打开已有日记，但不能创建缺失日期。 */
+app.post("/workspace/:workspaceId/resolve", async (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  if (!userId) return c.json({ error: "未授权" }, 401);
+  const workspaceId = c.req.param("workspaceId");
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const dateKey = getLocalDateKey(body?.localDate);
+    const result = getOrCreateWorkspaceJournal({
+      db, workspaceId, actorUserId: userId, dateKey,
+    });
+    return c.json({
+      ...result.note,
+      existed: result.existed,
+      canWrite: result.canWrite,
+      role: result.role,
+      archive: result.archive,
+      scope: "workspace",
+    }, result.existed ? 200 : 201);
+  } catch (error) {
+    return workspaceJournalErrorResponse(c, error);
+  }
 });
 
 /**
