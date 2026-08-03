@@ -124,7 +124,8 @@ export function buildMarkdownJournalDateLink(noteId: string, dateKey: string): s
 }
 
 function viewIsActive(view: EditorView): boolean {
-  return !(view as EditorView & { destroyed?: boolean }).destroyed;
+  const dom = (view as unknown as { dom?: { isConnected?: boolean } }).dom;
+  return dom?.isConnected !== false;
 }
 
 function insertAt(view: EditorView, position: number, value: string): void {
