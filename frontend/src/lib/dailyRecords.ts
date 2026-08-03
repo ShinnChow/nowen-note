@@ -29,6 +29,15 @@ export function shiftLocalDateKey(dateKey: string, days: number): string {
   return formatLocalDateKey(date);
 }
 
+export function shiftLocalMonthKey(dateKey: string, months: number): string {
+  const source = parseLocalDateKey(dateKey);
+  const sourceDay = source.getDate();
+  const target = new Date(source.getFullYear(), source.getMonth() + months, 1, 12, 0, 0, 0);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0, 12, 0, 0, 0).getDate();
+  target.setDate(Math.min(sourceDay, lastDay));
+  return formatLocalDateKey(target);
+}
+
 export function relativeLocalDateKey(offsetDays: number, now = new Date()): string {
   const date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
   date.setDate(date.getDate() + offsetDays);
