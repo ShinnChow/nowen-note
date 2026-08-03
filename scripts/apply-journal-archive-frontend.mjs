@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
+// Deterministic one-shot integration patch. Safe to run repeatedly.
 const apiPath = "frontend/src/lib/api.impl.ts";
 let apiSource = readFileSync(apiPath, "utf8");
 const checkAnchor = `    checkToday: (date?: string) => {
