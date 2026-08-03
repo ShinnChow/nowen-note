@@ -43,10 +43,10 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add frontend/src/components/SlashCommands.tsx
+          git add frontend/src/components/SlashCommands.tsx frontend/src/components/NavRail.tsx
           if git diff --cached --quiet; then
-            echo "Slash integration already applied"
+            echo "Daily records integration already applied"
             exit 0
           fi
-          git commit -m "feat(daily-records): register date slash commands"
+          git commit -m "feat(daily-records): register slash commands and navigation label"
           git push origin HEAD:feature/daily-records-hub
