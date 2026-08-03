@@ -2614,6 +2614,41 @@ export const api = {
       foldersReused: number;
       rootNotebookId: string | null;
     }>("/journals/organize", { method: "POST" }),
+    /** 预览迁移后可安全清理的旧空目录 */
+    previewArchiveCleanup: () => request<{
+      previewToken: string;
+      candidateCount: number;
+      blockedCount: number;
+      candidates: Array<{
+        id: string;
+        name: string;
+        parentId: string | null;
+        updatedAt: string;
+        evidenceCount: number;
+      }>;
+      blocked: Array<{
+        id: string;
+        name: string;
+        reasons: string[];
+      }>;
+    }>("/journals/cleanup-preview"),
+    /** 按预览令牌软删除已确认的空旧目录 */
+    cleanupArchive: (data: { previewToken: string; candidateIds?: string[] }) => request<{
+      success: boolean;
+      cleanupId: string;
+      cleaned: number;
+      alreadyDeleted: number;
+      cleanedNotebooks: Array<{ id: string; name: string }>;
+    }>("/journals/cleanup", { method: "POST", body: JSON.stringify(data) }),
+    /** 撤销一次旧目录清理 */
+    restoreArchiveCleanup: (cleanupId: string) => request<{
+      success: boolean;
+      cleanupId: string;
+      restored: number;
+      alreadyActive: number;
+      missing: number;
+      restoredNotebooks: Array<{ id: string; name: string }>;
+    }>("/journals/cleanup/restore", { method: "POST", body: JSON.stringify({ cleanupId }) }),
     /** 获取日记列表 */
     list: (cursor?: string, limit?: number) => {
       const params = new URLSearchParams();

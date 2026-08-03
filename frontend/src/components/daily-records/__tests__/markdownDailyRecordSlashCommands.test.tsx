@@ -39,9 +39,12 @@ describe("Markdown daily record slash commands", () => {
     const items = getMarkdownDailyRecordSlashCommands();
     expect(items.map((item) => item.id)).toEqual([
       "daily-now",
+      "daily-yesterday",
       "daily-today",
       "daily-tomorrow",
       "daily-day-after-tomorrow",
+      "daily-this-monday",
+      "daily-next-monday",
       "daily-pick-date",
     ]);
     expect(new Set(items.map((item) => item.category))).toEqual(new Set(["日期与日记"]));

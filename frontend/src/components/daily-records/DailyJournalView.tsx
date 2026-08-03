@@ -15,9 +15,12 @@ import {
   Plus,
   RefreshCw,
   Sparkles,
+  Trash2,
+  Undo2,
 } from "lucide-react";
 
 import { api, getCurrentWorkspace, setCurrentWorkspace } from "@/lib/api";
+import { confirm as confirmDialog } from "@/components/ui/confirm";
 import {
   extractJournalPreview,
   formatJournalHeading,
@@ -130,6 +133,12 @@ export default function DailyJournalView({
   const [creating, setCreating] = useState(false);
   const [creatingChild, setCreatingChild] = useState(false);
   const [organizingArchive, setOrganizingArchive] = useState(false);
+  const [cleaningArchive, setCleaningArchive] = useState(false);
+  const [restoringCleanup, setRestoringCleanup] = useState(false);
+  const [lastCleanupId, setLastCleanupId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return localStorage.getItem("nowen.journalArchive.lastCleanupId"); } catch { return null; }
+  });
   const [reloadToken, setReloadToken] = useState(0);
 
   const today = relativeLocalDateKey(0);
@@ -242,6 +251,80 @@ export default function DailyJournalView({
     }
   }, []);
 
+  const cleanupLegacyArchive = useCallback(async () => {
+    setCleaningArchive(true);
+    try {
+      const preview = await api.journals.previewArchiveCleanup();
+      if (preview.candidateCount === 0) {
+        toast.info(preview.blockedCount > 0
+          ? `没有可自动清理的目录，${preview.blockedCount} 个目录因仍有内容或权限配置而保留`
+          : "没有发现迁移后遗留的空目录");
+        return;
+      }
+
+      const visibleNames = preview.candidates.slice(0, 6).map((item) => `• ${item.name}`).join("\n");
+      const remaining = preview.candidateCount > 6 ? `\n• 以及另外 ${preview.candidateCount - 6} 个目录` : "";
+      const blocked = preview.blockedCount > 0
+        ? `\n\n另有 ${preview.blockedCount} 个目录因为仍有笔记、子目录、共享或安全配置而不会清理。`
+        : "";
+      const confirmed = await confirmDialog({
+        title: `清理 ${preview.candidateCount} 个旧空目录？`,
+        description: `${visibleNames}${remaining}${blocked}\n\n只会软删除经过迁移历史验证的空叶子目录，不会删除任何笔记。完成后可以撤销。`,
+        confirmText: "安全清理",
+        cancelText: "取消",
+        danger: true,
+      });
+      if (!confirmed) return;
+
+      const result = await api.journals.cleanupArchive({
+        previewToken: preview.previewToken,
+        candidateIds: preview.candidates.map((item) => item.id),
+      });
+      if (result.cleaned > 0) {
+        setLastCleanupId(result.cleanupId);
+        try { localStorage.setItem("nowen.journalArchive.lastCleanupId", result.cleanupId); } catch {}
+      }
+      window.dispatchEvent(new CustomEvent("nowen:knowledge-tree-changed", {
+        detail: { reason: "journal-archive-cleaned" },
+      }));
+      setReloadToken((value) => value + 1);
+      toast.success(result.cleaned > 0
+        ? `已安全清理 ${result.cleaned} 个旧空目录，可使用“撤销清理”恢复`
+        : "目录已经清理，无需重复操作");
+    } catch (error: any) {
+      if (error?.status === 409 || /状态已经变化|STALE_PREVIEW/i.test(String(error?.message || ""))) {
+        toast.info("目录状态已经变化，请重新点击清理并确认最新预览");
+      } else {
+        toast.error(error?.message || "清理旧日记目录失败");
+      }
+    } finally {
+      setCleaningArchive(false);
+    }
+  }, []);
+
+  const restoreLegacyArchiveCleanup = useCallback(async () => {
+    if (!lastCleanupId) return;
+    setRestoringCleanup(true);
+    try {
+      const result = await api.journals.restoreArchiveCleanup(lastCleanupId);
+      if (result.restored > 0 || result.alreadyActive > 0) {
+        setLastCleanupId(null);
+        try { localStorage.removeItem("nowen.journalArchive.lastCleanupId"); } catch {}
+      }
+      window.dispatchEvent(new CustomEvent("nowen:knowledge-tree-changed", {
+        detail: { reason: "journal-archive-cleanup-restored" },
+      }));
+      setReloadToken((value) => value + 1);
+      toast.success(result.restored > 0
+        ? `已恢复 ${result.restored} 个旧目录`
+        : "这些目录已经恢复");
+    } catch (error: any) {
+      toast.error(error?.message || "撤销目录清理失败");
+    } finally {
+      setRestoringCleanup(false);
+    }
+  }, [lastCleanupId]);
+
   const createChildPage = useCallback(async () => {
     if (!journalNode) {
       toast.info("请先创建日记，稍后再添加子页面");
@@ -330,6 +413,28 @@ export default function DailyJournalView({
                 {organizingArchive ? <Loader2 size={14} className="animate-spin" /> : <FolderTree size={14} />}
                 <span className="hidden sm:inline">整理目录</span>
               </button>
+              <button
+                type="button"
+                onClick={() => void cleanupLegacyArchive()}
+                disabled={cleaningArchive || organizingArchive}
+                className="flex items-center gap-1.5 rounded-lg border border-app-border px-2.5 py-1.5 text-xs font-medium text-tx-secondary hover:bg-app-hover hover:text-tx-primary disabled:opacity-60"
+                title="预览并安全清理迁移后遗留的空旧目录"
+              >
+                {cleaningArchive ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                <span className="hidden lg:inline">清理空目录</span>
+              </button>
+              {lastCleanupId && (
+                <button
+                  type="button"
+                  onClick={() => void restoreLegacyArchiveCleanup()}
+                  disabled={restoringCleanup}
+                  className="flex items-center gap-1.5 rounded-lg border border-app-border px-2.5 py-1.5 text-xs font-medium text-accent-primary hover:bg-accent-primary/10 disabled:opacity-60"
+                  title="撤销上一次旧目录清理"
+                >
+                  {restoringCleanup ? <Loader2 size={14} className="animate-spin" /> : <Undo2 size={14} />}
+                  <span className="hidden lg:inline">撤销清理</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setReloadToken((value) => value + 1)}

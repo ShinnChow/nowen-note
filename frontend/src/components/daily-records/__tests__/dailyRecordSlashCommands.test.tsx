@@ -8,9 +8,12 @@ describe("daily record slash commands", () => {
     const commands = getDailyRecordSlashCommands();
     expect(commands.map((command) => command.id)).toEqual([
       "daily-now",
+      "daily-yesterday",
       "daily-today",
       "daily-tomorrow",
       "daily-day-after-tomorrow",
+      "daily-this-monday",
+      "daily-next-monday",
       "daily-pick-date",
     ]);
     expect(new Set(commands.map((command) => command.category))).toEqual(new Set(["日期与日记"]));
