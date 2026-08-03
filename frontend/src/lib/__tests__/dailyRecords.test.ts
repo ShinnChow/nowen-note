@@ -7,6 +7,7 @@ import {
   parseLocalDateKey,
   relativeLocalDateKey,
   shiftLocalDateKey,
+  shiftLocalMonthKey,
 } from "@/lib/dailyRecords";
 
 describe("daily records date helpers", () => {
@@ -14,10 +15,16 @@ describe("daily records date helpers", () => {
     expect(formatLocalDateKey(new Date(2026, 7, 3, 23, 50))).toBe("2026-08-03");
   });
 
-  it("shifts across month and year boundaries without UTC conversion", () => {
+  it("shifts across day, month and year boundaries without UTC conversion", () => {
     expect(shiftLocalDateKey("2026-08-31", 1)).toBe("2026-09-01");
     expect(shiftLocalDateKey("2026-01-01", -1)).toBe("2025-12-31");
     expect(shiftLocalDateKey("2028-02-28", 1)).toBe("2028-02-29");
+  });
+
+  it("moves by calendar month and clamps to the target month end", () => {
+    expect(shiftLocalMonthKey("2026-03-31", -1)).toBe("2026-02-28");
+    expect(shiftLocalMonthKey("2028-01-31", 1)).toBe("2028-02-29");
+    expect(shiftLocalMonthKey("2026-12-31", 1)).toBe("2027-01-31");
   });
 
   it("derives relative dates from the caller local day", () => {
