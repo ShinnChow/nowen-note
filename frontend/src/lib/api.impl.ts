@@ -2593,6 +2593,20 @@ export const api = {
       const qs = date ? `?date=${encodeURIComponent(date)}` : "";
       return request<{ exists: boolean; noteId: string | null; title: string | null }>(`/journals/check${qs}`);
     },
+    /** 将已有日记迁移到真实的个人日记 / 年 / 月目录 */
+    organizeArchive: () => request<{
+      success: boolean;
+      total: number;
+      organized: number;
+      moved: number;
+      alreadyOrganized: number;
+      skippedInvalidDate: number;
+      skippedWorkspaceJournal: number;
+      foldersCreated: number;
+      foldersAdopted: number;
+      foldersReused: number;
+      rootNotebookId: string | null;
+    }>("/journals/organize", { method: "POST" }),
     /** 获取日记列表 */
     list: (cursor?: string, limit?: number) => {
       const params = new URLSearchParams();

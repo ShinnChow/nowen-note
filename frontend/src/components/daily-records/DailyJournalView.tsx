@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock3,
   FileText,
+  FolderTree,
   Link2,
   Loader2,
   MessageCircle,
@@ -128,6 +129,7 @@ export default function DailyJournalView({
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [creatingChild, setCreatingChild] = useState(false);
+  const [organizingArchive, setOrganizingArchive] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
   const today = relativeLocalDateKey(0);
@@ -218,6 +220,28 @@ export default function DailyJournalView({
     }
   }, [openNote, selectedDate]);
 
+  const organizeArchive = useCallback(async () => {
+    setOrganizingArchive(true);
+    try {
+      const result = await api.journals.organizeArchive();
+      window.dispatchEvent(new CustomEvent("nowen:knowledge-tree-changed", {
+        detail: { reason: "journal-archive-organized" },
+      }));
+      setReloadToken((value) => value + 1);
+      const skipped = result.skippedInvalidDate + result.skippedWorkspaceJournal;
+      const message = result.moved > 0
+        ? `已整理 ${result.moved} 篇日记，新建 ${result.foldersCreated} 个目录`
+        : result.organized > 0
+          ? "全部日记已经位于正确目录"
+          : "没有需要整理的日记";
+      toast.success(skipped > 0 ? `${message}，跳过 ${skipped} 篇异常记录` : message);
+    } catch (error: any) {
+      toast.error(error?.message || "整理日记目录失败");
+    } finally {
+      setOrganizingArchive(false);
+    }
+  }, []);
+
   const createChildPage = useCallback(async () => {
     if (!journalNode) {
       toast.info("请先创建日记，稍后再添加子页面");
@@ -298,8 +322,18 @@ export default function DailyJournalView({
               )}
               <button
                 type="button"
+                onClick={() => void organizeArchive()}
+                disabled={organizingArchive}
+                className="ml-auto flex items-center gap-1.5 rounded-lg border border-app-border px-2.5 py-1.5 text-xs font-medium text-tx-secondary hover:bg-app-hover hover:text-tx-primary disabled:opacity-60"
+                title="将已有日记整理到个人日记 / 年 / 月目录"
+              >
+                {organizingArchive ? <Loader2 size={14} className="animate-spin" /> : <FolderTree size={14} />}
+                <span className="hidden sm:inline">整理目录</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setReloadToken((value) => value + 1)}
-                className="ml-auto rounded-lg p-2 text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
+                className="rounded-lg p-2 text-tx-tertiary hover:bg-app-hover hover:text-tx-primary"
                 title="刷新"
               >
                 <RefreshCw size={15} />
@@ -308,9 +342,14 @@ export default function DailyJournalView({
 
             <div className="overflow-hidden rounded-2xl border border-app-border bg-app-surface shadow-sm">
               <div className="flex items-center justify-between border-b border-app-border px-5 py-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-tx-primary">
-                  <BookOpen size={16} className="text-accent-primary" />
-                  今日日记
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-tx-primary">
+                    <BookOpen size={16} className="text-accent-primary" />
+                    今日日记
+                  </div>
+                  <div className="mt-1 truncate text-[10px] text-tx-tertiary">
+                    个人日记 / {selectedDateObject.getFullYear()}年 / {selectedDateObject.getFullYear()}年{String(selectedDateObject.getMonth() + 1).padStart(2, "0")}月 / {selectedDate}
+                  </div>
                 </div>
                 {journal && (
                   <button
