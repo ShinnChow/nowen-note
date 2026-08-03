@@ -19,11 +19,18 @@ import { yjsSubdocumentsMigration } from "./yjsSubdocumentsMigration.js";
 import { blockAuthorityStaleGuardMigration } from "./blockAuthorityStaleGuardMigration.js";
 import { yjsSubdocumentGenerationMigration } from "./yjsSubdocumentGenerationMigration.js";
 import { tagScopeUniquenessMigration } from "./tagScopeUniquenessMigration.js";
+import { knowledgeTreeMigration } from "./knowledgeTreeMigration.js";
+import { knowledgeTreeResourceMigration } from "./knowledgeTreeResourceMigration.js";
+import { knowledgeTreeParentPreservationMigration } from "./knowledgeTreeParentPreservationMigration.js";
+import { knowledgeTreeLegacySyncMigration } from "./knowledgeTreeLegacySyncMigration.js";
+import { knowledgeTreeStructuralGuardMigration } from "./knowledgeTreeStructuralGuardMigration.js";
+import { knowledgeTreePasswordMigration } from "./knowledgeTreePasswordMigration.js";
 import { offlineSyncMigration } from "./offlineSyncMigration.js";
 import { newUserOnboardingMigration } from "./newUserOnboardingMigration.js";
 import { newUserOnboardingFirstLoginMigration } from "./newUserOnboardingFirstLoginMigration.js";
 import { blockSchemaRepairMigration } from "./blockSchemaRepairMigration.js";
 import { taskDayPlansMigration } from "./taskDayPlansMigration.js";
+import { yjsOperationReceiptsMigration } from "./yjsOperationReceiptsMigration.js";
 
 export type { Migration } from "./migrations.impl.js";
 
@@ -275,11 +282,18 @@ export const MIGRATIONS: Migration[] = [
   blockAuthorityStaleGuardMigration,
   yjsSubdocumentGenerationMigration,
   tagScopeUniquenessMigration,
+  knowledgeTreeMigration,
+  knowledgeTreeResourceMigration,
+  knowledgeTreeParentPreservationMigration,
+  knowledgeTreeLegacySyncMigration,
+  knowledgeTreeStructuralGuardMigration,
+  knowledgeTreePasswordMigration,
   offlineSyncMigration,
   newUserOnboardingMigration,
   newUserOnboardingFirstLoginMigration,
   blockSchemaRepairMigration,
   taskDayPlansMigration,
+  yjsOperationReceiptsMigration,
 ].sort((a, b) => a.version - b.version);
 
 export const CURRENT_SCHEMA_VERSION: number = MIGRATIONS.reduce(
