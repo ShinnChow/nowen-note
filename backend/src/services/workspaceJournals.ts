@@ -20,7 +20,7 @@ import { parseJournalDateKey } from "./journalArchiveTree.js";
 export const WORKSPACE_JOURNAL_ROOT_TITLE = "工作区日记";
 export const WORKSPACE_JOURNAL_ID_PREFIX = "__nowen_workspace_journal__";
 
-interface WorkspaceJournalFolderPath {
+export interface WorkspaceJournalFolderPath {
   rootNotebookId: string;
   rootNodeId: string;
   yearNotebookId: string;
@@ -58,7 +58,7 @@ export interface WorkspaceJournalResult {
   existed: boolean;
   canWrite: boolean;
   role: WorkspaceRole | "system-admin";
-  archive: WorkspaceJournalFolderPath;
+  archive: WorkspaceJournalFolderPath | null;
 }
 
 export class WorkspaceJournalError extends Error {
@@ -109,7 +109,6 @@ function resolveAccess(
   db: Database.Database,
   workspaceId: string,
   actorUserId: string,
-  requireWrite: boolean,
 ): { role: WorkspaceRole | "system-admin"; canWrite: boolean; ownerUserId: string } {
   const workspace = db.prepare("SELECT id FROM workspaces WHERE id = ?")
     .get(workspaceId) as { id: string } | undefined;
@@ -134,14 +133,6 @@ function resolveAccess(
 
   const canWrite = systemAdmin
     || !!memberRole && hasPermission(roleToPermission(memberRole), "write");
-  if (requireWrite && !canWrite) {
-    throw new WorkspaceJournalError(
-      "WORKSPACE_JOURNAL_READ_ONLY",
-      "当前工作区角色只能查看日记，无法创建或编辑",
-      403,
-    );
-  }
-
   const ownerUserId = readWorkspaceOwner(db, workspaceId) || actorUserId;
   return {
     role: systemAdmin ? "system-admin" : memberRole as WorkspaceRole,
@@ -164,15 +155,24 @@ function ensureWorkspaceFolder(
   },
 ): string {
   const stable = db.prepare(`
-    SELECT id, workspaceId
+    SELECT id, workspaceId, parentId, name, icon, sortOrder, isDeleted
     FROM notebooks
     WHERE id = ?
-  `).get(input.stableId) as { id: string; workspaceId: string | null } | undefined;
+  `).get(input.stableId) as {
+    id: string;
+    workspaceId: string | null;
+    parentId: string | null;
+    name: string;
+    icon: string | null;
+    sortOrder: number;
+    isDeleted: number;
+  } | undefined;
   if (stable && stable.workspaceId !== input.workspaceId) {
     throw new Error(`WORKSPACE_JOURNAL_ID_CONFLICT:${input.stableId}`);
   }
 
   let notebookId = stable?.id || "";
+  let created = false;
   if (!notebookId) {
     const matching = db.prepare(`
       SELECT id
@@ -187,7 +187,7 @@ function ensureWorkspaceFolder(
     notebookId = matching?.id || input.stableId;
 
     if (!matching) {
-      db.prepare(`
+      const inserted = db.prepare(`
         INSERT OR IGNORE INTO notebooks (
           id, userId, workspaceId, parentId, name, icon, sortOrder,
           isExpanded, isDeleted, deletedAt
@@ -201,8 +201,20 @@ function ensureWorkspaceFolder(
         input.icon,
         input.sortOrder,
       );
+      created = inserted.changes > 0;
     }
   }
+
+  const before = db.prepare(`
+    SELECT parentId, name, icon, sortOrder, isDeleted
+    FROM notebooks WHERE id = ?
+  `).get(notebookId) as {
+    parentId: string | null;
+    name: string;
+    icon: string | null;
+    sortOrder: number;
+    isDeleted: number;
+  } | undefined;
 
   db.prepare(`
     UPDATE notebooks
@@ -219,11 +231,18 @@ function ensureWorkspaceFolder(
     notebookId,
   );
 
+  const changed = created
+    || !before
+    || before.parentId !== input.parentId
+    || before.name !== input.title
+    || before.icon !== input.icon
+    || before.sortOrder !== input.sortOrder
+    || before.isDeleted !== 0;
   synchronizeLegacyNotebookHierarchy({
     db,
     notebookId,
     actorUserId: input.actorUserId,
-    reason: stable || notebookId !== input.stableId ? "move" : "create",
+    reason: created ? "create" : changed ? "move" : "metadata",
     parentMode: "resource",
   });
   return notebookId;
@@ -296,6 +315,26 @@ function readBoundJournal(
   return row || null;
 }
 
+function validateBoundJournal(
+  note: WorkspaceJournalRecord,
+  workspaceId: string,
+): void {
+  if (note.workspaceId !== workspaceId) {
+    throw new WorkspaceJournalError(
+      "WORKSPACE_JOURNAL_BINDING_BROKEN",
+      "共享日记的工作区归属不一致",
+      409,
+    );
+  }
+  if (note.isTrashed !== 0) {
+    throw new WorkspaceJournalError(
+      "WORKSPACE_JOURNAL_TRASHED",
+      "该日期的共享日记位于回收站，请先恢复",
+      409,
+    );
+  }
+}
+
 function placeBoundJournal(
   db: Database.Database,
   input: {
@@ -306,22 +345,12 @@ function placeBoundJournal(
     note: WorkspaceJournalRecord;
   },
 ): WorkspaceJournalFolderPath {
-  if (input.note.workspaceId !== input.workspaceId) {
-    throw new WorkspaceJournalError(
-      "WORKSPACE_JOURNAL_BINDING_BROKEN",
-      "共享日记的工作区归属不一致",
-      409,
-    );
-  }
-  if (input.note.isTrashed !== 0) {
-    throw new WorkspaceJournalError(
-      "WORKSPACE_JOURNAL_TRASHED",
-      "该日期的共享日记位于回收站，请先恢复",
-      409,
-    );
-  }
-
+  validateBoundJournal(input.note, input.workspaceId);
   const archive = ensureFolders(db, input);
+  const targetSortOrder = noteSortOrder(input.dateKey);
+  const changed = input.note.userId !== input.ownerUserId
+    || input.note.notebookId !== archive.monthNotebookId
+    || input.note.sortOrder !== targetSortOrder;
   db.prepare(`
     UPDATE notes
     SET userId = ?, workspaceId = ?, notebookId = ?, sortOrder = ?
@@ -330,14 +359,14 @@ function placeBoundJournal(
     input.ownerUserId,
     input.workspaceId,
     archive.monthNotebookId,
-    noteSortOrder(input.dateKey),
+    targetSortOrder,
     input.note.id,
   );
   synchronizeLegacyNoteHierarchy({
     db,
     noteId: input.note.id,
     actorUserId: input.actorUserId,
-    reason: "move",
+    reason: changed ? "move" : "metadata",
     parentMode: "resource",
   });
   return archive;
@@ -355,9 +384,9 @@ export function checkWorkspaceJournal(input: {
   canWrite: boolean;
   role: WorkspaceRole | "system-admin";
 } {
-  parseJournalDateKey(input.dateKey);
-  const access = resolveAccess(input.db, input.workspaceId, input.actorUserId, false);
-  const note = readBoundJournal(input.db, input.workspaceId, input.dateKey);
+  const dateKey = parseJournalDateKey(input.dateKey).dateKey;
+  const access = resolveAccess(input.db, input.workspaceId, input.actorUserId);
+  const note = readBoundJournal(input.db, input.workspaceId, dateKey);
   return {
     exists: !!note && note.isTrashed === 0,
     noteId: note?.isTrashed === 0 ? note.id : null,
@@ -374,16 +403,36 @@ export function getOrCreateWorkspaceJournal(input: {
   dateKey: string;
 }): WorkspaceJournalResult {
   const dateKey = parseJournalDateKey(input.dateKey).dateKey;
-  const access = resolveAccess(input.db, input.workspaceId, input.actorUserId, true);
+  const access = resolveAccess(input.db, input.workspaceId, input.actorUserId);
+
+  const existing = readBoundJournal(input.db, input.workspaceId, dateKey);
+  if (existing) {
+    validateBoundJournal(existing, input.workspaceId);
+    if (!access.canWrite) {
+      return {
+        note: existing,
+        existed: true,
+        canWrite: false,
+        role: access.role,
+        archive: null,
+      };
+    }
+  } else if (!access.canWrite) {
+    throw new WorkspaceJournalError(
+      "WORKSPACE_JOURNAL_READ_ONLY",
+      "当前工作区角色只能查看日记，无法创建缺失日期",
+      403,
+    );
+  }
 
   const execute = (): WorkspaceJournalResult => {
-    const existing = readBoundJournal(input.db, input.workspaceId, dateKey);
-    if (existing) {
+    const current = readBoundJournal(input.db, input.workspaceId, dateKey);
+    if (current) {
       const archive = placeBoundJournal(input.db, {
         ...input,
         ownerUserId: access.ownerUserId,
         dateKey,
-        note: existing,
+        note: current,
       });
       return {
         note: readBoundJournal(input.db, input.workspaceId, dateKey) as WorkspaceJournalRecord,
@@ -444,6 +493,16 @@ export function getOrCreateWorkspaceJournal(input: {
     if (!String(error?.code || "").startsWith("SQLITE_CONSTRAINT")) throw error;
     const concurrent = readBoundJournal(input.db, input.workspaceId, dateKey);
     if (!concurrent) throw error;
+    validateBoundJournal(concurrent, input.workspaceId);
+    if (!access.canWrite) {
+      return {
+        note: concurrent,
+        existed: true,
+        canWrite: false,
+        role: access.role,
+        archive: null,
+      };
+    }
     const archive = placeBoundJournal(input.db, {
       workspaceId: input.workspaceId,
       actorUserId: input.actorUserId,
