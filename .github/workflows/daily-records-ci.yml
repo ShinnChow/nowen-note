@@ -43,6 +43,7 @@ jobs:
           npx vitest run --reporter=verbose
           src/lib/__tests__/dailyRecords.test.ts
           src/components/__tests__/SlashCommandExtension.test.ts
+          src/components/daily-records/__tests__/dailyRecordSlashCommands.test.tsx
       - name: Frontend typecheck
         working-directory: source/frontend
         run: npx tsc -b
