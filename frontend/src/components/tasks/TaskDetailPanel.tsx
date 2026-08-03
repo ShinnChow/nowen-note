@@ -308,6 +308,7 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
         : null);
       onUpdate(task.id, {
         startDate: startDate || null,
+        dueDate: dueDate || null,
         dueAt: null,
       });
       return;

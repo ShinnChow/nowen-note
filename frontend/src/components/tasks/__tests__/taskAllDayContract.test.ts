@@ -19,5 +19,6 @@ describe("TaskDetailPanel all-day contract", () => {
   it("does not persist time fields while all-day is enabled", () => {
     expect(source).toContain("dueAt: allDay ? null");
     expect(source).toContain("startDate: allDay ? (startDate || null)");
+    expect(source).toContain("dueDate: dueDate || null");
   });
 });
