@@ -56,7 +56,7 @@ test("journal archive cleanup only removes proven empty leaves and supports roll
       id, userId, notebookId, workspaceId, title, content, contentText,
       note_type, journal_date, sortOrder
     ) VALUES ('ordinary-note', 'cleanup-user', 'legacy-with-note', NULL,
-      '不能删除', '{}', '', NULL, NULL, 0)
+      '不能删除', '{}', '', 'note', NULL, 0)
   `).run();
 
   const organized = organizeJournalArchive({ db, userId: "cleanup-user" });
@@ -116,7 +116,7 @@ test("journal archive cleanup only removes proven empty leaves and supports roll
       id, userId, notebookId, workspaceId, title, content, contentText,
       note_type, journal_date, sortOrder
     ) VALUES ('late-note', 'cleanup-user', 'legacy-empty-b', NULL,
-      '后来新增', '{}', '', NULL, NULL, 0)
+      '后来新增', '{}', '', 'note', NULL, 0)
   `).run();
 
   assert.throws(() => applyJournalArchiveCleanup({
