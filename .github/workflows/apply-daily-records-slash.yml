@@ -1,0 +1,52 @@
+name: Apply Daily Records Slash Patch
+
+on:
+  push:
+    branches: [feature/daily-records-hub]
+    paths:
+      - 'scripts/apply-daily-records-slash.mjs'
+      - 'frontend/src/components/daily-records/dailyRecordSlashCommands.tsx'
+      - '.github/workflows/apply-daily-records-slash.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/daily-records-hub
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Apply deterministic integration patch
+        run: node scripts/apply-daily-records-slash.mjs
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --silent
+      - name: Daily records and slash tests
+        working-directory: frontend
+        run: >-
+          npx vitest run --reporter=basic
+          src/lib/__tests__/dailyRecords.test.ts
+          src/components/__tests__/SlashCommandExtension.test.ts
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npx tsc -b
+      - name: Commit product code
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add frontend/src/components/SlashCommands.tsx
+          if git diff --cached --quiet; then
+            echo "Slash integration already applied"
+            exit 0
+          fi
+          git commit -m "feat(daily-records): register date slash commands"
+          git push origin HEAD:feature/daily-records-hub
