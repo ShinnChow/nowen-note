@@ -19,6 +19,12 @@
 import { Hono } from "hono";
 import { getDb } from "../db/schema";
 import { v4 as uuid } from "uuid";
+import {
+  ensureJournalArchiveFolders,
+  ensureJournalArchivePlacement,
+  organizeJournalArchive,
+  parseJournalDateKey,
+} from "../services/journalArchiveTree.js";
 
 const app = new Hono();
 
@@ -32,14 +38,9 @@ const app = new Hono();
  * @returns YYYY-MM-DD 格式的本地日期字符串
  */
 function getLocalDateKey(dateStr?: string): string {
-  let date: Date;
+  if (dateStr !== undefined) return parseJournalDateKey(dateStr).dateKey;
 
-  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    // 前端传入的 YYYY-MM-DD 格式，直接使用
-    return dateStr;
-  }
-
-  date = new Date();
+  const date = new Date();
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
@@ -78,7 +79,12 @@ app.post("/today", async (c) => {
     // body 解析失败不阻塞，使用服务端日期
   }
 
-  const today = getLocalDateKey(localDate);
+  let today: string;
+  try {
+    today = getLocalDateKey(localDate);
+  } catch {
+    return c.json({ error: "日期格式无效，请使用 YYYY-MM-DD" }, 400);
+  }
 
   // 查询是否已有今日日记
   const existing = db.prepare(`
@@ -91,48 +97,64 @@ app.post("/today", async (c) => {
   `).get(userId, today) as any;
 
   if (existing) {
-    return c.json({
-      ...existing,
-      existed: true,
+    const archive = ensureJournalArchivePlacement({
+      db,
+      userId,
+      noteId: existing.id,
+      dateKey: today,
     });
-  }
-
-  // 不存在，创建新日记
-  const id = uuid();
-  const title = today; // 标题使用日期格式 "2026-06-26"
-
-  // 查找用户的默认笔记本（个人空间）
-  const defaultNotebook = db.prepare(`
-    SELECT id FROM notebooks
-    WHERE userId = ? AND workspaceId IS NULL AND isDeleted = 0
-    ORDER BY sortOrder ASC, createdAt ASC
-    LIMIT 1
-  `).get(userId) as { id: string } | undefined;
-
-  if (!defaultNotebook) {
-    return c.json({ error: "请先创建一个笔记本" }, 400);
-  }
-
-  try {
-    db.prepare(`
-      INSERT INTO notes (id, userId, notebookId, title, content, contentText, note_type, journal_date)
-      VALUES (?, ?, ?, ?, '{}', '', 'journal', ?)
-    `).run(id, userId, defaultNotebook.id, title, today);
-
-    const created = db.prepare(`
+    const refreshed = db.prepare(`
       SELECT id, userId, notebookId, workspaceId, title, content, contentText,
              isPinned, isLocked, isArchived, isTrashed, version, sortOrder,
              createdAt, updatedAt, trashedAt, contentFormat, note_type, journal_date
       FROM notes
       WHERE id = ?
-    `).get(id);
+    `).get(existing.id);
+    return c.json({
+      ...refreshed as any,
+      existed: true,
+      archive,
+    });
+  }
+
+  // 不存在，创建新日记。目录与日记在同一事务内落地：
+  // 个人日记 / YYYY年 / YYYY年MM月 / YYYY-MM-DD。
+  const id = uuid();
+  const title = today;
+
+  try {
+    const result = db.transaction(() => {
+      const folders = ensureJournalArchiveFolders({ db, userId, dateKey: today });
+      db.prepare(`
+        INSERT INTO notes (
+          id, userId, notebookId, title, content, contentText,
+          note_type, journal_date, sortOrder
+        ) VALUES (?, ?, ?, ?, '{}', '', 'journal', ?, 0)
+      `).run(id, userId, folders.monthNotebookId, title, today);
+
+      const archive = ensureJournalArchivePlacement({
+        db,
+        userId,
+        noteId: id,
+        dateKey: today,
+      });
+      const created = db.prepare(`
+        SELECT id, userId, notebookId, workspaceId, title, content, contentText,
+               isPinned, isLocked, isArchived, isTrashed, version, sortOrder,
+               createdAt, updatedAt, trashedAt, contentFormat, note_type, journal_date
+        FROM notes
+        WHERE id = ?
+      `).get(id);
+      return { created, archive };
+    })();
 
     return c.json({
-      ...created as any,
+      ...result.created as any,
       existed: false,
+      archive: result.archive,
     }, 201);
   } catch (err: any) {
-    // UNIQUE 约束冲突：并发创建时触发，回退查询已有日记
+    // UNIQUE 约束冲突：并发创建时回退查询已有日记并修复目录归属。
     if (String(err?.code || "").startsWith("SQLITE_CONSTRAINT")) {
       const retry = db.prepare(`
         SELECT id, userId, notebookId, workspaceId, title, content, contentText,
@@ -141,11 +163,25 @@ app.post("/today", async (c) => {
         FROM notes
         WHERE userId = ? AND note_type = 'journal' AND journal_date = ?
           AND isTrashed = 0
-      `).get(userId, today);
-
+      `).get(userId, today) as any;
+      if (!retry?.id) throw err;
+      const archive = ensureJournalArchivePlacement({
+        db,
+        userId,
+        noteId: retry.id,
+        dateKey: today,
+      });
+      const refreshedRetry = db.prepare(`
+        SELECT id, userId, notebookId, workspaceId, title, content, contentText,
+               isPinned, isLocked, isArchived, isTrashed, version, sortOrder,
+               createdAt, updatedAt, trashedAt, contentFormat, note_type, journal_date
+        FROM notes
+        WHERE id = ?
+      `).get(retry.id);
       return c.json({
-        ...retry as any,
+        ...refreshedRetry as any,
         existed: true,
+        archive,
       });
     }
     throw err;
@@ -167,7 +203,12 @@ app.get("/check", (c) => {
   }
 
   const dateParam = c.req.query("date");
-  const today = getLocalDateKey(dateParam);
+  let today: string;
+  try {
+    today = getLocalDateKey(dateParam);
+  } catch {
+    return c.json({ error: "日期格式无效，请使用 YYYY-MM-DD" }, 400);
+  }
 
   const existing = db.prepare(`
     SELECT id, title
@@ -181,6 +222,20 @@ app.get("/check", (c) => {
     noteId: existing?.id || null,
     title: existing?.title || null,
   });
+});
+
+/**
+ * 将已有日记整理为真实的知识树实体目录。
+ *
+ * 显式 POST，重复执行安全；不会修改日记正文和标题，也不会删除旧空笔记本。
+ */
+app.post("/organize", (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  if (!userId) return c.json({ error: "未授权" }, 401);
+
+  const result = organizeJournalArchive({ db, userId });
+  return c.json({ success: true, ...result });
 });
 
 /**

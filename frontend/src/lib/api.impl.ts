@@ -2583,16 +2583,37 @@ export const api = {
   // 今日日记
   journals: {
     /** 获取或创建今日日记（POST 语义，避免 GET 副作用） */
-    getOrCreateToday: (localDate?: string) =>
-      request<{ id: string; title: string; existed: boolean;[key: string]: any }>("/journals/today", {
+    getOrCreateToday: async (localDate?: string) => {
+      const result = await request<{ id: string; title: string; existed: boolean;[key: string]: any }>("/journals/today", {
         method: "POST",
         body: JSON.stringify({ localDate }),
-      }),
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("nowen:knowledge-tree-changed", {
+          detail: { reason: result.existed ? "journal-archive-repaired" : "journal-created" },
+        }));
+      }
+      return result;
+    },
     /** 检查今日日记是否存在（只读，不创建） */
     checkToday: (date?: string) => {
       const qs = date ? `?date=${encodeURIComponent(date)}` : "";
       return request<{ exists: boolean; noteId: string | null; title: string | null }>(`/journals/check${qs}`);
     },
+    /** 将已有日记迁移到真实的个人日记 / 年 / 月目录 */
+    organizeArchive: () => request<{
+      success: boolean;
+      total: number;
+      organized: number;
+      moved: number;
+      alreadyOrganized: number;
+      skippedInvalidDate: number;
+      skippedWorkspaceJournal: number;
+      foldersCreated: number;
+      foldersAdopted: number;
+      foldersReused: number;
+      rootNotebookId: string | null;
+    }>("/journals/organize", { method: "POST" }),
     /** 获取日记列表 */
     list: (cursor?: string, limit?: number) => {
       const params = new URLSearchParams();
