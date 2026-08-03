@@ -7,6 +7,7 @@ on:
       - 'backend/src/routes/journals.ts'
       - 'backend/src/services/journalArchiveTree.ts'
       - 'backend/tests/journal-archive-tree.test.ts'
+      - 'backend/tests/journal-archive-routes.test.ts'
       - 'frontend/src/lib/api.impl.ts'
       - 'frontend/src/components/daily-records/**'
       - '.github/workflows/journal-archive-ci.yml'
@@ -40,9 +41,12 @@ jobs:
       - name: Install backend dependencies
         working-directory: source/backend
         run: npm ci --silent
-      - name: Journal archive service tests
+      - name: Journal archive service and route tests
         working-directory: source/backend
-        run: node --import tsx --import ./tests/setup-db-isolation.ts --test tests/journal-archive-tree.test.ts
+        run: >-
+          node --import tsx --import ./tests/setup-db-isolation.ts --test
+          tests/journal-archive-tree.test.ts
+          tests/journal-archive-routes.test.ts
       - name: Backend typecheck
         working-directory: source/backend
         run: npx tsc
