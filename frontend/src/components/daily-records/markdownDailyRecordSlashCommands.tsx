@@ -4,7 +4,7 @@ import type { EditorView } from "@codemirror/view";
 
 import type { MdSlashItem } from "@/components/MarkdownSlashMenu";
 import { prompt as promptDialog } from "@/components/ui/confirm";
-import { api, getCurrentWorkspace } from "@/lib/api";
+import { getCurrentWorkspace } from "@/lib/api";
 import {
   DAILY_RECORD_COMMAND_DEFINITIONS,
   resolveDailyRecordCommandDate,
@@ -15,6 +15,11 @@ import {
   parseLocalDateKey,
   relativeLocalDateKey,
 } from "@/lib/dailyRecords";
+import {
+  getOrCreateJournalForScope,
+  resolveJournalScope,
+  scopedJournalToastMessage,
+} from "@/lib/journalScope";
 import { buildWikiNoteLink } from "@/lib/noteLinkSyntax";
 import { toast } from "@/lib/toast";
 
@@ -28,10 +33,11 @@ export interface MarkdownInsertionAnchor {
 interface JournalResult {
   id: string;
   existed: boolean;
+  scope?: "personal" | "workspace";
 }
 
 export interface MarkdownDailyRecordCommandDependencies {
-  getOrCreateJournal: (dateKey: string) => Promise<JournalResult>;
+  getOrCreateJournal: (dateKey: string, workspaceId: string) => Promise<JournalResult>;
   getWorkspace: () => string;
   chooseDate: () => Promise<string | null>;
   now: () => Date;
@@ -41,11 +47,14 @@ export interface MarkdownDailyRecordCommandDependencies {
 }
 
 const DEFAULT_DEPENDENCIES: MarkdownDailyRecordCommandDependencies = {
-  getOrCreateJournal: (dateKey) => api.journals.getOrCreateToday(dateKey),
+  getOrCreateJournal: (dateKey, workspaceId) => getOrCreateJournalForScope(
+    dateKey,
+    resolveJournalScope(workspaceId),
+  ),
   getWorkspace: getCurrentWorkspace,
   chooseDate: () => promptDialog({
     title: "选择日记日期",
-    description: "选择日期后，会创建或复用对应日记，并在当前光标位置插入内部链接。",
+    description: "选择日期后，会在当前空间创建或复用对应日记，并在光标位置插入内部链接。",
     type: "date",
     defaultValue: relativeLocalDateKey(0),
     confirmText: "插入链接",
@@ -158,16 +167,16 @@ export async function insertMarkdownJournalDateLink(
     view.state.selection.main.from,
   );
   const workspace = deps.getWorkspace();
-  if (workspace && workspace !== "personal") {
-    deps.info("日期日记保存在个人空间，当前工作区成员可能无法访问");
-  }
 
   try {
-    const journal = await deps.getOrCreateJournal(dateKey);
+    const journal = await deps.getOrCreateJournal(dateKey, workspace);
     if (!viewIsActive(view)) return false;
     const position = resolveMarkdownInsertionPosition(view.state.doc.toString(), insertionAnchor);
     insertAt(view, position, buildMarkdownJournalDateLink(journal.id, dateKey));
-    deps.success(journal.existed ? `已链接 ${dateKey} 日记` : `已创建并链接 ${dateKey} 日记`);
+    deps.success(scopedJournalToastMessage({
+      existed: journal.existed,
+      scope: journal.scope || resolveJournalScope(workspace).kind,
+    }, dateKey));
     return true;
   } catch (error: any) {
     deps.error(error?.message || "创建日期日记失败");

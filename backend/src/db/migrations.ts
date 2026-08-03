@@ -34,6 +34,7 @@ import { yjsOperationReceiptsMigration } from "./yjsOperationReceiptsMigration.j
 import { taskMetadataMigration } from "./taskMetadataMigration.js";
 import { taskTimePlanningMigration } from "./taskTimePlanningMigration.js";
 import { taskInboxMigration } from "./taskInboxMigration.js";
+import { workspaceJournalsMigration } from "./workspaceJournalsMigration.js";
 
 export type { Migration } from "./migrations.impl.js";
 
@@ -324,6 +325,7 @@ export const MIGRATIONS: Migration[] = [
   taskMetadataCanonicalMigration,
   taskTimePlanningCanonicalMigration,
   taskInboxCanonicalMigration,
+  workspaceJournalsMigration,
 ].sort((a, b) => a.version - b.version);
 
 export const CURRENT_SCHEMA_VERSION: number = MIGRATIONS.reduce(

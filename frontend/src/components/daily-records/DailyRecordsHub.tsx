@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle,
   BookOpen,
   CalendarDays,
   Clock3,
@@ -20,6 +19,7 @@ import {
   saveDailyRecordsView,
   type DailyRecordsView,
 } from "@/lib/dailyRecords";
+import { resolveJournalScope, type JournalScope } from "@/lib/journalScope";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -37,10 +37,15 @@ export default function DailyRecordsHub() {
   const [view, setViewState] = useState<DailyRecordsView>(() => loadDailyRecordsView());
   const [selectedDate, setSelectedDate] = useState(() => relativeLocalDateKey(0));
   const [workspaceId, setWorkspaceId] = useState(() => getCurrentWorkspace());
+  const [journalScope, setJournalScope] = useState<JournalScope>(() => resolveJournalScope());
   const momentRootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const syncWorkspace = () => setWorkspaceId(getCurrentWorkspace());
+    const syncWorkspace = () => {
+      const nextWorkspace = getCurrentWorkspace();
+      setWorkspaceId(nextWorkspace);
+      setJournalScope(resolveJournalScope(nextWorkspace));
+    };
     window.addEventListener("nowen:workspace-changed", syncWorkspace);
     return () => window.removeEventListener("nowen:workspace-changed", syncWorkspace);
   }, []);
@@ -65,7 +70,7 @@ export default function DailyRecordsHub() {
     }
   };
 
-  const journalUsesPersonalSpace = !!workspaceId && workspaceId !== "personal";
+  const activeWorkspaceId = workspaceId && workspaceId !== "personal" ? workspaceId : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app-bg" data-daily-records-hub="">
@@ -115,6 +120,7 @@ export default function DailyRecordsHub() {
               现在
             </button>
             {[
+              { label: "昨天", offset: -1 },
               { label: "今天", offset: 0 },
               { label: "明天", offset: 1 },
               { label: "后天", offset: 2 },
@@ -159,19 +165,14 @@ export default function DailyRecordsHub() {
       )}
 
       {view === "journal" && (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {journalUsesPersonalSpace && (
-            <div className="mx-auto mt-3 flex w-[calc(100%-2rem)] max-w-[1320px] items-start gap-2 rounded-xl border border-amber-300/50 bg-amber-50/70 px-3 py-2 text-xs text-amber-800 dark:border-amber-600/40 dark:bg-amber-950/20 dark:text-amber-200">
-              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-              <span>当前工作区的“瞬间”按工作区展示；日期日记仍保存在你的个人空间，工作区成员默认无法访问其中的链接和子页面。</span>
-            </div>
-          )}
-          <DailyJournalView
-            selectedDate={selectedDate}
-            onDateChange={setSelectedDate}
-            onWriteMoment={() => setView("moments")}
-          />
-        </div>
+        <DailyJournalView
+          selectedDate={selectedDate}
+          onDateChange={setSelectedDate}
+          onWriteMoment={() => setView("moments")}
+          journalScope={journalScope}
+          onJournalScopeChange={setJournalScope}
+          activeWorkspaceId={activeWorkspaceId}
+        />
       )}
     </div>
   );
