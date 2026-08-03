@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
+// Deterministic one-shot integration patch. Safe to run repeatedly.
 const routePath = "backend/src/routes/journals.ts";
 let route = readFileSync(routePath, "utf8");
 
