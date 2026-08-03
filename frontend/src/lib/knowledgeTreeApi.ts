@@ -200,4 +200,11 @@ export const knowledgeTreeApi = {
       { method: "PUT", body: JSON.stringify(input) },
     );
   },
+
+  removeFolderPassword(nodeId: string, currentPassword: string) {
+    return request<{ success: true; isPasswordProtected: false }>(
+      `/nodes/${encodeURIComponent(nodeId)}/password`,
+      { method: "DELETE", body: JSON.stringify({ currentPassword }) },
+    );
+  },
 };
