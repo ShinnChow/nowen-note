@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Clock3,
   MessageCircle,
+  type LucideIcon,
 } from "lucide-react";
 
 import DiaryCenterImpl from "@/components/DiaryCenterImpl";
@@ -23,7 +24,7 @@ import { cn } from "@/lib/utils";
 const VIEW_OPTIONS: Array<{
   key: DailyRecordsView;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
 }> = [
   { key: "moments", label: "瞬间", icon: MessageCircle },
   { key: "calendar", label: "日历", icon: CalendarDays },
