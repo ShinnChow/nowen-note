@@ -354,8 +354,9 @@ export default function DailyJournalView({
                 {journal && (
                   <button
                     type="button"
-                    onClick={() => openNote(journal)}
-                    className="rounded-lg bg-accent-primary/10 px-3 py-1.5 text-xs font-medium text-accent-primary hover:bg-accent-primary/15"
+                    onClick={() => void createOrOpenJournal()}
+                    disabled={creating}
+                    className="rounded-lg bg-accent-primary/10 px-3 py-1.5 text-xs font-medium text-accent-primary hover:bg-accent-primary/15 disabled:opacity-60"
                   >
                     打开编辑
                   </button>
@@ -364,8 +365,9 @@ export default function DailyJournalView({
               {journal ? (
                 <button
                   type="button"
-                  onClick={() => openNote(journal)}
-                  className="block min-h-[190px] w-full px-5 py-5 text-left hover:bg-app-hover/20"
+                  onClick={() => void createOrOpenJournal()}
+                  disabled={creating}
+                  className="block min-h-[190px] w-full px-5 py-5 text-left hover:bg-app-hover/20 disabled:opacity-70"
                 >
                   {preview ? (
                     <p className="whitespace-pre-wrap text-sm leading-7 text-tx-secondary">{preview}</p>
