@@ -16,7 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import { api } from "@/lib/api";
+import { api, getCurrentWorkspace, setCurrentWorkspace } from "@/lib/api";
 import {
   extractJournalPreview,
   formatJournalHeading,
@@ -24,6 +24,7 @@ import {
   parseLocalDateKey,
   relativeLocalDateKey,
   shiftLocalDateKey,
+  shiftLocalMonthKey,
 } from "@/lib/dailyRecords";
 import { localDateRangeToUtcSqlBounds, parseServerTime } from "@/lib/dateTime";
 import {
@@ -146,7 +147,7 @@ export default function DailyJournalView({
       const [check, momentResult, treeResult] = await Promise.all([
         api.journals.checkToday(selectedDate),
         api.getDiaryTimeline(undefined, 100, range || undefined),
-        knowledgeTreeApi.list().catch(() => ({ nodes: [] as KnowledgeTreeNode[] })),
+        knowledgeTreeApi.list({ workspaceId: null }).catch(() => ({ nodes: [] as KnowledgeTreeNode[] })),
       ]);
 
       setMoments(momentResult.items || []);
@@ -188,6 +189,13 @@ export default function DailyJournalView({
   }, [loadDay, reloadToken]);
 
   const openNote = useCallback((note: Note) => {
+    const targetWorkspace = note.workspaceId || "personal";
+    if (getCurrentWorkspace() !== targetWorkspace) {
+      setCurrentWorkspace(targetWorkspace);
+      window.dispatchEvent(new CustomEvent("nowen:workspace-changed", {
+        detail: { workspaceId: targetWorkspace },
+      }));
+    }
     actions.setActiveNote(note);
     actions.setSelectedNotebook(note.notebookId);
     actions.setViewMode("notebook");
@@ -412,8 +420,8 @@ export default function DailyJournalView({
             <div className="mb-3 flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-tx-primary"><CalendarDays size={16} className="text-accent-primary" /> 日历</h3>
               <div className="flex items-center gap-1">
-                <button type="button" onClick={() => onDateChange(shiftLocalDateKey(selectedDate, -28))} className="rounded p-1 text-tx-tertiary hover:bg-app-hover"><ChevronLeft size={14} /></button>
-                <button type="button" onClick={() => onDateChange(shiftLocalDateKey(selectedDate, 28))} className="rounded p-1 text-tx-tertiary hover:bg-app-hover"><ChevronRight size={14} /></button>
+                <button type="button" onClick={() => onDateChange(shiftLocalMonthKey(selectedDate, -1))} className="rounded p-1 text-tx-tertiary hover:bg-app-hover"><ChevronLeft size={14} /></button>
+                <button type="button" onClick={() => onDateChange(shiftLocalMonthKey(selectedDate, 1))} className="rounded p-1 text-tx-tertiary hover:bg-app-hover"><ChevronRight size={14} /></button>
               </div>
             </div>
             <div className="mb-3 text-sm font-medium text-tx-primary">{monthLabel}</div>
