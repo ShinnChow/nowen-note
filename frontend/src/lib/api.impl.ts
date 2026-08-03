@@ -2583,11 +2583,18 @@ export const api = {
   // 今日日记
   journals: {
     /** 获取或创建今日日记（POST 语义，避免 GET 副作用） */
-    getOrCreateToday: (localDate?: string) =>
-      request<{ id: string; title: string; existed: boolean;[key: string]: any }>("/journals/today", {
+    getOrCreateToday: async (localDate?: string) => {
+      const result = await request<{ id: string; title: string; existed: boolean;[key: string]: any }>("/journals/today", {
         method: "POST",
         body: JSON.stringify({ localDate }),
-      }),
+      });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("nowen:knowledge-tree-changed", {
+          detail: { reason: result.existed ? "journal-archive-repaired" : "journal-created" },
+        }));
+      }
+      return result;
+    },
     /** 检查今日日记是否存在（只读，不创建） */
     checkToday: (date?: string) => {
       const qs = date ? `?date=${encodeURIComponent(date)}` : "";

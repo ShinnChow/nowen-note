@@ -103,8 +103,15 @@ app.post("/today", async (c) => {
       noteId: existing.id,
       dateKey: today,
     });
+    const refreshed = db.prepare(`
+      SELECT id, userId, notebookId, workspaceId, title, content, contentText,
+             isPinned, isLocked, isArchived, isTrashed, version, sortOrder,
+             createdAt, updatedAt, trashedAt, contentFormat, note_type, journal_date
+      FROM notes
+      WHERE id = ?
+    `).get(existing.id);
     return c.json({
-      ...existing,
+      ...refreshed as any,
       existed: true,
       archive,
     });
@@ -164,8 +171,15 @@ app.post("/today", async (c) => {
         noteId: retry.id,
         dateKey: today,
       });
+      const refreshedRetry = db.prepare(`
+        SELECT id, userId, notebookId, workspaceId, title, content, contentText,
+               isPinned, isLocked, isArchived, isTrashed, version, sortOrder,
+               createdAt, updatedAt, trashedAt, contentFormat, note_type, journal_date
+        FROM notes
+        WHERE id = ?
+      `).get(retry.id);
       return c.json({
-        ...retry,
+        ...refreshedRetry as any,
         existed: true,
         archive,
       });
