@@ -25,6 +25,11 @@ import {
   organizeJournalArchive,
   parseJournalDateKey,
 } from "../services/journalArchiveTree.js";
+import {
+  applyJournalArchiveCleanup,
+  previewJournalArchiveCleanup,
+  restoreJournalArchiveCleanup,
+} from "../services/journalArchiveCleanup.js";
 
 const app = new Hono();
 
@@ -236,6 +241,82 @@ app.post("/organize", (c) => {
 
   const result = organizeJournalArchive({ db, userId });
   return c.json({ success: true, ...result });
+});
+
+/**
+ * 预览迁移后可安全清理的旧空笔记本。
+ *
+ * 只有具备 journal_archive 移动历史、仍为空、没有子目录、共享、密码或 ACL 的
+ * 个人笔记本才会进入候选列表。GET 只读，不产生删除副作用。
+ */
+app.get("/cleanup-preview", (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  if (!userId) return c.json({ error: "未授权" }, 401);
+  return c.json(previewJournalArchiveCleanup({ db, userId }));
+});
+
+/**
+ * 按最新预览执行安全清理。
+ *
+ * previewToken 用于防止预览后目录又新增内容时仍按旧状态删除。清理只软删除空笔记本，
+ * 不移动或删除任何笔记，并返回 cleanupId 供撤销。
+ */
+app.post("/cleanup", async (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  if (!userId) return c.json({ error: "未授权" }, 401);
+
+  const body = await c.req.json().catch(() => ({}));
+  const previewToken = typeof body?.previewToken === "string" ? body.previewToken.trim() : "";
+  const candidateIds = Array.isArray(body?.candidateIds)
+    ? body.candidateIds.filter((value: unknown): value is string => typeof value === "string" && value.length > 0)
+    : undefined;
+  if (!/^[0-9a-f]{64}$/i.test(previewToken)) {
+    return c.json({ error: "预览令牌无效" }, 400);
+  }
+  if (candidateIds && candidateIds.length > 100) {
+    return c.json({ error: "单次最多清理 100 个目录" }, 400);
+  }
+
+  try {
+    const result = applyJournalArchiveCleanup({ db, userId, previewToken, candidateIds });
+    return c.json({ success: true, ...result });
+  } catch (error: any) {
+    const message = String(error?.message || "");
+    if (message === "JOURNAL_ARCHIVE_CLEANUP_STALE_PREVIEW") {
+      return c.json({ error: "目录状态已经变化，请重新预览", code: message }, 409);
+    }
+    if (message === "JOURNAL_ARCHIVE_CLEANUP_INVALID_SELECTION") {
+      return c.json({ error: "清理范围包含不安全目录", code: message }, 400);
+    }
+    throw error;
+  }
+});
+
+/** 撤销一次日记旧目录清理。 */
+app.post("/cleanup/restore", async (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  if (!userId) return c.json({ error: "未授权" }, 401);
+  const body = await c.req.json().catch(() => ({}));
+  const cleanupId = typeof body?.cleanupId === "string" ? body.cleanupId.trim() : "";
+  if (!/^[0-9a-f-]{36}$/i.test(cleanupId)) {
+    return c.json({ error: "清理记录无效" }, 400);
+  }
+  try {
+    const result = restoreJournalArchiveCleanup({ db, userId, cleanupId });
+    return c.json({ success: true, ...result });
+  } catch (error: any) {
+    const message = String(error?.message || "");
+    if (message === "JOURNAL_ARCHIVE_CLEANUP_NOT_FOUND") {
+      return c.json({ error: "找不到可撤销的清理记录", code: message }, 404);
+    }
+    if (message.startsWith("JOURNAL_ARCHIVE_CLEANUP_PARENT_UNAVAILABLE")) {
+      return c.json({ error: "原父目录不可用，无法安全撤销", code: message }, 409);
+    }
+    throw error;
+  }
 });
 
 /**
