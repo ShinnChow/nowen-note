@@ -15,9 +15,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: journal-archive-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out PR merge commit
         env:
@@ -40,10 +45,11 @@ jobs:
         run: node --import tsx --import ./tests/setup-db-isolation.ts --test tests/journal-archive-tree.test.ts
       - name: Backend typecheck
         working-directory: source/backend
-        run: npx tsc --noEmit
+        run: npx tsc
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out PR merge commit
         env:
