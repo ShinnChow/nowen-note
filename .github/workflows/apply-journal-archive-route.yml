@@ -1,0 +1,34 @@
+name: Apply Journal Archive Route
+
+on:
+  push:
+    branches: [feature/journal-entity-archive-v2]
+    paths:
+      - 'scripts/apply-journal-archive-route.mjs'
+      - '.github/workflows/apply-journal-archive-route.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/journal-entity-archive-v2
+          fetch-depth: 0
+      - name: Apply deterministic route patch
+        run: node scripts/apply-journal-archive-route.mjs
+      - name: Commit product route
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add backend/src/routes/journals.ts
+          if git diff --cached --quiet; then
+            echo "Journal route integration already applied"
+            exit 0
+          fi
+          git commit -m "feat(journals): create and repair entity archive paths"
+          git push origin HEAD:feature/journal-entity-archive-v2
