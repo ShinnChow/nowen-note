@@ -88,6 +88,28 @@ describe("Markdown daily record slash commands", () => {
     expect(success).toHaveBeenCalledWith("已创建并链接 2026-08-03 日记");
   });
 
+  it("passes the active workspace to the scoped journal resolver", async () => {
+    const view = createView("workspace ");
+    const getOrCreateJournal = vi.fn().mockResolvedValue({
+      id: journalId,
+      existed: false,
+      scope: "workspace",
+    });
+    const success = vi.fn();
+
+    await expect(insertMarkdownJournalDateLink(view, "2026-08-03", {
+      getOrCreateJournal,
+      getWorkspace: () => "workspace-one",
+      success,
+      error: vi.fn(),
+      info: vi.fn(),
+    })).resolves.toBe(true);
+
+    expect(getOrCreateJournal).toHaveBeenCalledWith("2026-08-03", "workspace-one");
+    expect(success).toHaveBeenCalledWith("已创建并链接工作区 2026-08-03 日记");
+    expect(view.state.doc.toString()).toContain(`[[note:${journalId}|2026-08-03]]`);
+  });
+
   it("does not call the journal API for an invalid calendar date", async () => {
     const view = createView("");
     const getOrCreateJournal = vi.fn();
