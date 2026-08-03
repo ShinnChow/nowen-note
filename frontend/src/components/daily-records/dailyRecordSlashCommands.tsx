@@ -55,22 +55,23 @@ async function insertJournalDateLink(editor: Editor, dateKey: string): Promise<v
 async function chooseJournalDate(editor: Editor): Promise<void> {
   const value = await promptDialog({
     title: "选择日记日期",
-    placeholder: "YYYY-MM-DD",
+    description: "选择日期后，会创建或复用对应日记，并在当前光标位置插入内部链接。",
+    type: "date",
     defaultValue: relativeLocalDateKey(0),
     confirmText: "插入链接",
     cancelText: "取消",
     allowEmpty: false,
+    validate: (candidate) => {
+      try {
+        parseLocalDateKey(candidate.trim());
+        return null;
+      } catch {
+        return "请选择有效日期";
+      }
+    },
   });
   if (!value) return;
-
-  const dateKey = value.trim();
-  try {
-    parseLocalDateKey(dateKey);
-  } catch {
-    toast.error("请输入有效日期，例如 2026-08-20");
-    return;
-  }
-  await insertJournalDateLink(editor, dateKey);
+  await insertJournalDateLink(editor, value.trim());
 }
 
 export function getDailyRecordSlashCommands(): SlashCommandItem[] {
