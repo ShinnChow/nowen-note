@@ -6,8 +6,11 @@ on:
     paths:
       - 'frontend/src/components/DiaryCenter.tsx'
       - 'frontend/src/components/DiaryCenterImpl.tsx'
+      - 'frontend/src/components/NavRail.tsx'
+      - 'frontend/src/components/SlashCommands.tsx'
       - 'frontend/src/components/daily-records/**'
       - 'frontend/src/components/diary/**'
+      - 'frontend/src/components/__tests__/SlashCommandExtension.test.ts'
       - 'frontend/src/lib/dailyRecords.ts'
       - 'frontend/src/lib/__tests__/dailyRecords.test.ts'
       - 'frontend/src/lib/api.impl.ts'
@@ -34,9 +37,12 @@ jobs:
       - name: Install frontend dependencies
         working-directory: source/frontend
         run: npm ci --silent
-      - name: Daily records helper tests
+      - name: Daily records and slash tests
         working-directory: source/frontend
-        run: npx vitest run src/lib/__tests__/dailyRecords.test.ts --reporter=verbose
+        run: >-
+          npx vitest run --reporter=verbose
+          src/lib/__tests__/dailyRecords.test.ts
+          src/components/__tests__/SlashCommandExtension.test.ts
       - name: Frontend typecheck
         working-directory: source/frontend
         run: npx tsc -b
