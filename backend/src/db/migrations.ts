@@ -31,6 +31,9 @@ import { newUserOnboardingFirstLoginMigration } from "./newUserOnboardingFirstLo
 import { blockSchemaRepairMigration } from "./blockSchemaRepairMigration.js";
 import { taskDayPlansMigration } from "./taskDayPlansMigration.js";
 import { yjsOperationReceiptsMigration } from "./yjsOperationReceiptsMigration.js";
+import { taskMetadataMigration } from "./taskMetadataMigration.js";
+import { taskTimePlanningMigration } from "./taskTimePlanningMigration.js";
+import { taskInboxMigration } from "./taskInboxMigration.js";
 
 export type { Migration } from "./migrations.impl.js";
 
@@ -267,6 +270,29 @@ const repairSearchContentTextMigration: Migration = {
   },
 };
 
+// 任务功能曾在独立 bootstrap 中占用 v71-v73，导致 v71 与 Yjs 回执迁移冲突。
+// 保留历史版本含义，并用新版本把所有 schema 纳入同一条正式迁移链。
+const yjsOperationReceiptsRepairMigration: Migration = {
+  ...yjsOperationReceiptsMigration,
+  version: 74,
+  name: "yjs-operation-receipts-version-collision-repair",
+};
+const taskMetadataCanonicalMigration: Migration = {
+  ...taskMetadataMigration,
+  version: 75,
+  name: "task-labels-and-saved-views-canonical",
+};
+const taskTimePlanningCanonicalMigration: Migration = {
+  ...taskTimePlanningMigration,
+  version: 76,
+  name: "task-estimates-and-time-blocks-canonical",
+};
+const taskInboxCanonicalMigration: Migration = {
+  ...taskInboxMigration,
+  version: 77,
+  name: "personal-task-inbox-and-capture-source-canonical",
+};
+
 export const MIGRATIONS: Migration[] = [
   ...BASE_MIGRATIONS.filter((migration) => migration.version !== 44),
   patchedV44,
@@ -294,6 +320,10 @@ export const MIGRATIONS: Migration[] = [
   blockSchemaRepairMigration,
   taskDayPlansMigration,
   yjsOperationReceiptsMigration,
+  yjsOperationReceiptsRepairMigration,
+  taskMetadataCanonicalMigration,
+  taskTimePlanningCanonicalMigration,
+  taskInboxCanonicalMigration,
 ].sort((a, b) => a.version - b.version);
 
 export const CURRENT_SCHEMA_VERSION: number = MIGRATIONS.reduce(
