@@ -111,8 +111,12 @@ export function scopedJournalToastMessage(
   result: Pick<ScopedJournalResult, "existed" | "scope">,
   dateKey: string,
 ): string {
-  const target = result.scope === "workspace" ? `工作区 ${dateKey}` : dateKey;
+  if (result.scope === "workspace") {
+    return result.existed
+      ? `已链接工作区 ${dateKey} 日记`
+      : `已创建并链接工作区 ${dateKey} 日记`;
+  }
   return result.existed
-    ? `已链接 ${target} 日记`
-    : `已创建并链接 ${target} 日记`;
+    ? `已链接 ${dateKey} 日记`
+    : `已创建并链接 ${dateKey} 日记`;
 }
