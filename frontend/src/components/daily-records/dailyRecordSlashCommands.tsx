@@ -6,6 +6,11 @@ import type { SlashCommandItem } from "@/components/SlashCommands";
 import { prompt as promptDialog } from "@/components/ui/confirm";
 import { api, getCurrentWorkspace } from "@/lib/api";
 import {
+  DAILY_RECORD_COMMAND_DEFINITIONS,
+  resolveDailyRecordCommandDate,
+  type DailyRecordCommandDefinition,
+} from "@/lib/dailyRecordCommandDefinitions";
+import {
   formatCurrentTimestamp,
   parseLocalDateKey,
   relativeLocalDateKey,
@@ -74,55 +79,31 @@ async function chooseJournalDate(editor: Editor): Promise<void> {
   await insertJournalDateLink(editor, value.trim());
 }
 
+function iconFor(definition: DailyRecordCommandDefinition): React.ReactNode {
+  return definition.kind === "timestamp"
+    ? <Clock3 size={16} />
+    : <CalendarDays size={16} />;
+}
+
 export function getDailyRecordSlashCommands(): SlashCommandItem[] {
-  const category = "日期与日记";
-  return [
-    {
-      id: "daily-now",
-      label: "现在",
-      description: "插入当前本地日期和时间",
-      icon: <Clock3 size={16} />,
-      category,
-      keywords: ["now", "time", "date", "现在", "时间", "日期"],
-      action: (editor) => {
+  return DAILY_RECORD_COMMAND_DEFINITIONS.map((definition) => ({
+    id: definition.id,
+    label: definition.label,
+    description: definition.description,
+    icon: iconFor(definition),
+    category: definition.category,
+    keywords: definition.keywords,
+    action: (editor) => {
+      if (definition.kind === "timestamp") {
         editor.chain().focus().insertContent(`${formatCurrentTimestamp()} `).run();
-      },
+        return;
+      }
+      if (definition.kind === "pick-journal-date") {
+        void chooseJournalDate(editor);
+        return;
+      }
+      const dateKey = resolveDailyRecordCommandDate(definition);
+      if (dateKey) void insertJournalDateLink(editor, dateKey);
     },
-    {
-      id: "daily-today",
-      label: "今天",
-      description: "创建或复用今日日记并插入链接",
-      icon: <CalendarDays size={16} />,
-      category,
-      keywords: ["today", "journal", "今天", "今日", "日记"],
-      action: (editor) => { void insertJournalDateLink(editor, relativeLocalDateKey(0)); },
-    },
-    {
-      id: "daily-tomorrow",
-      label: "明天",
-      description: "创建或复用明日日记并插入链接",
-      icon: <CalendarDays size={16} />,
-      category,
-      keywords: ["tomorrow", "journal", "明天", "明日", "日记"],
-      action: (editor) => { void insertJournalDateLink(editor, relativeLocalDateKey(1)); },
-    },
-    {
-      id: "daily-day-after-tomorrow",
-      label: "后天",
-      description: "创建或复用后天日记并插入链接",
-      icon: <CalendarDays size={16} />,
-      category,
-      keywords: ["day after tomorrow", "journal", "后天", "日记"],
-      action: (editor) => { void insertJournalDateLink(editor, relativeLocalDateKey(2)); },
-    },
-    {
-      id: "daily-pick-date",
-      label: "选择日期",
-      description: "选择日期并插入对应日记链接",
-      icon: <CalendarDays size={16} />,
-      category,
-      keywords: ["date", "calendar", "journal", "选择日期", "自定义日期", "日记"],
-      action: (editor) => { void chooseJournalDate(editor); },
-    },
-  ];
+  }));
 }
