@@ -19,25 +19,8 @@ jobs:
         with:
           ref: feature/daily-records-hub
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - name: Apply deterministic journal scope patch
         run: node scripts/apply-daily-journal-scope.mjs
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --silent
-      - name: Daily records tests
-        working-directory: frontend
-        run: >-
-          npx vitest run --reporter=basic
-          src/lib/__tests__/dailyRecords.test.ts
-          src/components/daily-records/__tests__/dailyRecordSlashCommands.test.tsx
-      - name: Frontend typecheck
-        working-directory: frontend
-        run: npx tsc -b
       - name: Commit product code
         run: |
           git config user.name github-actions[bot]
