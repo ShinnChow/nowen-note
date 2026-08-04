@@ -66,7 +66,7 @@ test("knowledge access filtering runs before file pagination and search result l
     workspaceId,
     parentId: restrictedRoot.id,
     nodeType: "note",
-    title: "limitneedle",
+    title: "Visible result",
     db,
   });
   setKnowledgeNodeRole({
@@ -77,7 +77,7 @@ test("knowledge access filtering runs before file pagination and search result l
     db,
   });
   db.prepare("UPDATE notes SET contentText = ?, updatedAt = ? WHERE id = ?")
-    .run("limitneedle visible", "2020-01-01 00:00:00", visibleNote.resourceId);
+    .run("limitneedle", "2020-01-01 00:00:00", visibleNote.resourceId);
 
   const hiddenNotes: Array<{ id: string; resourceId: string }> = [];
   for (let index = 0; index < 101; index += 1) {
@@ -86,12 +86,12 @@ test("knowledge access filtering runs before file pagination and search result l
       workspaceId,
       parentId: restrictedRoot.id,
       nodeType: "note",
-      title: "limitneedle",
+      title: "limitneedle limitneedle limitneedle",
       db,
     });
     db.prepare("UPDATE notes SET contentText = ?, updatedAt = ? WHERE id = ?")
       .run(
-        `limitneedle hidden ${index}`,
+        `${"limitneedle ".repeat(12)}hidden ${index}`,
         `2026-08-04 12:${String(index % 60).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}`,
         note.resourceId,
       );
