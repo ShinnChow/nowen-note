@@ -420,12 +420,14 @@ export async function fileOrphanVisibilityMiddleware(c: Context, next: Next): Pr
     }
     const id = typeof payload?.id === "string" ? payload.id : "";
     if (!id) return;
-    const protectedManualUpload = getProtectedManualUploadIds(
-      db,
-      [id],
-      scope,
-      userId,
-    ).has(id);
+
+    // 详情接口已经由原 filesRouter 完成用户/工作区可见性校验。这里直接读取该行的
+    // 保留策略，避免工作区详情请求没有携带 workspaceId 时被误按个人空间判断。
+    const retentionRow = db.prepare(
+      "SELECT uploadSource FROM attachments WHERE id = ?",
+    ).get(id) as { uploadSource: string | null } | undefined;
+    const protectedManualUpload = retentionRow?.uploadSource === MANUAL_UPLOAD_SOURCE;
+
     payload.isManualUpload = protectedManualUpload;
     payload.isAutoCleanupProtected = protectedManualUpload;
     replaceJsonResponse(c, payload);
