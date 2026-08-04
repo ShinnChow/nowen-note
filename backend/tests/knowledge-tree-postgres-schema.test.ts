@@ -14,6 +14,10 @@ const structuralGuardSql = fs.readFileSync(
   path.join(__dirname, "../src/db/postgres/064_knowledge_tree_structural_guard.sql"),
   "utf8",
 );
+const accessPolicySql = fs.readFileSync(
+  path.join(__dirname, "../src/db/postgres/065_knowledge_tree_access_policy.sql"),
+  "utf8",
+);
 
 test("PostgreSQL knowledge tree schema has node, capability, history and cycle guards", () => {
   assert.match(sql, /CREATE TABLE IF NOT EXISTS knowledge_tree_nodes/i);
@@ -53,4 +57,14 @@ test("PostgreSQL structural guard ignores unchanged parent and scope", () => {
   assert.match(structuralGuardSql, /CREATE TRIGGER knowledge_tree_parent_guard_update/i);
   assert.match(structuralGuardSql, /OLD\."parentId" IS DISTINCT FROM NEW\."parentId"/i);
   assert.match(structuralGuardSql, /OLD\."scopeKey" IS DISTINCT FROM NEW\."scopeKey"/i);
+});
+
+test("PostgreSQL restricted access policy matches SQLite semantics", () => {
+  assert.match(accessPolicySql, /CREATE TABLE IF NOT EXISTS knowledge_tree_access_policies/i);
+  assert.match(accessPolicySql, /CHECK\s*\(\s*"accessMode"\s+IN\s*\(\s*'restricted'\s*\)\s*\)/i);
+  assert.match(accessPolicySql, /REFERENCES knowledge_tree_nodes\(id\) ON DELETE CASCADE/i);
+  assert.match(accessPolicySql, /INSERT INTO knowledge_tree_access_policies/i);
+  assert.match(accessPolicySql, /FROM knowledge_tree_acl/i);
+  assert.match(accessPolicySql, /GROUP BY "nodeId"/i);
+  assert.match(accessPolicySql, /ON CONFLICT \("nodeId"\) DO NOTHING/i);
 });
