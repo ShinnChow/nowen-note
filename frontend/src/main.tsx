@@ -13,8 +13,6 @@ import Toaster from "./components/Toaster";
 import NoteIconBridge from "./components/NoteIconBridge";
 import AIProfileSwitcherBridge from "./components/AIProfileSwitcherBridge";
 import EmbeddingIndexTaskCopyBridge from "./components/EmbeddingIndexTaskCopyBridge";
-import MarkdownExperienceBridge from "./components/MarkdownExperienceBridge";
-import MindMapAppearanceBridge from "./components/MindMapAppearanceBridge";
 import EmbedPasswordBridge from "./components/EmbedPasswordBridge";
 import ImageExperienceBridge from "./components/ImageExperienceBridge";
 import MobileImageViewerBridge from "./components/MobileImageViewerBridge";
@@ -175,8 +173,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <NoteIconBridge />
           <AIProfileSwitcherBridge />
           <EmbeddingIndexTaskCopyBridge />
-          <MarkdownExperienceBridge />
-          <MindMapAppearanceBridge />
           <EmbedPasswordBridge />
           <ImageExperienceBridge />
           <MobileImageViewerBridge />
