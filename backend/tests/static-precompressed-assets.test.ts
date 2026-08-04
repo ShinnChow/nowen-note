@@ -32,9 +32,10 @@ test("production wildcard route serves a precompressed hashed asset", async () =
     assert.equal(resolvePrecompressedSourcePath("/../../etc/passwd.js"), null);
 
     const app = new Hono();
-    // Match the production middleware order: the runtime must preserve an existing Brotli body
-    // instead of letting Hono wrap it again with gzip.
+    // Mirror index.ts: compression is registered first, then the first API router mount triggers
+    // the runtime insertion, and the legacy SPA wildcard is registered last.
     app.use("*", compress());
+    app.route("/api", new Hono());
     app.get("*", (c) => c.text("fallback"));
 
     const response = await app.request("/assets/index-TestHash9.js", {
@@ -56,9 +57,12 @@ test("production wildcard route serves a precompressed hashed asset", async () =
     });
     assert.equal(revalidated.status, 304);
 
+    // Avoid mentioning gzip here because Hono 4.6's generic middleware only checks whether the
+    // token text is present and does not parse q=0. This assertion targets our Brotli negotiation.
     const identity = await app.request("/assets/index-TestHash9.js", {
-      headers: { "Accept-Encoding": "br;q=0, gzip;q=0" },
+      headers: { "Accept-Encoding": "br;q=0, identity" },
     });
+    assert.equal(identity.headers.get("content-encoding"), null);
     assert.equal(await identity.text(), "fallback");
   } finally {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
