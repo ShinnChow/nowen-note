@@ -20,6 +20,7 @@ import MarkdownExperienceBridge from "./components/MarkdownExperienceBridge";
 import MindMapAppearanceBridge from "./components/MindMapAppearanceBridge";
 import EmbedPasswordBridge from "./components/EmbedPasswordBridge";
 import ImageExperienceBridge from "./components/ImageExperienceBridge";
+import MobileImageViewerBridge from "./components/MobileImageViewerBridge";
 import MediaExperienceBridge from "./components/MediaExperienceBridge";
 import EditorImageTransformBridge from "./components/EditorImageTransformBridge";
 import DesktopUpdateCenter from "./components/DesktopUpdateCenter";
@@ -170,6 +171,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <MindMapAppearanceBridge />
           <EmbedPasswordBridge />
           <ImageExperienceBridge />
+          <MobileImageViewerBridge />
           <MediaExperienceBridge />
           <EditorImageTransformBridge />
           <DesktopUpdateCenter />
