@@ -63,9 +63,12 @@ test("PostgreSQL structural guard ignores unchanged parent and scope", () => {
   assert.match(structuralGuardSql, /OLD\."scopeKey" IS DISTINCT FROM NEW\."scopeKey"/i);
 });
 
-test("PostgreSQL restricted access policy matches SQLite semantics", () => {
+test("PostgreSQL access policy matches SQLite inherit and restricted semantics", () => {
   assert.match(accessPolicySql, /CREATE TABLE IF NOT EXISTS knowledge_tree_access_policies/i);
-  assert.match(accessPolicySql, /CHECK\s*\(\s*"accessMode"\s+IN\s*\(\s*'restricted'\s*\)\s*\)/i);
+  assert.match(
+    accessPolicySql,
+    /CHECK\s*\(\s*"accessMode"\s+IN\s*\(\s*'inherit'\s*,\s*'restricted'\s*\)\s*\)/i,
+  );
   assert.match(accessPolicySql, /"isExplicit"\s+INTEGER\s+NOT NULL\s+DEFAULT\s+0/i);
   assert.match(accessPolicySql, /ADD COLUMN IF NOT EXISTS "isExplicit"/i);
   assert.match(accessPolicySql, /REFERENCES knowledge_tree_nodes\(id\) ON DELETE CASCADE/i);
