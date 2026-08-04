@@ -18,6 +18,10 @@ const accessPolicySql = fs.readFileSync(
   path.join(__dirname, "../src/db/postgres/065_knowledge_tree_access_policy.sql"),
   "utf8",
 );
+const denialSql = fs.readFileSync(
+  path.join(__dirname, "../src/db/postgres/066_knowledge_tree_denials.sql"),
+  "utf8",
+);
 
 test("PostgreSQL knowledge tree schema has node, capability, history and cycle guards", () => {
   assert.match(sql, /CREATE TABLE IF NOT EXISTS knowledge_tree_nodes/i);
@@ -62,9 +66,19 @@ test("PostgreSQL structural guard ignores unchanged parent and scope", () => {
 test("PostgreSQL restricted access policy matches SQLite semantics", () => {
   assert.match(accessPolicySql, /CREATE TABLE IF NOT EXISTS knowledge_tree_access_policies/i);
   assert.match(accessPolicySql, /CHECK\s*\(\s*"accessMode"\s+IN\s*\(\s*'restricted'\s*\)\s*\)/i);
+  assert.match(accessPolicySql, /"isExplicit"\s+INTEGER\s+NOT NULL\s+DEFAULT\s+0/i);
+  assert.match(accessPolicySql, /ADD COLUMN IF NOT EXISTS "isExplicit"/i);
   assert.match(accessPolicySql, /REFERENCES knowledge_tree_nodes\(id\) ON DELETE CASCADE/i);
   assert.match(accessPolicySql, /INSERT INTO knowledge_tree_access_policies/i);
   assert.match(accessPolicySql, /FROM knowledge_tree_acl/i);
   assert.match(accessPolicySql, /GROUP BY "nodeId"/i);
   assert.match(accessPolicySql, /ON CONFLICT \("nodeId"\) DO NOTHING/i);
+});
+
+test("PostgreSQL explicit denials match SQLite semantics", () => {
+  assert.match(denialSql, /CREATE TABLE IF NOT EXISTS knowledge_tree_denials/i);
+  assert.match(denialSql, /PRIMARY KEY \("nodeId", "userId"\)/i);
+  assert.match(denialSql, /"nodeId"\s+TEXT\s+NOT NULL[\s\S]*REFERENCES knowledge_tree_nodes\(id\) ON DELETE CASCADE/i);
+  assert.match(denialSql, /"userId"\s+TEXT\s+NOT NULL[\s\S]*REFERENCES users\(id\) ON DELETE CASCADE/i);
+  assert.match(denialSql, /CREATE INDEX IF NOT EXISTS idx_knowledge_tree_denials_user/i);
 });
