@@ -172,6 +172,12 @@ export async function enforceKnowledgePermissionPolicies(c: Context, next: Next)
       if (!subject) {
         return c.json({ error: "用户不存在", code: "KNOWLEDGE_PERMISSION_USER_NOT_FOUND" }, 404);
       }
+      if (resolveKnowledgeNodeAccess(permission.nodeId, subject.id).source === "owner") {
+        return c.json({
+          error: "空间所有者始终保留管理权限，不能设置为禁止访问",
+          code: "KNOWLEDGE_PERMISSION_OWNER_IMMUTABLE",
+        }, 409);
+      }
       setKnowledgeNodeDenied({
         nodeId: permission.nodeId,
         targetUserId: subject.id,
