@@ -1,5 +1,7 @@
 import React from "react";
 
+import MarkdownExperienceBridge from "./MarkdownExperienceBridge";
+import MindMapAppearanceBridge from "./MindMapAppearanceBridge";
 import TaskDataTransferBridgeV2 from "./TaskDataTransferBridgeV2";
 import SystemFullDataTransferBridge from "./SystemFullDataTransferBridge";
 import BackupWebDavBridge from "./BackupWebDavBridge";
@@ -15,13 +17,15 @@ import SiyuanImportProgressBridge from "./SiyuanImportProgressBridge";
 /**
  * Low-frequency authenticated feature centers.
  *
- * These components mostly subscribe to explicit import/export/transfer events and render nothing
- * until the user starts the corresponding operation. Keeping them in one asynchronous boundary
- * prevents JSZip, image export, migration and backup UI dependencies from joining the login chunk.
+ * These components mostly subscribe to explicit import/export/transfer events or reconcile editor
+ * DOM after it mounts. Keeping them in one asynchronous boundary prevents CodeMirror integration,
+ * JSZip, image export, migration, mind-map and backup UI dependencies from joining the login chunk.
  */
 export default function DeferredGlobalFeatureCenters() {
   return (
     <>
+      <MarkdownExperienceBridge />
+      <MindMapAppearanceBridge />
       <TaskDataTransferBridgeV2 />
       <SystemFullDataTransferBridge />
       <BackupWebDavBridge />
