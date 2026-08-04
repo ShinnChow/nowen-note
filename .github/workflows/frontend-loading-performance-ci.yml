@@ -5,6 +5,8 @@ on:
   push:
     branches: [main, release/v1.4.6]
     paths:
+      - "Dockerfile"
+      - "package.json"
       - "frontend/package.json"
       - "frontend/package-lock.json"
       - "frontend/vite.config.ts"
@@ -23,6 +25,8 @@ on:
       - ".github/workflows/frontend-loading-performance-ci.yml"
   pull_request:
     paths:
+      - "Dockerfile"
+      - "package.json"
       - "frontend/package.json"
       - "frontend/package-lock.json"
       - "frontend/vite.config.ts"
@@ -66,8 +70,8 @@ jobs:
       - run: npm ci
       - name: Startup chunking contract
         run: npm run test:run -- src/lib/__tests__/startupChunkingContract.test.ts
-      - name: Production frontend build
-        run: npm run build
+      - name: Production web build
+        run: npm run build:web
       - name: Enforce initial bundle budgets
         run: npm run verify:bundle
       - name: Verify precompressed artifacts
