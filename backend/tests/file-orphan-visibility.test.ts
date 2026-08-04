@@ -8,6 +8,7 @@ import {
   fileOrphanVisibilityMiddleware,
   getCurrentReferenceNotes,
   getImmediateOrphanSummary,
+  getProtectedManualUploadIds,
 } from "../src/runtime/file-orphan-visibility";
 
 type Fixture = {
@@ -61,7 +62,7 @@ function cleanupFixture(fixture: Fixture): void {
   db.prepare("DELETE FROM users WHERE id = ?").run(fixture.userId);
 }
 
-test("fresh attachment becomes an orphan immediately after its last note reference is removed", () => {
+test("fresh editor attachment becomes an orphan immediately after its last note reference is removed", () => {
   const db = getDb();
   const fixture = seedFixture();
   const scope = { kind: "personal" as const, workspaceId: null };
@@ -161,6 +162,7 @@ test("file manager responses expose immediate orphan state instead of historical
     assert.equal(allResponse.status, 200);
     const allPayload = await allResponse.json() as any;
     assert.equal(allPayload.items[0].primaryNote, null);
+    assert.equal(allPayload.items[0].isAutoCleanupProtected, false);
 
     const orphanResponse = await app.request(
       "http://localhost/api/files?filter=unreferenced&page=1&pageSize=10",
@@ -188,6 +190,90 @@ test("file manager responses expose immediate orphan state instead of historical
     const referencedPayload = await referencedResponse.json() as any;
     assert.equal(referencedPayload.items[0].primaryNote.id, fixture.noteId);
     assert.equal(referencedPayload.items[0].primaryNote.title, "图片引用测试");
+  } finally {
+    cleanupFixture(fixture);
+  }
+});
+
+test("manual uploads are marked protected and excluded from orphan list and count", async () => {
+  const db = getDb();
+  const fixture = seedFixture();
+  const scope = { kind: "personal" as const, workspaceId: null };
+  db.prepare(
+    "UPDATE attachments SET uploadSource = 'file_manager' WHERE id = ?",
+  ).run(fixture.attachmentId);
+
+  const app = new Hono();
+  app.use("*", fileOrphanVisibilityMiddleware);
+  const basePayload = {
+    id: fixture.attachmentId,
+    filename: "image.png",
+    mimeType: "image/png",
+    size: 843 * 1024,
+    createdAt: new Date().toISOString(),
+    category: "image",
+    url: `/api/attachments/${fixture.attachmentId}`,
+    hash: null,
+    folderId: null,
+    folderName: null,
+    primaryNote: null,
+  };
+  app.get("/api/files", (c) => c.json({
+    items: [basePayload],
+    accessUrls: {},
+    total: 1,
+    page: 1,
+    pageSize: 10,
+  }));
+  app.get("/api/files/stats", (c) => c.json({
+    total: 1,
+    totalBytes: 843 * 1024,
+    images: { count: 1, bytes: 843 * 1024 },
+    files: { count: 0, bytes: 0 },
+    unreferenced: { count: 1, bytes: 843 * 1024 },
+  }));
+  app.get(`/api/files/${fixture.attachmentId}`, (c) => c.json({
+    ...basePayload,
+    references: [],
+  }));
+
+  const headers = { "X-User-Id": fixture.userId };
+
+  try {
+    assert.deepEqual(getImmediateOrphanSummary(db, scope, fixture.userId), {
+      count: 0,
+      bytes: 0,
+    });
+    assert.equal(
+      getProtectedManualUploadIds(db, [fixture.attachmentId], scope, fixture.userId)
+        .has(fixture.attachmentId),
+      true,
+    );
+
+    const allResponse = await app.request("http://localhost/api/files", { headers });
+    const allPayload = await allResponse.json() as any;
+    assert.equal(allPayload.items[0].isManualUpload, true);
+    assert.equal(allPayload.items[0].isAutoCleanupProtected, true);
+
+    const orphanResponse = await app.request(
+      "http://localhost/api/files?filter=unreferenced&page=1&pageSize=10",
+      { headers },
+    );
+    const orphanPayload = await orphanResponse.json() as any;
+    assert.equal(orphanPayload.total, 0);
+    assert.deepEqual(orphanPayload.items, []);
+
+    const statsResponse = await app.request("http://localhost/api/files/stats", { headers });
+    const statsPayload = await statsResponse.json() as any;
+    assert.deepEqual(statsPayload.unreferenced, { count: 0, bytes: 0 });
+
+    const detailResponse = await app.request(
+      `http://localhost/api/files/${fixture.attachmentId}`,
+      { headers },
+    );
+    const detailPayload = await detailResponse.json() as any;
+    assert.equal(detailPayload.isManualUpload, true);
+    assert.equal(detailPayload.isAutoCleanupProtected, true);
   } finally {
     cleanupFixture(fixture);
   }
