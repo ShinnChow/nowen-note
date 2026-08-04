@@ -7,6 +7,8 @@ import {
   createStaticAssetHeaders,
   isImmutableFrontendAsset,
   isStaticAssetNotModified,
+  mergeVaryHeader,
+  selectStaticContentEncoding,
 } from "../src/lib/static-asset-response";
 
 const stat = {
@@ -55,6 +57,33 @@ test("conditional requests match ETag or Last-Modified", () => {
     true,
   );
   assert.equal(isStaticAssetNotModified(new Headers(), responseHeaders), false);
+});
+
+test("precompressed negotiation prefers Brotli and honors q=0", () => {
+  assert.equal(
+    selectStaticContentEncoding("gzip, deflate, br", { br: true, gzip: true }),
+    "br",
+  );
+  assert.equal(
+    selectStaticContentEncoding("br;q=0, gzip;q=0.8", { br: true, gzip: true }),
+    "gzip",
+  );
+  assert.equal(
+    selectStaticContentEncoding("*;q=0", { br: true, gzip: true }),
+    null,
+  );
+  assert.equal(
+    selectStaticContentEncoding("br", { br: false, gzip: true }),
+    null,
+  );
+});
+
+test("Vary preserves existing values without duplicates", () => {
+  assert.equal(mergeVaryHeader("Origin", "Accept-Encoding"), "Origin, Accept-Encoding");
+  assert.equal(
+    mergeVaryHeader("Origin, accept-encoding", "Accept-Encoding"),
+    "Origin, accept-encoding",
+  );
 });
 
 test("Hono compresses large JavaScript assets when gzip is accepted", async () => {
