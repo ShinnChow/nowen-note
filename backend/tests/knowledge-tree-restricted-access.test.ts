@@ -17,6 +17,7 @@ test.after(() => {
 test("node member permissions become an allowlist and persist in the database", async () => {
   await import("../src/runtime/knowledge-tree-migration-bootstrap.js");
   const { getDb, closeDb } = await import("../src/db/schema.js");
+  const { resolveNotePermission, resolveNotebookPermission } = await import("../src/middleware/acl.js");
   const { createKnowledgeChild, listKnowledgeTree } = await import("../src/services/knowledgeTree.js");
   const {
     clearKnowledgeNodeRole,
@@ -60,6 +61,8 @@ test("node member permissions become an allowlist and persist in the database", 
 
   assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", db).source, "legacy");
   assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", db).capabilities.canView, true);
+  assert.equal(resolveNotebookPermission(root.resourceId, "denied").permission, "read");
+  assert.equal(resolveNotePermission(child.resourceId, "denied").permission, "read");
 
   setKnowledgeNodeRole({
     nodeId: root.id,
@@ -80,10 +83,14 @@ test("node member permissions become an allowlist and persist in the database", 
   const allowedAccess = resolveKnowledgeNodeAccess(child.id, "allowed", db);
   assert.equal(allowedAccess.source, "inherited");
   assert.equal(allowedAccess.capabilities.canView, true);
+  assert.equal(resolveNotebookPermission(root.resourceId, "allowed").permission, "read");
+  assert.equal(resolveNotePermission(child.resourceId, "allowed").permission, "read");
 
   const deniedAccess = resolveKnowledgeNodeAccess(child.id, "denied", db);
   assert.equal(deniedAccess.source, "none");
   assert.equal(deniedAccess.capabilities.canView, false);
+  assert.equal(resolveNotebookPermission(root.resourceId, "denied").permission, null);
+  assert.equal(resolveNotePermission(child.resourceId, "denied").permission, null);
 
   const deniedTree = listKnowledgeTree({ userId: "denied", workspaceId: "ws", db });
   assert.equal(deniedTree.some((node) => node.id === root.id), false);
@@ -102,4 +109,6 @@ test("node member permissions become an allowlist and persist in the database", 
   assert.equal(listKnowledgeNodeRoles(root.id, db).accessMode, "inherit");
   assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", db).source, "legacy");
   assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", db).capabilities.canView, true);
+  assert.equal(resolveNotebookPermission(root.resourceId, "denied").permission, "read");
+  assert.equal(resolveNotePermission(child.resourceId, "denied").permission, "read");
 });
