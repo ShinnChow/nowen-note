@@ -3,14 +3,18 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import i18n from "i18next";
 import {
   TASK_NOTIFICATION_OPEN_EVENT,
+  mergeTaskReminderScheduleHistory,
   selectSchedulableTaskReminders,
   taskReminderNotificationId,
+  wasTaskReminderScheduledNatively as hasNativeScheduleEvidence,
+  type TaskReminderScheduleHistory,
   type TaskReminderScheduleItem,
 } from "@/lib/taskNotificationSchedule";
 
 const TASK_REMINDER_CHANNEL_ID = "task-reminders";
 const TASK_REMINDER_SOURCE = "nowen-task-reminder";
 const PENDING_TASK_ID_KEY = "nowen-pending-notification-task-id";
+const NATIVE_SCHEDULE_HISTORY_KEY = "nowen-native-task-reminder-schedule-history";
 let channelReady = false;
 
 export type TaskNotificationPermission = "granted" | "denied" | "prompt" | "unsupported";
@@ -28,6 +32,37 @@ function normalizePermission(value: string | undefined): TaskNotificationPermiss
   if (value === "granted") return "granted";
   if (value === "denied") return "denied";
   return value ? "prompt" : "unsupported";
+}
+
+function readNativeScheduleHistory(): TaskReminderScheduleHistory {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(NATIVE_SCHEDULE_HISTORY_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as TaskReminderScheduleHistory;
+  } catch {
+    return {};
+  }
+}
+
+function writeNativeScheduleHistory(history: TaskReminderScheduleHistory): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(NATIVE_SCHEDULE_HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    // Storage can be unavailable in private WebViews; immediate fallback still works.
+  }
+}
+
+function clearNativeScheduleHistory(): void {
+  if (typeof window === "undefined") return;
+  try { localStorage.removeItem(NATIVE_SCHEDULE_HISTORY_KEY); } catch { /* ignore */ }
+}
+
+export function wasTaskReminderScheduledNatively(reminderId: string, now = Date.now()): boolean {
+  return hasNativeScheduleEvidence(readNativeScheduleHistory(), reminderId, now);
 }
 
 async function ensureTaskReminderChannel(): Promise<void> {
@@ -176,24 +211,28 @@ export async function syncNativeTaskNotifications(
       });
     }
 
-    if (selected.length === 0) return true;
+    if (selected.length > 0) {
+      await LocalNotifications.schedule({
+        notifications: selected.map((item) => ({
+          id: item.notificationId,
+          title: `⏰ ${i18n.t("tasks.notifications.taskReminderTitle")}`,
+          body: i18n.t("tasks.notifications.taskReminderBody", { taskTitle: item.taskTitle }),
+          channelId: platform === "android" ? TASK_REMINDER_CHANNEL_ID : undefined,
+          autoCancel: true,
+          schedule: { at: item.scheduleAt, allowWhileIdle: true },
+          extra: {
+            source: TASK_REMINDER_SOURCE,
+            taskId: item.taskId,
+            reminderId: item.reminderId,
+            type: "task_reminder",
+          },
+        })),
+      });
+    }
 
-    await LocalNotifications.schedule({
-      notifications: selected.map((item) => ({
-        id: item.notificationId,
-        title: `⏰ ${i18n.t("tasks.notifications.taskReminderTitle")}`,
-        body: i18n.t("tasks.notifications.taskReminderBody", { taskTitle: item.taskTitle }),
-        channelId: platform === "android" ? TASK_REMINDER_CHANNEL_ID : undefined,
-        autoCancel: true,
-        schedule: { at: item.scheduleAt, allowWhileIdle: true },
-        extra: {
-          source: TASK_REMINDER_SOURCE,
-          taskId: item.taskId,
-          reminderId: item.reminderId,
-          type: "task_reminder",
-        },
-      })),
-    });
+    writeNativeScheduleHistory(
+      mergeTaskReminderScheduleHistory(readNativeScheduleHistory(), selected),
+    );
     return true;
   } catch (error) {
     console.warn("[task-notifications] native schedule sync failed", error);
@@ -202,6 +241,7 @@ export async function syncNativeTaskNotifications(
 }
 
 export async function cancelAllNativeTaskNotifications(): Promise<void> {
+  clearNativeScheduleHistory();
   if (!Capacitor.isNativePlatform()) return;
   try {
     const pending = await LocalNotifications.getPending();
