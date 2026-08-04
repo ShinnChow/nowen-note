@@ -7,6 +7,7 @@ import {
   enforceKnowledgeNoteCapabilities,
   enforceKnowledgeNotebookCapabilities,
 } from "../middleware/knowledgeCapabilityGuard.js";
+import { fileOrphanVisibilityMiddleware } from "./file-orphan-visibility.js";
 
 const INSTALL_KEY = Symbol.for("nowen.knowledgeTree.runtimeInstalled");
 const globals = globalThis as typeof globalThis & Record<symbol, boolean>;
@@ -37,6 +38,15 @@ if (!globals[INSTALL_KEY]) {
     if (path === "/api/notebooks") {
       const wrapper = new Hono<any>();
       wrapper.use("*", enforceKnowledgeNotebookCapabilities);
+      wrapper.route("/", subApp);
+      return nativeRoute.call(this, path, wrapper);
+    }
+
+    if (path === "/api/files") {
+      const wrapper = new Hono<any>();
+      // 原 filesRouter 仍负责 JWT 后的 workspace feature/ACL 校验；该 middleware
+      // 仅在原响应成功后修正“孤儿”和“来源笔记”的展示口径。
+      wrapper.use("*", fileOrphanVisibilityMiddleware);
       wrapper.route("/", subApp);
       return nativeRoute.call(this, path, wrapper);
     }
