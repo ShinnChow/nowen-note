@@ -4,6 +4,10 @@ import type Database from "better-sqlite3";
 import { getDb } from "../db/schema";
 import { getUserWorkspaceRole } from "../middleware/acl";
 import {
+  hasKnowledgeCapability,
+  resolveResourceKnowledgeAccess,
+} from "../services/knowledgeCapabilities";
+import {
   buildFtsSearchTerm,
   hasHanText,
   normalizeSearchText,
@@ -398,6 +402,19 @@ function collectCandidates(
   };
 }
 
+function filterVisibleCandidates(
+  db: Database.Database,
+  candidateIds: Set<string>,
+  userId: string,
+): Set<string> {
+  const visible = new Set<string>();
+  for (const noteId of candidateIds) {
+    const access = resolveResourceKnowledgeAccess("note", noteId, userId, db);
+    if (hasKnowledgeCapability(access, "canView")) visible.add(noteId);
+  }
+  return visible;
+}
+
 function fetchFtsScores(
   db: Database.Database,
   searchTerm: string,
@@ -677,6 +694,7 @@ app.get("/", (c) => {
 
   const candidateStarted = performance.now();
   const candidate = collectCandidates(db, terms, scope);
+  candidate.ids = filterVisibleCandidates(db, candidate.ids, userId);
   const candidateDurationMs = performance.now() - candidateStarted;
 
   if (candidate.ids.size === 0) {
