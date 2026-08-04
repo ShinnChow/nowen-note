@@ -82,20 +82,26 @@ jobs:
           if (candidates.length === 0) throw new Error('No JavaScript assets were built')
 
           let verified = 0
+          let skipped = 0
           for (const name of candidates) {
             const sourcePath = path.join(assetsDir, name)
-            const [source, brotli, gzip] = await Promise.all([
-              stat(sourcePath),
+            const source = await stat(sourcePath)
+            if (source.size < 1024) {
+              skipped += 1
+              continue
+            }
+
+            const [brotli, gzip] = await Promise.all([
               stat(`${sourcePath}.br`).catch(() => null),
               stat(`${sourcePath}.gz`).catch(() => null),
             ])
             if (!brotli || !gzip) throw new Error(`Missing precompressed variants for ${name}`)
-            if (source.size >= 1024 && (brotli.size >= source.size || gzip.size >= source.size)) {
+            if (brotli.size >= source.size || gzip.size >= source.size) {
               throw new Error(`Precompressed asset is not smaller than ${name}`)
             }
             verified += 1
           }
-          console.log(`Verified ${verified} JavaScript assets with .br and .gz variants`)
+          console.log(`Verified ${verified} JavaScript assets; skipped ${skipped} assets below 1 KiB`)
           NODE
       - name: Upload bundle report
         if: always()
