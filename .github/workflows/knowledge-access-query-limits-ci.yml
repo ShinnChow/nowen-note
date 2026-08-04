@@ -77,6 +77,17 @@ jobs:
               raise SystemExit('search guard condition not found')
           guard_path.write_text(guard.replace(old_guard, new_guard, 1), encoding='utf-8')
 
+          export_path = Path('backend/src/middleware/knowledgeExportTagCapabilityGuard.ts')
+          export_source = export_path.read_text(encoding='utf-8')
+          old_export_body = 'const body = await c.req.raw.clone().json().catch(() => null) as {'
+          new_export_body = 'const body = await c.req.json().catch(() => null) as {'
+          if old_export_body not in export_source:
+              raise SystemExit('export request parser not found')
+          export_path.write_text(
+              export_source.replace(old_export_body, new_export_body, 1),
+              encoding='utf-8',
+          )
+
           test_path = Path('backend/tests/knowledge-tree-restricted-access.test.ts')
           test_source = test_path.read_text(encoding='utf-8')
           search_start = test_source.index('  const deniedSearchResponse =')
