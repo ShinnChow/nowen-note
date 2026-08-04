@@ -38,6 +38,9 @@ export async function enforceKnowledgeSearchVisibility(c: Context, next: Next): 
   if (filtered.length === payload.length) return;
   const headers = new Headers(c.res.headers);
   headers.delete("content-length");
+  // The original candidate count is calculated before access filtering and could
+  // reveal that hidden matches exist. Expose only the number delivered to the user.
+  headers.set("X-Search-Candidate-Count", String(filtered.length));
   headers.set("content-type", "application/json; charset=UTF-8");
   c.res = new Response(JSON.stringify(filtered), {
     status: c.res.status,
