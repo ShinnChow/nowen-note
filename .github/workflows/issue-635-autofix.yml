@@ -43,6 +43,7 @@ jobs:
         working-directory: frontend
         run: |
           npm install --ignore-scripts
+          npm install --ignore-scripts --save-dev @capacitor/cli@^8.3.1
           npx cap sync android
 
       - name: Verify frontend
