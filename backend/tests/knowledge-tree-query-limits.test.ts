@@ -21,7 +21,7 @@ test("knowledge access filtering runs before file pagination and search result l
   const { createKnowledgeChild } = await import("../src/services/knowledgeTree.js");
   const { setKnowledgeNodeRole } = await import("../src/services/knowledgeCapabilities.js");
   const searchRouter = (await import("../src/routes/search.js")).default;
-  await import("../src/runtime/knowledge-tree.js");
+  const { wrapKnowledgeRoute } = await import("../src/runtime/knowledge-tree.js");
 
   closeDatabase = closeDb;
   const db = getDb();
@@ -80,7 +80,7 @@ test("knowledge access filtering runs before file pagination and search result l
     .run("limitneedle", "2020-01-01 00:00:00", visibleNote.resourceId);
 
   const hiddenNotes: Array<{ id: string; resourceId: string }> = [];
-  for (let index = 0; index < 101; index += 1) {
+  for (let index = 0; index < 1001; index += 1) {
     const note = createKnowledgeChild({
       actorUserId: ownerId,
       workspaceId,
@@ -134,7 +134,7 @@ test("knowledge access filtering runs before file pagination and search result l
   }
 
   const app = new Hono();
-  app.route("/api/search", searchRouter);
+  app.route("/api/search", wrapKnowledgeRoute("/api/search", searchRouter));
 
   // Model the legacy file route: it paginates the workspace-wide attachment set
   // before the knowledge-tree middleware gets a chance to filter hidden notes.
@@ -161,7 +161,7 @@ test("knowledge access filtering runs before file pagination and search result l
       pageSize,
     });
   });
-  app.route("/api/files", fileRoutes);
+  app.route("/api/files", wrapKnowledgeRoute("/api/files", fileRoutes));
 
   const headers = { "X-User-Id": viewerId };
   const searchResponse = await app.request(

@@ -98,7 +98,7 @@ export async function enforceKnowledgeNoteCapabilities(c: Context, next: Next) {
   if (method === "GET" && /^\/api\/notes\/?$/.test(path)) {
     return filterCollectionResponse(c, next, "note");
   }
-  if (method === "HEAD" || method === "OPTIONS") return next();
+  if (method === "OPTIONS") return next();
 
   if (method === "POST" && /^\/api\/notes\/?$/.test(path)) {
     const body = await clonedJson(c);
@@ -122,7 +122,7 @@ export async function enforceKnowledgeNoteCapabilities(c: Context, next: Next) {
   const noteId = noteIdFromPath(path);
   if (!noteId) return next();
 
-  if (method === "GET") {
+  if (method === "GET" || method === "HEAD") {
     const checked = resourceAccess("note", noteId, userId, "canView");
     return checked.allowed ? next() : hiddenResource(c);
   }
@@ -169,7 +169,7 @@ export async function enforceKnowledgeNotebookCapabilities(c: Context, next: Nex
   if (method === "GET" && /^\/api\/notebooks\/?$/.test(path)) {
     return filterCollectionResponse(c, next, "notebook");
   }
-  if (method === "HEAD" || method === "OPTIONS") return next();
+  if (method === "OPTIONS") return next();
 
   if (method === "POST" && /^\/api\/notebooks\/?$/.test(path)) {
     const body = await clonedJson(c);
@@ -193,7 +193,7 @@ export async function enforceKnowledgeNotebookCapabilities(c: Context, next: Nex
   const notebookId = notebookIdFromPath(path);
   if (!notebookId) return next();
 
-  if (method === "GET") {
+  if (method === "GET" || method === "HEAD") {
     const checked = resourceAccess("notebook", notebookId, userId, "canView");
     return checked.allowed ? next() : hiddenResource(c);
   }

@@ -18,32 +18,12 @@ export interface KnowledgeAccessPolicyState {
 
 const initializedDatabases = new WeakSet<Database.Database>();
 
-function ensureExplicitColumn(db: Database.Database): void {
-  const columns = db.prepare("PRAGMA table_info(knowledge_tree_access_policies)").all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === "isExplicit")) {
-    db.exec(`
-      ALTER TABLE knowledge_tree_access_policies
-      ADD COLUMN isExplicit INTEGER NOT NULL DEFAULT 0;
-    `);
-  }
-}
-
-/**
- * A restricted policy creates an allowlist boundary. Automatically created policies
- * use isExplicit=0 and disappear when their last direct member is removed. Policies
- * selected manually in the UI use isExplicit=1 and may intentionally remain private
- * with an empty member list.
- */
-export function ensureKnowledgeAccessPolicyTable(
-  db: Database.Database = getDb(),
-): void {
-  if (initializedDatabases.has(db)) return;
-  ensureKnowledgeTreeTables(db);
+function createPolicyTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS knowledge_tree_access_policies (
       nodeId TEXT PRIMARY KEY,
       accessMode TEXT NOT NULL DEFAULT 'restricted'
-        CHECK(accessMode IN ('restricted')),
+        CHECK(accessMode IN ('inherit', 'restricted')),
       isExplicit INTEGER NOT NULL DEFAULT 0,
       updatedBy TEXT,
       createdAt TEXT NOT NULL DEFAULT (datetime('now')),
@@ -51,15 +31,65 @@ export function ensureKnowledgeAccessPolicyTable(
       FOREIGN KEY (nodeId) REFERENCES knowledge_tree_nodes(id) ON DELETE CASCADE,
       FOREIGN KEY (updatedBy) REFERENCES users(id) ON DELETE SET NULL
     );
+  `);
+}
 
+function ensureCompatiblePolicySchema(db: Database.Database): void {
+  const table = db.prepare(`
+    SELECT sql
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'knowledge_tree_access_policies'
+  `).get() as { sql: string | null } | undefined;
+  if (!table) {
+    createPolicyTable(db);
+    return;
+  }
+
+  const columns = db.prepare("PRAGMA table_info(knowledge_tree_access_policies)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "isExplicit")) {
+    db.exec(`
+      ALTER TABLE knowledge_tree_access_policies
+      ADD COLUMN isExplicit INTEGER NOT NULL DEFAULT 0;
+    `);
+  }
+
+  const supportsInherit = /['\"]inherit['\"]/.test(table.sql || "");
+  if (supportsInherit) return;
+
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE knowledge_tree_access_policies
+      RENAME TO knowledge_tree_access_policies_legacy;
+    `);
+    createPolicyTable(db);
+    db.exec(`
+      INSERT INTO knowledge_tree_access_policies (
+        nodeId, accessMode, isExplicit, updatedBy, createdAt, updatedAt
+      )
+      SELECT
+        nodeId,
+        CASE WHEN accessMode = 'restricted' THEN 'restricted' ELSE 'inherit' END,
+        isExplicit,
+        updatedBy,
+        createdAt,
+        updatedAt
+      FROM knowledge_tree_access_policies_legacy;
+
+      DROP TABLE knowledge_tree_access_policies_legacy;
+    `);
+  })();
+}
+
+export function ensureKnowledgeAccessPolicyTable(
+  db: Database.Database = getDb(),
+): void {
+  if (initializedDatabases.has(db)) return;
+  ensureKnowledgeTreeTables(db);
+  ensureCompatiblePolicySchema(db);
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_knowledge_tree_access_policy_mode
       ON knowledge_tree_access_policies(accessMode, nodeId);
-  `);
-  ensureExplicitColumn(db);
-  db.exec(`
-    -- Upgrade compatibility: permissions saved by older releases already represent
-    -- an explicit member list. Backfill as automatic restricted policies so removing
-    -- the final member restores the historical inheritance behavior.
+
     INSERT OR IGNORE INTO knowledge_tree_access_policies (
       nodeId, accessMode, isExplicit, updatedBy, createdAt, updatedAt
     )
@@ -85,9 +115,9 @@ export function getKnowledgeNodeAccessPolicy(
     SELECT accessMode, isExplicit
     FROM knowledge_tree_access_policies
     WHERE nodeId = ?
-  `).get(nodeId) as { accessMode: "restricted"; isExplicit: number } | undefined;
+  `).get(nodeId) as { accessMode: KnowledgeAccessMode; isExplicit: number } | undefined;
   return row
-    ? { accessMode: "restricted", isExplicit: row.isExplicit !== 0 }
+    ? { accessMode: row.accessMode, isExplicit: row.isExplicit !== 0 }
     : { accessMode: "inherit", isExplicit: false };
 }
 
@@ -129,6 +159,13 @@ export function restrictKnowledgeNodeAccess(input: {
 }): void {
   const db = input.db || getDb();
   ensureKnowledgeAccessPolicyTable(db);
+  const current = db.prepare(`
+    SELECT accessMode, isExplicit
+    FROM knowledge_tree_access_policies
+    WHERE nodeId = ?
+  `).get(input.nodeId) as { accessMode: KnowledgeAccessMode; isExplicit: number } | undefined;
+  if (current?.accessMode === "inherit" && current.isExplicit !== 0) return;
+
   db.prepare(`
     INSERT INTO knowledge_tree_access_policies (
       nodeId, accessMode, isExplicit, updatedBy, updatedAt
@@ -148,24 +185,19 @@ export function setKnowledgeNodeAccessMode(input: {
 }): KnowledgeAccessPolicyState {
   const db = input.db || getDb();
   ensureKnowledgeAccessPolicyTable(db);
-  if (input.accessMode === "inherit") {
-    db.prepare("DELETE FROM knowledge_tree_access_policies WHERE nodeId = ?").run(input.nodeId);
-    return { accessMode: "inherit", isExplicit: false };
-  }
   db.prepare(`
     INSERT INTO knowledge_tree_access_policies (
       nodeId, accessMode, isExplicit, updatedBy, updatedAt
-    ) VALUES (?, 'restricted', 1, ?, datetime('now'))
+    ) VALUES (?, ?, 1, ?, datetime('now'))
     ON CONFLICT(nodeId) DO UPDATE SET
-      accessMode = 'restricted',
+      accessMode = excluded.accessMode,
       isExplicit = 1,
       updatedBy = excluded.updatedBy,
       updatedAt = datetime('now')
-  `).run(input.nodeId, input.actorUserId);
-  return { accessMode: "restricted", isExplicit: true };
+  `).run(input.nodeId, input.accessMode, input.actorUserId);
+  return { accessMode: input.accessMode, isExplicit: true };
 }
 
-/** Restore inheritance only for automatically created policies with no direct members. */
 export function restoreKnowledgeNodeInheritanceIfEmpty(input: {
   nodeId: string;
   db?: Database.Database;
@@ -179,11 +211,11 @@ export function restoreKnowledgeNodeInheritanceIfEmpty(input: {
   `).get(input.nodeId) as { count: number }).count;
   if (count > 0) return false;
   const policy = db.prepare(`
-    SELECT isExplicit
+    SELECT accessMode, isExplicit
     FROM knowledge_tree_access_policies
     WHERE nodeId = ?
-  `).get(input.nodeId) as { isExplicit: number } | undefined;
-  if (!policy || policy.isExplicit !== 0) return false;
+  `).get(input.nodeId) as { accessMode: KnowledgeAccessMode; isExplicit: number } | undefined;
+  if (!policy || policy.accessMode !== "restricted" || policy.isExplicit !== 0) return false;
   return db.prepare(`
     DELETE FROM knowledge_tree_access_policies
     WHERE nodeId = ?

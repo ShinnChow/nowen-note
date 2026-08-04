@@ -7,7 +7,7 @@ import {
 
 /** Prevent the standalone full-text search route from leaking restricted notes. */
 export async function enforceKnowledgeSearchVisibility(c: Context, next: Next): Promise<void> {
-  if (c.req.method.toUpperCase() !== "GET" || !/^\/api\/search\/?$/.test(c.req.path)) {
+  if (c.req.method.toUpperCase() !== "GET") {
     await next();
     return;
   }

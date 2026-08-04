@@ -75,7 +75,7 @@ function exportRows(workspaceId: string, userId: string): any[] {
 }
 
 async function handleTeamMarkdownExportJob(c: Context, workspaceId: string, userId: string): Promise<Response> {
-  const body = await c.req.raw.clone().json().catch(() => null) as {
+  const body = await c.req.json().catch(() => null) as {
     notes?: PreparedMarkdownNote[];
     inlineImages?: boolean;
     layout?: "notebooks" | "flat";

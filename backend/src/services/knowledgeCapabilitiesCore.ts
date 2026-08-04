@@ -4,6 +4,7 @@ import { v4 as uuid } from "uuid";
 import { getDb } from "../db/schema.js";
 import { ensureKnowledgeTreeTables } from "../db/knowledgeTreeMigration.js";
 import { memberQueryService } from "../queries/memberQueryService.js";
+import { findNearestKnowledgeDenial } from "./knowledgeDenyPolicy.js";
 import {
   findNearestRestrictedKnowledgePolicy,
   getKnowledgeNodeAccessMode,
@@ -259,7 +260,16 @@ export function resolveKnowledgeNodeAccess(
   const node = readNode(db, nodeId);
   if (!node || node.isDeleted) return noAccess(nodeId);
 
-  if (node.userId === userId) {
+  const ownsPersonalNode = !node.workspaceId && node.userId === userId;
+  const workspaceOwner = node.workspaceId
+    ? db.prepare("SELECT ownerId FROM workspaces WHERE id = ?").get(node.workspaceId) as { ownerId: string } | undefined
+    : undefined;
+  const workspaceRole = node.workspaceId
+    ? db.prepare("SELECT role FROM workspace_members WHERE workspaceId = ? AND userId = ?")
+        .get(node.workspaceId, userId) as { role: string } | undefined
+    : undefined;
+  const administersWorkspace = workspaceRole?.role === "owner" || workspaceRole?.role === "admin";
+  if (ownsPersonalNode || workspaceOwner?.ownerId === userId || administersWorkspace) {
     return {
       nodeId,
       rolePreset: "admin",
@@ -270,6 +280,10 @@ export function resolveKnowledgeNodeAccess(
   }
 
   const explicit = nearestExplicitAcl(db, nodeId, userId);
+  const denial = findNearestKnowledgeDenial(nodeId, userId, db);
+  if (denial && (!explicit || denial.depth <= (explicit.depth || 0))) {
+    return noAccess(nodeId);
+  }
   const restricted = findNearestRestrictedKnowledgePolicy(nodeId, db);
   if (explicit && (!restricted || (explicit.depth || 0) <= restricted.depth)) {
     return {

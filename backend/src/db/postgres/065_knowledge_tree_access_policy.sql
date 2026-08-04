@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS knowledge_tree_access_policies (
   "nodeId" TEXT PRIMARY KEY
     REFERENCES knowledge_tree_nodes(id) ON DELETE CASCADE,
   "accessMode" TEXT NOT NULL DEFAULT 'restricted'
-    CHECK ("accessMode" IN ('restricted')),
+    CHECK ("accessMode" IN ('inherit', 'restricted')),
   "isExplicit" INTEGER NOT NULL DEFAULT 0
     CHECK ("isExplicit" IN (0, 1)),
   "updatedBy" TEXT

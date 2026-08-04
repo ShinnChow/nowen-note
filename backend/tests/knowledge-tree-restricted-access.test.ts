@@ -30,7 +30,7 @@ test("node member permissions become an allowlist and persist in the database", 
   closeDatabase = closeDb;
   const db = getDb();
 
-  for (const userId of ["owner", "allowed", "denied"]) {
+  for (const userId of ["owner", "admin", "allowed", "denied"]) {
     db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)")
       .run(userId, userId, "hash");
   }
@@ -38,6 +38,8 @@ test("node member permissions become an allowlist and persist in the database", 
     .run("ws", "Team", "owner");
   db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
     .run("ws", "owner", "owner");
+  db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
+    .run("ws", "admin", "admin");
   db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
     .run("ws", "allowed", "viewer");
   db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
@@ -136,7 +138,12 @@ test("node member permissions become an allowlist and persist in the database", 
   assert.equal(allowedTree.some((node) => node.id === root.id), true);
   assert.equal(allowedTree.some((node) => node.id === child.id), true);
 
-  await import("../src/runtime/knowledge-tree.js");
+  const adminTree = listKnowledgeTree({ userId: "admin", workspaceId: "ws", db });
+  assert.equal(adminTree.some((node) => node.id === root.id), true);
+  assert.equal(adminTree.some((node) => node.id === child.id), true);
+
+  const { wrapKnowledgeRoute } = await import("../src/runtime/knowledge-tree.js");
+  const { getKnowledgeNodeAccessPolicy, setKnowledgeNodeAccessMode } = await import("../src/services/knowledgeAccessPolicy.js");
   const noteRoutes = new Hono();
   noteRoutes.get("/", (c) => c.json([
     { id: child.resourceId, title: "项目密码" },
@@ -221,13 +228,13 @@ test("node member permissions become an allowlist and persist in the database", 
   tagRoutes.post("/note/:noteId/tag/:tagId", (c) => c.json({ success: true }));
 
   const api = new Hono();
-  api.route("/api/notes", noteRoutes);
-  api.route("/api/notebooks", notebookRoutes);
-  api.route("/api/search", searchRoutes);
-  api.route("/api/offline-sync", offlineRoutes);
-  api.route("/api/files", fileRoutes);
-  api.route("/api/export", exportRoutes);
-  api.route("/api/tags", tagRoutes);
+  api.route("/api/notes", wrapKnowledgeRoute("/api/notes", noteRoutes));
+  api.route("/api/notebooks", wrapKnowledgeRoute("/api/notebooks", notebookRoutes));
+  api.route("/api/search", wrapKnowledgeRoute("/api/search", searchRoutes));
+  api.route("/api/offline-sync", wrapKnowledgeRoute("/api/offline-sync", offlineRoutes));
+  api.route("/api/files", wrapKnowledgeRoute("/api/files", fileRoutes));
+  api.route("/api/export", wrapKnowledgeRoute("/api/export", exportRoutes));
+  api.route("/api/tags", wrapKnowledgeRoute("/api/tags", tagRoutes));
 
   const deniedHeaders = { "X-User-Id": "denied" };
   const deniedNotesResponse = await api.request("http://localhost/api/notes?workspaceId=ws", { headers: deniedHeaders });
@@ -249,13 +256,6 @@ test("node member permissions become an allowlist and persist in the database", 
   assert.equal(deniedNotebooksResponse.status, 200);
   assert.deepEqual(await deniedNotebooksResponse.json(), [
     { id: publicRoot.resourceId, name: "公开项目" },
-  ]);
-
-  const deniedSearchResponse = await api.request("http://localhost/api/search?q=项目&workspaceId=ws", { headers: deniedHeaders });
-  assert.equal(deniedSearchResponse.status, 200);
-  assert.equal(deniedSearchResponse.headers.get("X-Search-Candidate-Count"), "1");
-  assert.deepEqual(await deniedSearchResponse.json(), [
-    { id: publicChild.resourceId, title: "公开说明", snippet: "public" },
   ]);
 
   const deniedPlanResponse = await api.request("http://localhost/api/offline-sync/plan?workspaceId=ws", { headers: deniedHeaders });
@@ -311,6 +311,18 @@ test("node member permissions become an allowlist and persist in the database", 
     code: "NOT_FOUND",
   });
 
+  const deniedHeadResponse = await api.request(
+    `http://localhost/api/notes/${child.resourceId}`,
+    { method: "HEAD", headers: deniedHeaders },
+  );
+  assert.equal(deniedHeadResponse.status, 404);
+
+  const adminDirectResponse = await api.request(
+    `http://localhost/api/notes/${child.resourceId}`,
+    { headers: { "X-User-Id": "admin" } },
+  );
+  assert.equal(adminDirectResponse.status, 200);
+
   const { handleDownloadAttachment } = await import("../src/routes/attachments.js");
   const attachmentApi = new Hono();
   attachmentApi.get("/api/attachments/:id", handleDownloadAttachment);
@@ -330,4 +342,30 @@ test("node member permissions become an allowlist and persist in the database", 
   assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", db).capabilities.canView, true);
   assert.equal(resolveNotebookPermission(root.resourceId, "denied").permission, "read");
   assert.equal(resolveNotePermission(child.resourceId, "denied").permission, "read");
+
+  setKnowledgeNodeRole({
+    nodeId: root.id,
+    targetUserId: "allowed",
+    rolePreset: "readonly",
+    actorUserId: "owner",
+    db,
+  });
+  setKnowledgeNodeAccessMode({
+    nodeId: root.id,
+    accessMode: "inherit",
+    actorUserId: "owner",
+    db,
+  });
+  assert.equal(getKnowledgeNodeAccessPolicy(root.id, db).accessMode, "inherit");
+  assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", db).capabilities.canView, true);
+
+  closeDb();
+  const reopenedDb = getDb();
+  assert.equal(getKnowledgeNodeAccessPolicy(root.id, reopenedDb).accessMode, "inherit");
+  assert.equal(
+    (reopenedDb.prepare("SELECT COUNT(*) AS count FROM knowledge_tree_acl WHERE nodeId = ?")
+      .get(root.id) as { count: number }).count,
+    1,
+  );
+  assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", reopenedDb).capabilities.canView, true);
 });

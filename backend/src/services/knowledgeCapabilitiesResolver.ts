@@ -171,7 +171,12 @@ export function resolveKnowledgeNodeAccess(
 
   const ownsPersonalNode = !node.workspaceId && node.userId === userId;
   const ownsWorkspace = !!node.workspaceId && workspaceOwnerId(db, node.workspaceId) === userId;
-  if (ownsPersonalNode || ownsWorkspace) {
+  const workspaceRole = node.workspaceId
+    ? db.prepare("SELECT role FROM workspace_members WHERE workspaceId = ? AND userId = ?")
+        .get(node.workspaceId, userId) as { role: string } | undefined
+    : undefined;
+  const administersWorkspace = workspaceRole?.role === "owner" || workspaceRole?.role === "admin";
+  if (ownsPersonalNode || ownsWorkspace || administersWorkspace) {
     return {
       nodeId,
       rolePreset: "admin",
