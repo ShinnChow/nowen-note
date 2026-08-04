@@ -8,6 +8,12 @@ import {
   enforceKnowledgeNotebookCapabilities,
 } from "../middleware/knowledgeCapabilityGuard.js";
 import { enforceKnowledgeSearchVisibility } from "../middleware/knowledgeSearchCapabilityGuard.js";
+import { enforceKnowledgeOfflineSyncVisibility } from "../middleware/knowledgeOfflineSyncCapabilityGuard.js";
+import { enforceKnowledgeFilesVisibility } from "../middleware/knowledgeFilesCapabilityGuard.js";
+import {
+  enforceKnowledgeExportCapabilities,
+  enforceKnowledgeTagCapabilities,
+} from "../middleware/knowledgeExportTagCapabilityGuard.js";
 
 const INSTALL_KEY = Symbol.for("nowen.knowledgeTree.runtimeInstalled");
 const globals = globalThis as typeof globalThis & Record<symbol, boolean>;
@@ -45,6 +51,34 @@ if (!globals[INSTALL_KEY]) {
     if (path === "/api/search") {
       const wrapper = new Hono<any>();
       wrapper.use("*", enforceKnowledgeSearchVisibility);
+      wrapper.route("/", subApp);
+      return nativeRoute.call(this, path, wrapper);
+    }
+
+    if (path === "/api/offline-sync") {
+      const wrapper = new Hono<any>();
+      wrapper.use("*", enforceKnowledgeOfflineSyncVisibility);
+      wrapper.route("/", subApp);
+      return nativeRoute.call(this, path, wrapper);
+    }
+
+    if (path === "/api/files") {
+      const wrapper = new Hono<any>();
+      wrapper.use("*", enforceKnowledgeFilesVisibility);
+      wrapper.route("/", subApp);
+      return nativeRoute.call(this, path, wrapper);
+    }
+
+    if (path === "/api/export") {
+      const wrapper = new Hono<any>();
+      wrapper.use("*", enforceKnowledgeExportCapabilities);
+      wrapper.route("/", subApp);
+      return nativeRoute.call(this, path, wrapper);
+    }
+
+    if (path === "/api/tags") {
+      const wrapper = new Hono<any>();
+      wrapper.use("*", enforceKnowledgeTagCapabilities);
       wrapper.route("/", subApp);
       return nativeRoute.call(this, path, wrapper);
     }
