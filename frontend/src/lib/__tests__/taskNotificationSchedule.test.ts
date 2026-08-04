@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  mergeTaskReminderScheduleHistory,
   resolveTaskReminderDate,
   selectSchedulableTaskReminders,
   taskReminderNotificationId,
+  wasTaskReminderScheduledNatively,
   type TaskReminderScheduleItem,
 } from "@/lib/taskNotificationSchedule";
 
@@ -55,5 +57,35 @@ describe("task notification schedule", () => {
     ], "android", new Date("2029-01-01T00:00:00.000Z").getTime());
 
     expect(selected.map((entry) => entry.reminderId)).toEqual(["earlier", "later"]);
+  });
+
+  it("retains proof that a due reminder was handed to the native OS", () => {
+    const scheduleStartedAt = new Date("2030-01-01T09:00:00.000Z").getTime();
+    const deliveredAt = new Date("2030-01-01T10:00:30.000Z").getTime();
+    const scheduled = selectSchedulableTaskReminders([
+      item({
+        reminderId: "native-reminder",
+        dueAt: "2030-01-01T10:00:00.000Z",
+        offsetMinutes: 0,
+      }),
+    ], "android", scheduleStartedAt);
+
+    const history = mergeTaskReminderScheduleHistory({}, scheduled, deliveredAt);
+    expect(wasTaskReminderScheduledNatively(history, "native-reminder", deliveredAt)).toBe(true);
+    expect(wasTaskReminderScheduledNatively(history, "never-scheduled", deliveredAt)).toBe(false);
+  });
+
+  it("does not treat a future native schedule as already delivered", () => {
+    const now = new Date("2030-01-01T09:00:00.000Z").getTime();
+    const scheduled = selectSchedulableTaskReminders([
+      item({
+        reminderId: "future-reminder",
+        dueAt: "2030-01-01T12:00:00.000Z",
+        offsetMinutes: 0,
+      }),
+    ], "android", now);
+    const history = mergeTaskReminderScheduleHistory({}, scheduled, now);
+
+    expect(wasTaskReminderScheduledNatively(history, "future-reminder", now)).toBe(false);
   });
 });
