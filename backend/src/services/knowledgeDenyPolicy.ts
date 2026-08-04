@@ -3,6 +3,7 @@ import { v4 as uuid } from "uuid";
 
 import { getDb } from "../db/schema.js";
 import { ensureKnowledgeTreeTables } from "../db/knowledgeTreeMigration.js";
+import { restoreKnowledgeNodeInheritanceIfEmpty } from "./knowledgeAccessPolicy.js";
 
 export interface KnowledgeDenyMatch {
   nodeId: string;
@@ -87,6 +88,10 @@ export function setKnowledgeNodeDenied(input: {
   db.transaction(() => {
     db.prepare("DELETE FROM knowledge_tree_acl WHERE nodeId = ? AND userId = ?")
       .run(input.nodeId, input.targetUserId);
+    // Replacing the final automatically-created allow rule with a denial must not
+    // leave an empty allowlist boundary that accidentally hides the node from every
+    // other workspace member. Explicit restricted mode is intentionally preserved.
+    restoreKnowledgeNodeInheritanceIfEmpty({ nodeId: input.nodeId, db });
     db.prepare(`
       INSERT INTO knowledge_tree_denials (nodeId, userId, deniedBy, updatedAt)
       VALUES (?, ?, ?, datetime('now'))
