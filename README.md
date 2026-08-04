@@ -229,9 +229,7 @@ NOWEN_IMAGE_TAG=v1.4.5 docker compose up -d
 
 ```bash
 cp .env.example .env
-printf '\
-NOWEN_UPDATER_TOKEN=%s\
-' "$(openssl rand -hex 32)" >> .env
+printf '\nNOWEN_UPDATER_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
 NOWEN_IMAGE_TAG=v1.4.5 docker compose --profile updater up -d
 ```
 
