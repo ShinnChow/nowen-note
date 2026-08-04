@@ -28,7 +28,10 @@ type FileListRow = {
   hash: string | null;
   folderId: string | null;
   folderName: string | null;
+  uploadSource: string | null;
 };
+
+const MANUAL_UPLOAD_SOURCE = "file_manager";
 
 const THUMBNAILABLE_MIMES = new Set([
   "image/png",
@@ -80,6 +83,9 @@ function appendNoteScope(
 /**
  * 文件管理中的“孤儿”是一个只读状态，应立即反映 attachment_references 的真实结果。
  * 24 小时宽限只属于真正删除文件的 cleanup-orphans 接口，不能用于列表可见性。
+ *
+ * 文件管理手动上传（uploadSource=file_manager）代表用户明确保存的独立文件，属于
+ * “未引用但受保护”，不应再被叫作孤儿，也不参与孤儿数量统计。
  */
 export function getImmediateOrphanSummary(
   db: Database.Database,
@@ -89,6 +95,7 @@ export function getImmediateOrphanSummary(
   const where: string[] = [
     "EXISTS(SELECT 1 FROM notes owner_note WHERE owner_note.id = a.noteId)",
     "NOT EXISTS(SELECT 1 FROM attachment_references ar WHERE ar.attachmentId = a.id)",
+    "COALESCE(a.uploadSource, '') <> 'file_manager'",
   ];
   const params: Array<string | number> = [];
   appendAttachmentScope(where, params, scope, userId);
@@ -163,6 +170,35 @@ export function getCurrentReferenceNotes(
   return result;
 }
 
+/** 返回本批附件里由文件管理手动上传、因此受自动清理保护的 id。 */
+export function getProtectedManualUploadIds(
+  db: Database.Database,
+  attachmentIds: string[],
+  scope: FilesScope,
+  userId: string,
+): Set<string> {
+  const uniqueIds = Array.from(new Set(attachmentIds.filter(Boolean)));
+  const result = new Set<string>();
+  if (uniqueIds.length === 0) return result;
+
+  const placeholders = uniqueIds.map(() => "?").join(",");
+  const where = [
+    `a.id IN (${placeholders})`,
+    "a.uploadSource = ?",
+  ];
+  const params: Array<string | number> = [...uniqueIds, MANUAL_UPLOAD_SOURCE];
+  appendAttachmentScope(where, params, scope, userId);
+
+  const rows = db.prepare(`
+    SELECT a.id
+      FROM attachments a
+     WHERE ${where.join(" AND ")}
+  `).all(...params) as Array<{ id: string }>;
+
+  for (const row of rows) result.add(row.id);
+  return result;
+}
+
 function resolveOrderBy(sort: string | undefined): string {
   switch ((sort || "").toLowerCase()) {
     case "name_asc": return "a.filename COLLATE NOCASE ASC";
@@ -192,8 +228,10 @@ function toOrphanFileOut(row: FileListRow) {
     hash: row.hash ?? null,
     folderId: row.folderId ?? null,
     folderName: row.folderName ?? null,
-    // 孤儿没有当前引用。不要继续把历史上传归属伪装成“来源笔记”。
+    // 真正孤儿没有当前引用，也不是文件管理手动上传的受保护资产。
     primaryNote: null,
+    isManualUpload: false,
+    isAutoCleanupProtected: false,
   };
 }
 
@@ -214,6 +252,7 @@ function buildImmediateOrphanList(
 
   const where: string[] = [
     "NOT EXISTS(SELECT 1 FROM attachment_references ar WHERE ar.attachmentId = a.id)",
+    "COALESCE(a.uploadSource, '') <> 'file_manager'",
   ];
   const params: Array<string | number> = [];
   appendAttachmentScope(where, params, scope, userId);
@@ -266,6 +305,7 @@ function buildImmediateOrphanList(
            a.noteId,
            a.hash,
            a.folderId,
+           a.uploadSource,
            af.name AS folderName
       FROM attachments a
       INNER JOIN notes n ON n.id = a.noteId
@@ -305,11 +345,16 @@ function isFilesStats(pathname: string): boolean {
   return /\/api\/files\/stats\/?$/.test(pathname);
 }
 
+function isFilesDetail(pathname: string): boolean {
+  return /\/api\/files\/[^/]+\/?$/.test(pathname) && !isFilesStats(pathname);
+}
+
 /**
  * 该中间件在原 filesRouter 完成鉴权和功能开关校验后再修正响应：
- * - 孤儿列表：移除错误的 24h 展示宽限；
- * - 统计徽标：立即按 attachment_references 计算；
- * - 普通列表“来源笔记”：改成当前真实引用，删除正文图片后立即显示为空。
+ * - 孤儿列表：立即反映真实引用，并排除用户主动保存的手动上传文件；
+ * - 统计徽标：与孤儿列表使用相同口径；
+ * - 普通列表“来源笔记”：改成当前真实引用；
+ * - 列表和详情：为文件管理手动上传下发受保护标记，供 UI 展示绿色盾牌。
  */
 export async function fileOrphanVisibilityMiddleware(c: Context, next: Next): Promise<void> {
   await next();
@@ -334,28 +379,55 @@ export async function fileOrphanVisibilityMiddleware(c: Context, next: Next): Pr
     return;
   }
 
-  if (!isFilesRoot(pathname)) return;
+  if (isFilesRoot(pathname)) {
+    if ((c.req.query("filter") || "").toLowerCase() === "unreferenced") {
+      replaceJsonResponse(c, buildImmediateOrphanList(db, c, scope, userId));
+      return;
+    }
 
-  if ((c.req.query("filter") || "").toLowerCase() === "unreferenced") {
-    replaceJsonResponse(c, buildImmediateOrphanList(db, c, scope, userId));
+    let payload: any;
+    try {
+      payload = await c.res.clone().json();
+    } catch {
+      return;
+    }
+    if (!Array.isArray(payload?.items) || payload.items.length === 0) return;
+
+    const ids = payload.items
+      .map((item: any) => typeof item?.id === "string" ? item.id : "")
+      .filter(Boolean);
+    const references = getCurrentReferenceNotes(db, ids, scope, userId);
+    const protectedIds = getProtectedManualUploadIds(db, ids, scope, userId);
+    payload.items = payload.items.map((item: any) => {
+      const protectedManualUpload = protectedIds.has(item.id);
+      return {
+        ...item,
+        primaryNote: references.get(item.id) || null,
+        isManualUpload: protectedManualUpload,
+        isAutoCleanupProtected: protectedManualUpload,
+      };
+    });
+    replaceJsonResponse(c, payload);
     return;
   }
 
-  let payload: any;
-  try {
-    payload = await c.res.clone().json();
-  } catch {
-    return;
+  if (isFilesDetail(pathname)) {
+    let payload: any;
+    try {
+      payload = await c.res.clone().json();
+    } catch {
+      return;
+    }
+    const id = typeof payload?.id === "string" ? payload.id : "";
+    if (!id) return;
+    const protectedManualUpload = getProtectedManualUploadIds(
+      db,
+      [id],
+      scope,
+      userId,
+    ).has(id);
+    payload.isManualUpload = protectedManualUpload;
+    payload.isAutoCleanupProtected = protectedManualUpload;
+    replaceJsonResponse(c, payload);
   }
-  if (!Array.isArray(payload?.items) || payload.items.length === 0) return;
-
-  const ids = payload.items
-    .map((item: any) => typeof item?.id === "string" ? item.id : "")
-    .filter(Boolean);
-  const references = getCurrentReferenceNotes(db, ids, scope, userId);
-  payload.items = payload.items.map((item: any) => ({
-    ...item,
-    primaryNote: references.get(item.id) || null,
-  }));
-  replaceJsonResponse(c, payload);
 }
