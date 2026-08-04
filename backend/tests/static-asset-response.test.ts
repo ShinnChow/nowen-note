@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Hono } from "hono";
+import { compress } from "hono/compress";
 
 import {
   createStaticAssetHeaders,
@@ -53,4 +55,20 @@ test("conditional requests match ETag or Last-Modified", () => {
     true,
   );
   assert.equal(isStaticAssetNotModified(new Headers(), responseHeaders), false);
+});
+
+test("Hono compresses large JavaScript assets when gzip is accepted", async () => {
+  const app = new Hono();
+  app.use("*", compress());
+  const source = "const value = 'nowen-note';\n".repeat(2_000);
+  app.get("/assets/index-testhash.js", (c) => c.body(source, 200, {
+    "Content-Type": "application/javascript",
+  }));
+
+  const response = await app.request("/assets/index-testhash.js", {
+    headers: { "Accept-Encoding": "gzip" },
+  });
+  assert.equal(response.headers.get("content-encoding"), "gzip");
+  assert.match(response.headers.get("vary") || "", /Accept-Encoding/i);
+  assert.ok((await response.arrayBuffer()).byteLength < source.length);
 });
