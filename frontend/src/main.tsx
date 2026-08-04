@@ -7,9 +7,6 @@ import "./lib/workspaceRefreshBridge";
 import "./i18n";
 // Must run before App and its import/export/editor schemas are evaluated.
 import "./lib/imageNodeTransformBootstrap";
-import App from "./App";
-import PublicNotebookView from "./components/PublicNotebookView";
-import PublicSpaceLauncher from "./components/PublicSpaceLauncher";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { SiteSettingsProvider } from "./hooks/useSiteSettings";
 import Toaster from "./components/Toaster";
@@ -26,17 +23,8 @@ import EditorImageTransformBridge from "./components/EditorImageTransformBridge"
 import DesktopUpdateCenter from "./components/DesktopUpdateCenter";
 import DockerUpdateCenter from "./components/DockerUpdateCenter";
 import TwoFactorLoginChallengeCenter from "./components/TwoFactorLoginChallengeCenter";
-import TaskDataTransferBridgeV2 from "./components/TaskDataTransferBridgeV2";
-import SystemFullDataTransferBridge from "./components/SystemFullDataTransferBridge";
-import BackupWebDavBridge from "./components/BackupWebDavBridge";
 import AndroidShareImportCenter from "./components/AndroidShareImportCenter";
-import NoteImageExportCenter from "./components/NoteImageExportCenter";
-import DocxImportCenter from "./components/DocxImportCenter";
-import NoteTransferCenter from "./components/NoteTransferCenter";
-import RoundTripImportBatchCenter from "./components/RoundTripImportBatchCenter";
-import RoundTripPermissionMappingCenter from "./components/RoundTripPermissionMappingCenter";
-import RoundTripPermissionExportCenter from "./components/RoundTripPermissionExportCenter";
-import SiyuanImportProgressBridge from "./components/SiyuanImportProgressBridge";
+import DeferredGlobalFeatureCentersMount from "./components/DeferredGlobalFeatureCentersMount";
 import SiyuanRichTextCalloutBridge from "./components/SiyuanRichTextCalloutBridge";
 import InlineCommentBridge from "./components/InlineCommentBridge";
 import "./index.css";
@@ -78,6 +66,9 @@ import { installInlineCommentTooltipMount } from "./lib/inlineCommentTooltipMoun
 import { resolveCurrentAppPathname } from "./lib/appPathNavigation";
 import { installUgreenCredentialedFetch } from "./lib/ugreenRemoteAccess";
 
+const App = React.lazy(() => import("./App"));
+const PublicNotebookView = React.lazy(() => import("./components/PublicNotebookView"));
+
 void cleanupRemovedServerProfiles();
 installUgreenCredentialedFetch();
 
@@ -98,6 +89,21 @@ function BootSplashRemover() {
     removeBootSplash();
   }, []);
   return null;
+}
+
+function MainRouteFallback() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-screen items-center justify-center bg-app-bg text-sm text-tx-tertiary"
+    >
+      <span className="inline-flex items-center gap-2">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-app-border border-t-accent-primary" />
+        正在加载…
+      </span>
+    </div>
+  );
 }
 
 installKnowledgeTreeScrollbarBridge();
@@ -159,7 +165,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <BootSplashRemover />
       {publicRoute.matched ? (
         <ThemeProvider>
-          <PublicNotebookView token={publicRoute.token} />
+          <React.Suspense fallback={<MainRouteFallback />}>
+            <PublicNotebookView token={publicRoute.token} />
+          </React.Suspense>
           <Toaster />
         </ThemeProvider>
       ) : (
@@ -177,21 +185,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <DesktopUpdateCenter />
           <DockerUpdateCenter />
           <TwoFactorLoginChallengeCenter />
-          <TaskDataTransferBridgeV2 />
-          <SystemFullDataTransferBridge />
-          <BackupWebDavBridge />
           <AndroidShareImportCenter />
-          <NoteImageExportCenter />
-          <DocxImportCenter />
-          <PublicSpaceLauncher />
-          <NoteTransferCenter />
-          <RoundTripImportBatchCenter />
-          <RoundTripPermissionMappingCenter />
-          <RoundTripPermissionExportCenter />
-          <SiyuanImportProgressBridge />
+          <DeferredGlobalFeatureCentersMount />
           <SiyuanRichTextCalloutBridge />
           <InlineCommentBridge />
-          <App />
+          <React.Suspense fallback={<MainRouteFallback />}>
+            <App />
+          </React.Suspense>
         </>
       )}
     </SiteSettingsProvider>
