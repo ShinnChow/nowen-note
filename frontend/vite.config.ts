@@ -28,11 +28,11 @@ export default defineConfig({
         find: /^@\/components\/KnowledgeTreePanel$/,
         replacement: path.resolve(__dirname, "./src/components/KnowledgeTreeCreateMenuRuntime.tsx"),
       },
-      // Issue #218：只替换 App / SettingsModal 使用的绝对导入。
-      // 壳组件内部通过相对路径导入原组件，因此不会发生递归别名。
+      // Issue #218：AI 可靠性壳与原聊天面板整体延迟到用户真正打开 AI 侧栏时加载。
+      // Lazy 壳和可靠性壳都使用相对路径进入下一层，避免精确别名递归。
       {
         find: /^@\/components\/AIChatPanel$/,
-        replacement: path.resolve(__dirname, "./src/components/AIChatReliabilityShell.tsx"),
+        replacement: path.resolve(__dirname, "./src/components/LazyAIChatPanelRuntime.tsx"),
       },
       {
         find: /^@\/components\/AISettingsPanel$/,
@@ -81,11 +81,10 @@ export default defineConfig({
         find: /^@\/lib\/largeMarkdownSafety$/,
         replacement: path.resolve(__dirname, "./src/lib/largeMarkdownSafetyRuntime.ts"),
       },
-      // 公开分享评论：先收集匿名访客昵称，再把后端 displayName/guestName 投影到旧 username 展示字段。
-      // 壳组件通过相对路径串联身份与展示运行时，避免精确别名递归。
+      // 公开分享查看器包含 Markdown 渲染、评论和访客身份逻辑，只在分享路由命中时加载。
       {
         find: /^@\/components\/SharedNoteView$/,
-        replacement: path.resolve(__dirname, "./src/components/SharedNoteCommentDisplayRuntime.tsx"),
+        replacement: path.resolve(__dirname, "./src/components/LazySharedNoteViewRuntime.tsx"),
       },
       // Issue #369 P2：在不侵入 EditorPane 主体的前提下增加事务化文档拆分入口。
       {
