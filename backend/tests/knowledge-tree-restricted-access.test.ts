@@ -133,10 +133,13 @@ test("node member permissions become an allowlist and persist in the database", 
     { id: publicRoot.resourceId, name: "公开项目" },
   ]));
   const searchRoutes = new Hono();
-  searchRoutes.get("/", (c) => c.json([
-    { id: child.resourceId, title: "项目密码", snippet: "restricted" },
-    { id: publicChild.resourceId, title: "公开说明", snippet: "public" },
-  ]));
+  searchRoutes.get("/", (c) => {
+    c.header("X-Search-Candidate-Count", "2");
+    return c.json([
+      { id: child.resourceId, title: "项目密码", snippet: "restricted" },
+      { id: publicChild.resourceId, title: "公开说明", snippet: "public" },
+    ]);
+  });
 
   const api = new Hono();
   api.route("/api/notes", noteRoutes);
@@ -172,6 +175,7 @@ test("node member permissions become an allowlist and persist in the database", 
     headers: { "X-User-Id": "denied" },
   });
   assert.equal(deniedSearchResponse.status, 200);
+  assert.equal(deniedSearchResponse.headers.get("X-Search-Candidate-Count"), "1");
   assert.deepEqual(await deniedSearchResponse.json(), [
     { id: publicChild.resourceId, title: "公开说明", snippet: "public" },
   ]);
@@ -180,7 +184,11 @@ test("node member permissions become an allowlist and persist in the database", 
     `http://localhost/api/notes/${child.resourceId}`,
     { headers: { "X-User-Id": "denied" } },
   );
-  assert.equal(deniedDirectResponse.status, 403);
+  assert.equal(deniedDirectResponse.status, 404);
+  assert.deepEqual(await deniedDirectResponse.json(), {
+    error: "资源不存在",
+    code: "NOT_FOUND",
+  });
 
   assert.equal(clearKnowledgeNodeRole({
     nodeId: root.id,
