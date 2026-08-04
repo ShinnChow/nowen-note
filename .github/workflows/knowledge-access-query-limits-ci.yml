@@ -63,6 +63,10 @@ jobs:
               line[10:] if line.startswith("          ") else line
               for line in raw.splitlines()
           ) + "\n"
+          script = script.replace(
+              "backend/migrations/065_knowledge_tree_access_policy.sql",
+              "backend/src/db/postgres/065_knowledge_tree_access_policy.sql",
+          )
           exec(compile(script, 'pr645-autofix.py', 'exec'))
           PY
       - name: Install backend dependencies
