@@ -12,6 +12,16 @@ export interface TaskReminderScheduleItem {
   offsetMinutes: number;
 }
 
+export type ScheduledTaskReminder = TaskReminderScheduleItem & {
+  notificationId: number;
+  scheduleAt: Date;
+};
+
+export type TaskReminderScheduleHistory = Record<string, number>;
+
+const SCHEDULE_HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const SCHEDULE_DELIVERY_TOLERANCE_MS = 60 * 1000;
+
 function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const date = new Date(value);
@@ -59,7 +69,7 @@ export function selectSchedulableTaskReminders(
   reminders: TaskReminderScheduleItem[],
   platform: "android" | "ios" | "web",
   now = Date.now(),
-): Array<TaskReminderScheduleItem & { notificationId: number; scheduleAt: Date }> {
+): ScheduledTaskReminder[] {
   const maxItems = platform === "ios" ? 60 : 500;
   const seenIds = new Set<number>();
 
@@ -75,9 +85,45 @@ export function selectSchedulableTaskReminders(
       seenIds.add(notificationId);
       return { ...item, notificationId, scheduleAt };
     })
-    .filter((item): item is TaskReminderScheduleItem & { notificationId: number; scheduleAt: Date } => !!item)
+    .filter((item): item is ScheduledTaskReminder => !!item)
     .sort((a, b) => a.scheduleAt.getTime() - b.scheduleAt.getTime())
     .slice(0, maxItems);
+}
+
+/**
+ * Persist evidence that a reminder was successfully handed to the native OS.
+ * Previous due entries are retained briefly so an app foreground sync performed
+ * after the reminder time cannot erase the proof before the backend scanner is
+ * acknowledged.
+ */
+export function mergeTaskReminderScheduleHistory(
+  history: TaskReminderScheduleHistory,
+  scheduled: ScheduledTaskReminder[],
+  now = Date.now(),
+): TaskReminderScheduleHistory {
+  const minimumTime = now - SCHEDULE_HISTORY_RETENTION_MS;
+  const next: TaskReminderScheduleHistory = {};
+
+  for (const [reminderId, scheduleAt] of Object.entries(history)) {
+    if (Number.isFinite(scheduleAt) && scheduleAt >= minimumTime) {
+      next[reminderId] = scheduleAt;
+    }
+  }
+  for (const item of scheduled) {
+    next[item.reminderId] = item.scheduleAt.getTime();
+  }
+  return next;
+}
+
+export function wasTaskReminderScheduledNatively(
+  history: TaskReminderScheduleHistory,
+  reminderId: string,
+  now = Date.now(),
+): boolean {
+  const scheduleAt = history[reminderId];
+  if (!Number.isFinite(scheduleAt)) return false;
+  return scheduleAt >= now - SCHEDULE_HISTORY_RETENTION_MS
+    && scheduleAt <= now + SCHEDULE_DELIVERY_TOLERANCE_MS;
 }
 
 export function emitTaskReminderScheduleChanged(): void {
