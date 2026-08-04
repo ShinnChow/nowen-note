@@ -7,6 +7,7 @@ import {
   enforceKnowledgeNoteCapabilities,
   enforceKnowledgeNotebookCapabilities,
 } from "../middleware/knowledgeCapabilityGuard.js";
+import { enforceKnowledgeSearchVisibility } from "../middleware/knowledgeSearchCapabilityGuard.js";
 
 const INSTALL_KEY = Symbol.for("nowen.knowledgeTree.runtimeInstalled");
 const globals = globalThis as typeof globalThis & Record<symbol, boolean>;
@@ -37,6 +38,13 @@ if (!globals[INSTALL_KEY]) {
     if (path === "/api/notebooks") {
       const wrapper = new Hono<any>();
       wrapper.use("*", enforceKnowledgeNotebookCapabilities);
+      wrapper.route("/", subApp);
+      return nativeRoute.call(this, path, wrapper);
+    }
+
+    if (path === "/api/search") {
+      const wrapper = new Hono<any>();
+      wrapper.use("*", enforceKnowledgeSearchVisibility);
       wrapper.route("/", subApp);
       return nativeRoute.call(this, path, wrapper);
     }
