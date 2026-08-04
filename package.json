@@ -32,7 +32,7 @@
     "test:issue-210-signoff": "node --test scripts/tests/issue-210-signoff-validator.test.mjs",
     "validate:issue-210-signoff": "node scripts/validate-issue-210-signoff.mjs",
     "cap:sync:ios": "cd frontend && npm run build && npx cap sync ios",
-    "cap:open:ios": "cd frontend && npm run build && npx cap open ios",
+    "cap:open:ios": "cd frontend && npx cap open ios",
     "zip": "node scripts/export-zip.mjs",
     "zip:jszip": "node scripts/export-zip-jszip.mjs",
     "fpk": "node scripts/fpk/build-fpk.mjs",
