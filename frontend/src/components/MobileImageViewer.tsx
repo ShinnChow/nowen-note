@@ -17,6 +17,7 @@ type SinglePointerGesture = {
   start: Point;
   startPosition: Point;
   startedOnImage: boolean;
+  suppressTap: boolean;
 };
 
 type PinchGesture = {
@@ -237,6 +238,7 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
       start: point,
       startPosition: positionRef.current,
       startedOnImage,
+      suppressTap: false,
     };
     setInteracting(scaleRef.current > MIN_SCALE);
   }, []);
@@ -299,6 +301,7 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
           start: remaining[1],
           startPosition: positionRef.current,
           startedOnImage: true,
+          suppressTap: true,
         };
       }
       setInteracting(pointersRef.current.size > 0);
@@ -307,7 +310,7 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
 
     singleGestureRef.current = null;
     setInteracting(false);
-    if (cancelled || !single || single.pointerId !== event.pointerId) return;
+    if (cancelled || !single || single.pointerId !== event.pointerId || single.suppressTap) return;
     if (distance(single.start, point) > TAP_MOVE_TOLERANCE_PX) return;
 
     if (!single.startedOnImage) closeViewer();
