@@ -16,6 +16,7 @@ test.after(() => {
 
 test("node member permissions become an allowlist and persist in the database", async () => {
   await import("../src/runtime/knowledge-tree-migration-bootstrap.js");
+  const { Hono } = await import("hono");
   const { getDb, closeDb } = await import("../src/db/schema.js");
   const { resolveNotePermission, resolveNotebookPermission } = await import("../src/middleware/acl.js");
   const { createKnowledgeChild, listKnowledgeTree } = await import("../src/services/knowledgeTree.js");
@@ -58,6 +59,22 @@ test("node member permissions become an allowlist and persist in the database", 
     title: "项目密码",
     db,
   });
+  const publicRoot = createKnowledgeChild({
+    actorUserId: "owner",
+    workspaceId: "ws",
+    parentId: null,
+    nodeType: "folder",
+    title: "公开项目",
+    db,
+  });
+  const publicChild = createKnowledgeChild({
+    actorUserId: "owner",
+    workspaceId: "ws",
+    parentId: publicRoot.id,
+    nodeType: "note",
+    title: "公开说明",
+    db,
+  });
 
   assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", db).source, "legacy");
   assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", db).capabilities.canView, true);
@@ -95,10 +112,61 @@ test("node member permissions become an allowlist and persist in the database", 
   const deniedTree = listKnowledgeTree({ userId: "denied", workspaceId: "ws", db });
   assert.equal(deniedTree.some((node) => node.id === root.id), false);
   assert.equal(deniedTree.some((node) => node.id === child.id), false);
+  assert.equal(deniedTree.some((node) => node.id === publicRoot.id), true);
+  assert.equal(deniedTree.some((node) => node.id === publicChild.id), true);
 
   const allowedTree = listKnowledgeTree({ userId: "allowed", workspaceId: "ws", db });
   assert.equal(allowedTree.some((node) => node.id === root.id), true);
   assert.equal(allowedTree.some((node) => node.id === child.id), true);
+
+  // The runtime wraps legacy routers with knowledge capability enforcement.
+  await import("../src/runtime/knowledge-tree.js");
+  const noteRoutes = new Hono();
+  noteRoutes.get("/", (c) => c.json([
+    { id: child.resourceId, title: "项目密码" },
+    { id: publicChild.resourceId, title: "公开说明" },
+  ]));
+  noteRoutes.get("/:id", (c) => c.json({ id: c.req.param("id") }));
+  const notebookRoutes = new Hono();
+  notebookRoutes.get("/", (c) => c.json([
+    { id: root.resourceId, name: "私有项目" },
+    { id: publicRoot.resourceId, name: "公开项目" },
+  ]));
+
+  const api = new Hono();
+  api.route("/api/notes", noteRoutes);
+  api.route("/api/notebooks", notebookRoutes);
+
+  const deniedNotesResponse = await api.request("http://localhost/api/notes?workspaceId=ws", {
+    headers: { "X-User-Id": "denied" },
+  });
+  assert.equal(deniedNotesResponse.status, 200);
+  assert.deepEqual(await deniedNotesResponse.json(), [
+    { id: publicChild.resourceId, title: "公开说明" },
+  ]);
+
+  const allowedNotesResponse = await api.request("http://localhost/api/notes?workspaceId=ws", {
+    headers: { "X-User-Id": "allowed" },
+  });
+  assert.equal(allowedNotesResponse.status, 200);
+  assert.deepEqual(await allowedNotesResponse.json(), [
+    { id: child.resourceId, title: "项目密码" },
+    { id: publicChild.resourceId, title: "公开说明" },
+  ]);
+
+  const deniedNotebooksResponse = await api.request("http://localhost/api/notebooks?workspaceId=ws", {
+    headers: { "X-User-Id": "denied" },
+  });
+  assert.equal(deniedNotebooksResponse.status, 200);
+  assert.deepEqual(await deniedNotebooksResponse.json(), [
+    { id: publicRoot.resourceId, name: "公开项目" },
+  ]);
+
+  const deniedDirectResponse = await api.request(
+    `http://localhost/api/notes/${child.resourceId}`,
+    { headers: { "X-User-Id": "denied" } },
+  );
+  assert.equal(deniedDirectResponse.status, 403);
 
   assert.equal(clearKnowledgeNodeRole({
     nodeId: root.id,
