@@ -1,21 +1,21 @@
 name: Issue 635 Android Reminder Autofix
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/issue-635-android-native-reminders
-    paths:
-      - .github/issue-635-autofix-trigger
+      - main
 
 permissions:
   contents: write
 
 jobs:
   apply-and-verify:
+    if: github.head_ref == 'fix/issue-635-android-native-reminders'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
