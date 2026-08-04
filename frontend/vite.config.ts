@@ -91,6 +91,11 @@ export default defineConfig({
         find: /^@\/components\/EditorPane$/,
         replacement: path.resolve(__dirname, "./src/components/EditorPaneRuntime.tsx"),
       },
+      // 命令面板包含全文搜索中心；关闭状态只保留轻量壳，首次按 Cmd/Ctrl+K 时再下载。
+      {
+        find: /^@\/components\/common\/CommandPalette$/,
+        replacement: path.resolve(__dirname, "./src/components/common/LazyCommandPaletteRuntime.tsx"),
+      },
       // 登录页不应同步下载整个工作台。以下壳只保留轻量 Suspense 边界，
       // 真正的业务模块在用户进入对应页面时再加载。
       {
