@@ -37,6 +37,21 @@ export function ensureKnowledgeAccessPolicyTable(
 
     CREATE INDEX IF NOT EXISTS idx_knowledge_tree_access_policy_mode
       ON knowledge_tree_access_policies(accessMode, nodeId);
+
+    -- Upgrade compatibility: permissions saved by older releases already represent
+    -- an explicit member list. Backfill those nodes immediately so users do not
+    -- need to open the dialog and save every folder again after upgrading.
+    INSERT OR IGNORE INTO knowledge_tree_access_policies (
+      nodeId, accessMode, updatedBy, createdAt, updatedAt
+    )
+    SELECT
+      nodeId,
+      'restricted',
+      MAX(grantedBy),
+      MIN(createdAt),
+      MAX(updatedAt)
+    FROM knowledge_tree_acl
+    GROUP BY nodeId;
   `);
   initializedDatabases.add(db);
 }
