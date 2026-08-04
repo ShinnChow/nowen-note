@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 
 import {
   resolvePrecompressedSourcePath,
@@ -31,6 +32,9 @@ test("production wildcard route serves a precompressed hashed asset", async () =
     assert.equal(resolvePrecompressedSourcePath("/../../etc/passwd.js"), null);
 
     const app = new Hono();
+    // Match the production middleware order: the runtime must preserve an existing Brotli body
+    // instead of letting Hono wrap it again with gzip.
+    app.use("*", compress());
     app.get("*", (c) => c.text("fallback"));
 
     const response = await app.request("/assets/index-TestHash9.js", {
