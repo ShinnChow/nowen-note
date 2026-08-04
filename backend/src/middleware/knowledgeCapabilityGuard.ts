@@ -7,6 +7,7 @@ import {
 } from "../services/knowledgeCapabilities.js";
 
 const UUID_SEGMENT = "([0-9a-fA-F-]{36})";
+type GuardedResourceType = "note" | "notebook";
 
 function forbidden(c: Context, required: KnowledgeCapabilityName, nodeId: string) {
   return c.json({
@@ -18,7 +19,7 @@ function forbidden(c: Context, required: KnowledgeCapabilityName, nodeId: string
 }
 
 function resourceAccess(
-  resourceType: "note" | "notebook",
+  resourceType: GuardedResourceType,
   resourceId: string,
   userId: string,
   capability: KnowledgeCapabilityName,
@@ -43,11 +44,57 @@ function notebookIdFromPath(path: string): string | null {
   return path.match(new RegExp(`^/api/notebooks/${UUID_SEGMENT}(?:/|$)`))?.[1] || null;
 }
 
+/**
+ * Legacy list routes query by workspace membership. Post-filter their JSON arrays
+ * through the unified knowledge capability resolver so restricted descendants do
+ * not leak into sidebar caches, search results or offline synchronization.
+ */
+async function filterCollectionResponse(
+  c: Context,
+  next: Next,
+  resourceType: GuardedResourceType,
+): Promise<void> {
+  await next();
+  if (!c.res.ok) return;
+  const contentType = c.res.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().includes("application/json")) return;
+
+  let payload: unknown;
+  try {
+    payload = await c.res.clone().json();
+  } catch {
+    return;
+  }
+  if (!Array.isArray(payload)) return;
+
+  const userId = c.req.header("X-User-Id") || "";
+  const filtered = payload.filter((row) => {
+    const id = row && typeof row === "object" && typeof (row as any).id === "string"
+      ? (row as any).id
+      : "";
+    return id && resourceAccess(resourceType, id, userId, "canView").allowed;
+  });
+
+  if (filtered.length === payload.length) return;
+  const headers = new Headers(c.res.headers);
+  headers.delete("content-length");
+  headers.set("content-type", "application/json; charset=UTF-8");
+  c.res = new Response(JSON.stringify(filtered), {
+    status: c.res.status,
+    statusText: c.res.statusText,
+    headers,
+  });
+}
+
 export async function enforceKnowledgeNoteCapabilities(c: Context, next: Next) {
   const method = c.req.method.toUpperCase();
-  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return next();
   const userId = c.req.header("X-User-Id") || "";
   const path = c.req.path;
+
+  if (method === "GET" && /^\/api\/notes\/?$/.test(path)) {
+    return filterCollectionResponse(c, next, "note");
+  }
+  if (method === "HEAD" || method === "OPTIONS") return next();
 
   if (method === "POST" && /^\/api\/notes\/?$/.test(path)) {
     const body = await clonedJson(c);
@@ -70,6 +117,11 @@ export async function enforceKnowledgeNoteCapabilities(c: Context, next: Next) {
 
   const noteId = noteIdFromPath(path);
   if (!noteId) return next();
+
+  if (method === "GET") {
+    const checked = resourceAccess("note", noteId, userId, "canView");
+    return checked.allowed ? next() : forbidden(c, "canView", checked.access.nodeId);
+  }
 
   if (method === "DELETE") {
     const checked = resourceAccess("note", noteId, userId, "canManageMembers");
@@ -107,9 +159,13 @@ export async function enforceKnowledgeNoteCapabilities(c: Context, next: Next) {
 
 export async function enforceKnowledgeNotebookCapabilities(c: Context, next: Next) {
   const method = c.req.method.toUpperCase();
-  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return next();
   const userId = c.req.header("X-User-Id") || "";
   const path = c.req.path;
+
+  if (method === "GET" && /^\/api\/notebooks\/?$/.test(path)) {
+    return filterCollectionResponse(c, next, "notebook");
+  }
+  if (method === "HEAD" || method === "OPTIONS") return next();
 
   if (method === "POST" && /^\/api\/notebooks\/?$/.test(path)) {
     const body = await clonedJson(c);
@@ -132,6 +188,11 @@ export async function enforceKnowledgeNotebookCapabilities(c: Context, next: Nex
 
   const notebookId = notebookIdFromPath(path);
   if (!notebookId) return next();
+
+  if (method === "GET") {
+    const checked = resourceAccess("notebook", notebookId, userId, "canView");
+    return checked.allowed ? next() : forbidden(c, "canView", checked.access.nodeId);
+  }
 
   const memberOrShareMutation = /\/(members|share-link|publication|permission-overrides)(?:\/|$)/.test(path);
   if (memberOrShareMutation) {
