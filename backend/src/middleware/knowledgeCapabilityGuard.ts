@@ -18,6 +18,10 @@ function forbidden(c: Context, required: KnowledgeCapabilityName, nodeId: string
   }, 403);
 }
 
+function hiddenResource(c: Context) {
+  return c.json({ error: "资源不存在", code: "NOT_FOUND" }, 404);
+}
+
 function resourceAccess(
   resourceType: GuardedResourceType,
   resourceId: string,
@@ -120,7 +124,7 @@ export async function enforceKnowledgeNoteCapabilities(c: Context, next: Next) {
 
   if (method === "GET") {
     const checked = resourceAccess("note", noteId, userId, "canView");
-    return checked.allowed ? next() : forbidden(c, "canView", checked.access.nodeId);
+    return checked.allowed ? next() : hiddenResource(c);
   }
 
   if (method === "DELETE") {
@@ -191,7 +195,7 @@ export async function enforceKnowledgeNotebookCapabilities(c: Context, next: Nex
 
   if (method === "GET") {
     const checked = resourceAccess("notebook", notebookId, userId, "canView");
-    return checked.allowed ? next() : forbidden(c, "canView", checked.access.nodeId);
+    return checked.allowed ? next() : hiddenResource(c);
   }
 
   const memberOrShareMutation = /\/(members|share-link|publication|permission-overrides)(?:\/|$)/.test(path);
