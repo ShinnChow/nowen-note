@@ -9,7 +9,7 @@ import {
   selectStaticContentEncoding,
 } from "../lib/static-asset-response.js";
 
-const INSTALL_KEY = Symbol.for("nowen.staticPrecompressedAssets.installed");
+const INSTALL_KEY = "__nowenStaticPrecompressedAssetsInstalled__" as const;
 
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css",
@@ -89,7 +89,9 @@ async function tryServePrecompressedAsset(c: any): Promise<Response | null> {
 }
 
 export function installStaticPrecompressedAssetRuntime(): void {
-  const globalState = globalThis as typeof globalThis & { [INSTALL_KEY]?: boolean };
+  const globalState = globalThis as typeof globalThis & {
+    __nowenStaticPrecompressedAssetsInstalled__?: boolean;
+  };
   if (globalState[INSTALL_KEY]) return;
   globalState[INSTALL_KEY] = true;
 
