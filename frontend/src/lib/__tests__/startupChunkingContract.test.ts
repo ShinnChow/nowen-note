@@ -10,6 +10,9 @@ describe("startup chunking contract", () => {
     const config = source("../../../vite.config.ts");
 
     for (const runtime of [
+      "LazySidebarRuntime.tsx",
+      "LazyNavRailRuntime.tsx",
+      "LazyNoteListRuntime.tsx",
       "LazyEditorSplitViewRuntime.tsx",
       "LazyTaskCenterRuntime.tsx",
       "LazyMindMapEditorRuntime.tsx",
