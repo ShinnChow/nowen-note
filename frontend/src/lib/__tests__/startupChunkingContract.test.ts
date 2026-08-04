@@ -51,4 +51,20 @@ describe("startup chunking contract", () => {
     expect(aiRuntime).toContain('React.lazy(() => import("./AIChatReliabilityShell"))');
     expect(sharedRuntime).toContain('React.lazy(() => import("./SharedNoteCommentDisplayRuntime"))');
   });
+
+  it("does not statically import low-frequency feature centers from the entry module", () => {
+    const main = source("../../main.tsx");
+    const deferredMount = source("../../components/DeferredGlobalFeatureCentersMount.tsx");
+    const deferredCenters = source("../../components/DeferredGlobalFeatureCenters.tsx");
+
+    expect(main).toContain("<DeferredGlobalFeatureCentersMount />");
+    expect(main).toContain('React.lazy(() => import("./App"))');
+    expect(main).toContain('React.lazy(() => import("./components/PublicNotebookView"))');
+    expect(main).not.toContain('import NoteImageExportCenter from "./components/NoteImageExportCenter"');
+    expect(main).not.toContain('import DocxImportCenter from "./components/DocxImportCenter"');
+    expect(deferredMount).toContain('import("./DeferredGlobalFeatureCenters")');
+    expect(deferredMount).toContain("nowen:token-changed");
+    expect(deferredCenters).toContain('import NoteImageExportCenter from "./NoteImageExportCenter"');
+    expect(deferredCenters).toContain('import DocxImportCenter from "./DocxImportCenter"');
+  });
 });
