@@ -37,7 +37,7 @@ interface RecentReminder {
 }
 
 const globalKey = "__nowen_notified_set__";
-const notifiedSet: Set<string> = typeof window === "undefined"
+const deliveredSet: Set<string> = typeof window === "undefined"
   ? new Set()
   : ((window as any)[globalKey] || ((window as any)[globalKey] = new Set()));
 
@@ -92,9 +92,13 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
       }
     };
 
-    const acknowledge = async (reminderId: string) => {
-      notifiedSet.add(reminderId);
-      await api.ackRecentReminders([reminderId]);
+    const acknowledge = async (reminderId: string): Promise<boolean> => {
+      try {
+        await api.ackRecentReminders([reminderId]);
+        return true;
+      } catch {
+        return false;
+      }
     };
 
     const deliverImmediately = async (reminder: RecentReminder): Promise<boolean> => {
@@ -106,8 +110,13 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
         reminderId: reminder.reminderId,
         type,
       });
-      if (delivered) await acknowledge(reminder.reminderId);
-      return delivered;
+      if (!delivered) return false;
+
+      // The notification is already visible/accepted by the OS. Remember that
+      // fact before ACK so a temporary network failure retries only ACK and does
+      // not show the same notification again in this session.
+      deliveredSet.add(reminder.reminderId);
+      return acknowledge(reminder.reminderId);
     };
 
     const scan = async () => {
@@ -119,7 +128,12 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
         const surface = getTaskNotificationSurface();
 
         for (const reminder of recent) {
-          if (notifiedSet.has(reminder.reminderId)) continue;
+          if (deliveredSet.has(reminder.reminderId)) {
+            if (!(await acknowledge(reminder.reminderId))) {
+              nextSince = Math.min(nextSince, reminder.triggeredAt - 1);
+            }
+            continue;
+          }
 
           const type = reminder.type || "task_reminder";
           if (surface === "native" && type === "task_reminder") {
@@ -131,22 +145,23 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
               nativeSchedulesReadyRef.current
               && wasTaskReminderScheduledNatively(reminder.reminderId)
             ) {
-              await acknowledge(reminder.reminderId);
+              deliveredSet.add(reminder.reminderId);
+              if (!(await acknowledge(reminder.reminderId))) {
+                nextSince = Math.min(nextSince, reminder.triggeredAt - 1);
+              }
               continue;
             }
 
             // The app may have been opened for the first time after this reminder
             // was already due. A successful sync with no future item is not proof
             // that Android ever received it, so deliver a catch-up notification.
-            const delivered = await deliverImmediately(reminder);
-            if (!delivered) {
+            if (!(await deliverImmediately(reminder))) {
               nextSince = Math.min(nextSince, reminder.triggeredAt - 1);
             }
             continue;
           }
 
-          const delivered = await deliverImmediately(reminder);
-          if (!delivered) {
+          if (!(await deliverImmediately(reminder))) {
             nextSince = Math.min(nextSince, reminder.triggeredAt - 1);
           }
         }
@@ -182,11 +197,13 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
     };
 
     const resetNativeSchedules = () => {
+      deliveredSet.clear();
       nativeSchedulesReadyRef.current = false;
       void cancelAllNativeTaskNotifications();
     };
 
     const onServerChanged = () => {
+      deliveredSet.clear();
       nativeSchedulesReadyRef.current = false;
       void cancelAllNativeTaskNotifications().then(() => syncNativeSchedules());
     };
