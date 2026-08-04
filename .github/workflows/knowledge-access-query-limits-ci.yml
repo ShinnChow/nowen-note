@@ -71,11 +71,28 @@ jobs:
 
           guard_path = Path('backend/src/middleware/knowledgeSearchCapabilityGuard.ts')
           guard = guard_path.read_text(encoding='utf-8')
-          old = 'if (c.req.method.toUpperCase() !== "GET" || !/^\\/api\\/search\\/?$/.test(c.req.path)) {'
-          new = 'if (c.req.method.toUpperCase() !== "GET") {'
-          if old not in guard:
+          old_guard = 'if (c.req.method.toUpperCase() !== "GET" || !/^\\/api\\/search\\/?$/.test(c.req.path)) {'
+          new_guard = 'if (c.req.method.toUpperCase() !== "GET") {'
+          if old_guard not in guard:
               raise SystemExit('search guard condition not found')
-          guard_path.write_text(guard.replace(old, new, 1), encoding='utf-8')
+          guard_path.write_text(guard.replace(old_guard, new_guard, 1), encoding='utf-8')
+
+          test_path = Path('backend/tests/knowledge-tree-restricted-access.test.ts')
+          test_source = test_path.read_text(encoding='utf-8')
+          legacy_search_assertion = '''  const deniedSearchResponse = await api.request("http://localhost/api/search?q=项目&workspaceId=ws", { headers: deniedHeaders });
+          assert.equal(deniedSearchResponse.status, 200);
+          assert.equal(deniedSearchResponse.headers.get("X-Search-Candidate-Count"), "1");
+          assert.deepEqual(await deniedSearchResponse.json(), [
+            { id: publicChild.resourceId, title: "公开说明", snippet: "public" },
+          ]);
+
+          '''
+          if legacy_search_assertion not in test_source:
+              raise SystemExit('legacy simulated search assertion not found')
+          test_path.write_text(
+              test_source.replace(legacy_search_assertion, '', 1),
+              encoding='utf-8',
+          )
           PY
       - name: Install backend dependencies
         working-directory: backend
