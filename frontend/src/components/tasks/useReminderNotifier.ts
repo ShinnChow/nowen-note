@@ -181,8 +181,13 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
       void syncNativeSchedules();
     };
 
-    const onServerChanged = () => {
+    const resetNativeSchedules = () => {
       nativeSchedulesReadyRef.current = false;
+      void cancelAllNativeTaskNotifications();
+    };
+
+    const onServerChanged = () => {
+      resetNativeSchedules();
       void cancelAllNativeTaskNotifications().then(() => syncNativeSchedules());
     };
 
@@ -206,6 +211,7 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
     window.addEventListener(TASK_REMINDER_SYNC_EVENT, onScheduleChanged);
     window.addEventListener("nowen:server-url-changed", onServerChanged);
     window.addEventListener("nowen:workspace-changed", onScheduleChanged);
+    window.addEventListener("nowen:token-changed", resetNativeSchedules);
 
     void syncNativeSchedules();
     const initialTimeout = setTimeout(() => { void scan(); }, 3_000);
@@ -221,7 +227,7 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
       window.removeEventListener(TASK_REMINDER_SYNC_EVENT, onScheduleChanged);
       window.removeEventListener("nowen:server-url-changed", onServerChanged);
       window.removeEventListener("nowen:workspace-changed", onScheduleChanged);
-      void cancelAllNativeTaskNotifications();
+      window.removeEventListener("nowen:token-changed", resetNativeSchedules);
     };
   }, []);
 }
