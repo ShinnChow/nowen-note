@@ -119,7 +119,7 @@ test("node member permissions become an allowlist and persist in the database", 
   assert.equal(allowedTree.some((node) => node.id === root.id), true);
   assert.equal(allowedTree.some((node) => node.id === child.id), true);
 
-  // The runtime wraps legacy routers with knowledge capability enforcement.
+  // The runtime wraps legacy routers and standalone search with knowledge capability enforcement.
   await import("../src/runtime/knowledge-tree.js");
   const noteRoutes = new Hono();
   noteRoutes.get("/", (c) => c.json([
@@ -132,10 +132,16 @@ test("node member permissions become an allowlist and persist in the database", 
     { id: root.resourceId, name: "私有项目" },
     { id: publicRoot.resourceId, name: "公开项目" },
   ]));
+  const searchRoutes = new Hono();
+  searchRoutes.get("/", (c) => c.json([
+    { id: child.resourceId, title: "项目密码", snippet: "restricted" },
+    { id: publicChild.resourceId, title: "公开说明", snippet: "public" },
+  ]));
 
   const api = new Hono();
   api.route("/api/notes", noteRoutes);
   api.route("/api/notebooks", notebookRoutes);
+  api.route("/api/search", searchRoutes);
 
   const deniedNotesResponse = await api.request("http://localhost/api/notes?workspaceId=ws", {
     headers: { "X-User-Id": "denied" },
@@ -160,6 +166,14 @@ test("node member permissions become an allowlist and persist in the database", 
   assert.equal(deniedNotebooksResponse.status, 200);
   assert.deepEqual(await deniedNotebooksResponse.json(), [
     { id: publicRoot.resourceId, name: "公开项目" },
+  ]);
+
+  const deniedSearchResponse = await api.request("http://localhost/api/search?q=项目&workspaceId=ws", {
+    headers: { "X-User-Id": "denied" },
+  });
+  assert.equal(deniedSearchResponse.status, 200);
+  assert.deepEqual(await deniedSearchResponse.json(), [
+    { id: publicChild.resourceId, title: "公开说明", snippet: "public" },
   ]);
 
   const deniedDirectResponse = await api.request(
