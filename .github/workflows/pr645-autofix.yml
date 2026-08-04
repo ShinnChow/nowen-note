@@ -1,0 +1,905 @@
+name: PR 645 Autofix
+
+on:
+  push:
+    branches:
+      - fix/issue-643-workspace-acl-enforcement
+    paths:
+      - .github/workflows/pr645-autofix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Apply authorization fixes
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          runtime = r'''import { Hono, type Context } from "hono";
+
+import { getDb } from "../db/schema.js";
+import { ensureKnowledgeTreeTables } from "../db/knowledgeTreeMigration.js";
+import { ensureMindmapSchema } from "../lib/mindmap-schema.js";
+import {
+  enforceKnowledgeNoteCapabilities,
+  enforceKnowledgeNotebookCapabilities,
+} from "../middleware/knowledgeCapabilityGuard.js";
+import { enforceKnowledgeSearchVisibility } from "../middleware/knowledgeSearchCapabilityGuard.js";
+import { enforceKnowledgeOfflineSyncVisibility } from "../middleware/knowledgeOfflineSyncCapabilityGuard.js";
+import { enforceKnowledgeFilesVisibility } from "../middleware/knowledgeFilesCapabilityGuard.js";
+import {
+  enforceKnowledgeExportCapabilities,
+  enforceKnowledgeTagCapabilities,
+} from "../middleware/knowledgeExportTagCapabilityGuard.js";
+import { enforceKnowledgePermissionPolicies } from "../middleware/knowledgePermissionPolicyGuard.js";
+import knowledgeTreeRouter from "../routes/knowledge-tree.js";
+import notebooksRouter from "../routes/notebooks.js";
+import notesRouter from "../routes/notes.js";
+import offlineSyncRouter from "../routes/offline-sync.js";
+import tagsRouter from "../routes/tags.js";
+import searchRouter from "../routes/search.js";
+import exportRouter from "../routes/export.js";
+import filesRouter from "../routes/files.js";
+
+const INSTALL_KEY = Symbol.for("nowen.knowledgeTree.runtimeInstalled");
+const GUARDED_PATHS_KEY = Symbol.for("nowen.knowledgeTree.guardedPaths");
+const globals = globalThis as typeof globalThis & Record<symbol, boolean>;
+const MAX_OFFLINE_COMPACTION_PAGES = 200;
+
+type RouterLike = Hono<any> & Record<PropertyKey, any>;
+type KnowledgeMiddleware = (c: any, next: any) => any;
+
+const db = getDb();
+ensureKnowledgeTreeTables(db);
+ensureMindmapSchema(db);
+const filesObject = db.prepare("SELECT type FROM sqlite_master WHERE name = 'files'").get() as { type: string } | undefined;
+if (!filesObject) {
+  db.exec("CREATE VIEW files AS SELECT id, filename FROM attachments");
+}
+
+function normalizedRoutePath(path: string): string {
+  const normalized = path.replace(/\/+$/, "");
+  return normalized || "/";
+}
+
+function guardedPaths(router: RouterLike): Set<string> {
+  if (!router[GUARDED_PATHS_KEY]) {
+    Object.defineProperty(router, GUARDED_PATHS_KEY, {
+      configurable: false,
+      enumerable: false,
+      writable: false,
+      value: new Set<string>(),
+    });
+  }
+  return router[GUARDED_PATHS_KEY] as Set<string>;
+}
+
+function middlewareForPath(path: string): KnowledgeMiddleware | null {
+  switch (normalizedRoutePath(path)) {
+    case "/api/knowledge-tree":
+      return enforceKnowledgePermissionPolicies;
+    case "/api/notes":
+      return enforceKnowledgeNoteCapabilities;
+    case "/api/notebooks":
+      return enforceKnowledgeNotebookCapabilities;
+    case "/api/search":
+      return enforceKnowledgeSearchVisibility;
+    case "/api/files":
+      return enforceKnowledgeFilesVisibility;
+    case "/api/export":
+      return enforceKnowledgeExportCapabilities;
+    case "/api/tags":
+      return enforceKnowledgeTagCapabilities;
+    default:
+      return null;
+  }
+}
+
+function cloneHeaders(response: Response): Headers {
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.set("content-type", "application/json; charset=UTF-8");
+  headers.set("cache-control", "private, no-store");
+  return headers;
+}
+
+function requestedLimit(c: Context): number {
+  const value = Number(c.req.query("limit") || 50);
+  if (!Number.isFinite(value)) return 50;
+  return Math.max(1, Math.min(200, Math.floor(value)));
+}
+
+function internalOfflinePath(path: string): "/snapshot" | "/changes" | null {
+  if (path.endsWith("/snapshot")) return "/snapshot";
+  if (path.endsWith("/changes")) return "/changes";
+  return null;
+}
+
+function createOfflineSyncWrapper(subApp: Hono<any>): Hono<any> {
+  const guarded = new Hono<any>();
+  guarded.use("*", enforceKnowledgeOfflineSyncVisibility);
+  guarded.route("/", subApp);
+
+  const wrapper = new Hono<any>();
+  wrapper.use("*", async (c, next) => {
+    const path = internalOfflinePath(c.req.path);
+    const workspaceId = (c.req.query("workspaceId") || "").trim();
+    if (
+      c.req.method.toUpperCase() !== "GET"
+      || !path
+      || !workspaceId
+      || workspaceId === "personal"
+    ) {
+      await next();
+      return;
+    }
+
+    const limit = requestedLimit(c);
+    const items: any[] = [];
+    let position = path === "/snapshot"
+      ? (c.req.query("cursor") || "")
+      : String(Math.max(0, Number(c.req.query("after") || 0) || 0));
+    let lastPayload: any = null;
+    let lastResponse: Response | null = null;
+
+    for (let page = 0; page < MAX_OFFLINE_COMPACTION_PAGES && items.length < limit; page += 1) {
+      const url = new URL(c.req.url);
+      url.pathname = path;
+      url.searchParams.set("limit", String(limit - items.length));
+      if (path === "/snapshot") url.searchParams.set("cursor", position);
+      else url.searchParams.set("after", position);
+
+      const response = await guarded.request(new Request(url.toString(), {
+        method: "GET",
+        headers: new Headers(c.req.raw.headers),
+      }));
+      lastResponse = response;
+      if (!response.ok) return response;
+
+      const payload = await response.json() as any;
+      lastPayload = payload;
+      if (Array.isArray(payload.items)) items.push(...payload.items);
+
+      const nextPosition = path === "/snapshot"
+        ? payload.nextCursor
+        : payload.nextSequence;
+      if (!payload.hasMore || nextPosition === null || nextPosition === undefined) break;
+      const normalizedNext = String(nextPosition);
+      if (normalizedNext === position) break;
+      position = normalizedNext;
+    }
+
+    if (!lastPayload || !lastResponse) {
+      await next();
+      return;
+    }
+
+    return new Response(JSON.stringify({ ...lastPayload, items }), {
+      status: lastResponse.status,
+      statusText: lastResponse.statusText,
+      headers: cloneHeaders(lastResponse),
+    });
+  });
+  wrapper.route("/", guarded);
+  guardedPaths(wrapper as RouterLike).add("/api/offline-sync");
+  return wrapper;
+}
+
+export function wrapKnowledgeRoute(path: string, subApp: Hono<any>): Hono<any> {
+  const normalized = normalizedRoutePath(path);
+  const target = subApp as RouterLike;
+  if (guardedPaths(target).has(normalized)) return subApp;
+
+  if (normalized === "/api/offline-sync") {
+    return createOfflineSyncWrapper(subApp);
+  }
+
+  const middleware = middlewareForPath(normalized);
+  if (!middleware) return subApp;
+
+  const wrapper = new Hono<any>();
+  wrapper.use("*", middleware);
+  wrapper.route("/", subApp);
+  guardedPaths(wrapper as RouterLike).add(normalized);
+  return wrapper;
+}
+
+function installCanonicalGuard(path: string, router: Hono<any>): void {
+  const normalized = normalizedRoutePath(path);
+  const target = router as RouterLike;
+  if (guardedPaths(target).has(normalized)) return;
+  const wrapped = wrapKnowledgeRoute(normalized, router) as RouterLike;
+  if (wrapped === target) return;
+
+  const targetRoutes = target.routes as any[];
+  const wrappedRoutes = wrapped.routes as any[];
+  targetRoutes.splice(0, targetRoutes.length, ...wrappedRoutes);
+  guardedPaths(target).add(normalized);
+}
+
+if (!globals[INSTALL_KEY]) {
+  globals[INSTALL_KEY] = true;
+  installCanonicalGuard("/api/knowledge-tree", knowledgeTreeRouter);
+  installCanonicalGuard("/api/notebooks", notebooksRouter);
+  installCanonicalGuard("/api/notes", notesRouter);
+  installCanonicalGuard("/api/offline-sync", offlineSyncRouter);
+  installCanonicalGuard("/api/tags", tagsRouter);
+  installCanonicalGuard("/api/search", searchRouter);
+  installCanonicalGuard("/api/export", exportRouter);
+  installCanonicalGuard("/api/files", filesRouter);
+}
+'''
+          Path("backend/src/runtime/knowledge-tree.ts").write_text(runtime, encoding="utf-8")
+
+          policy = r'''import type Database from "better-sqlite3";
+
+import { getDb } from "../db/schema.js";
+import { ensureKnowledgeTreeTables } from "../db/knowledgeTreeMigration.js";
+
+export type KnowledgeAccessMode = "inherit" | "restricted";
+
+export interface KnowledgeAccessPolicyMatch {
+  nodeId: string;
+  accessMode: "restricted";
+  depth: number;
+}
+
+export interface KnowledgeAccessPolicyState {
+  accessMode: KnowledgeAccessMode;
+  isExplicit: boolean;
+}
+
+const initializedDatabases = new WeakSet<Database.Database>();
+
+function createPolicyTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS knowledge_tree_access_policies (
+      nodeId TEXT PRIMARY KEY,
+      accessMode TEXT NOT NULL DEFAULT 'restricted'
+        CHECK(accessMode IN ('inherit', 'restricted')),
+      isExplicit INTEGER NOT NULL DEFAULT 0,
+      updatedBy TEXT,
+      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (nodeId) REFERENCES knowledge_tree_nodes(id) ON DELETE CASCADE,
+      FOREIGN KEY (updatedBy) REFERENCES users(id) ON DELETE SET NULL
+    );
+  `);
+}
+
+function ensureCompatiblePolicySchema(db: Database.Database): void {
+  const table = db.prepare(`
+    SELECT sql
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'knowledge_tree_access_policies'
+  `).get() as { sql: string | null } | undefined;
+  if (!table) {
+    createPolicyTable(db);
+    return;
+  }
+
+  const columns = db.prepare("PRAGMA table_info(knowledge_tree_access_policies)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "isExplicit")) {
+    db.exec(`
+      ALTER TABLE knowledge_tree_access_policies
+      ADD COLUMN isExplicit INTEGER NOT NULL DEFAULT 0;
+    `);
+  }
+
+  const supportsInherit = /['\"]inherit['\"]/.test(table.sql || "");
+  if (supportsInherit) return;
+
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE knowledge_tree_access_policies
+      RENAME TO knowledge_tree_access_policies_legacy;
+    `);
+    createPolicyTable(db);
+    db.exec(`
+      INSERT INTO knowledge_tree_access_policies (
+        nodeId, accessMode, isExplicit, updatedBy, createdAt, updatedAt
+      )
+      SELECT
+        nodeId,
+        CASE WHEN accessMode = 'restricted' THEN 'restricted' ELSE 'inherit' END,
+        isExplicit,
+        updatedBy,
+        createdAt,
+        updatedAt
+      FROM knowledge_tree_access_policies_legacy;
+
+      DROP TABLE knowledge_tree_access_policies_legacy;
+    `);
+  })();
+}
+
+export function ensureKnowledgeAccessPolicyTable(
+  db: Database.Database = getDb(),
+): void {
+  if (initializedDatabases.has(db)) return;
+  ensureKnowledgeTreeTables(db);
+  ensureCompatiblePolicySchema(db);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_knowledge_tree_access_policy_mode
+      ON knowledge_tree_access_policies(accessMode, nodeId);
+
+    INSERT OR IGNORE INTO knowledge_tree_access_policies (
+      nodeId, accessMode, isExplicit, updatedBy, createdAt, updatedAt
+    )
+    SELECT
+      nodeId,
+      'restricted',
+      0,
+      MAX(grantedBy),
+      MIN(createdAt),
+      MAX(updatedAt)
+    FROM knowledge_tree_acl
+    GROUP BY nodeId;
+  `);
+  initializedDatabases.add(db);
+}
+
+export function getKnowledgeNodeAccessPolicy(
+  nodeId: string,
+  db: Database.Database = getDb(),
+): KnowledgeAccessPolicyState {
+  ensureKnowledgeAccessPolicyTable(db);
+  const row = db.prepare(`
+    SELECT accessMode, isExplicit
+    FROM knowledge_tree_access_policies
+    WHERE nodeId = ?
+  `).get(nodeId) as { accessMode: KnowledgeAccessMode; isExplicit: number } | undefined;
+  return row
+    ? { accessMode: row.accessMode, isExplicit: row.isExplicit !== 0 }
+    : { accessMode: "inherit", isExplicit: false };
+}
+
+export function getKnowledgeNodeAccessMode(
+  nodeId: string,
+  db: Database.Database = getDb(),
+): KnowledgeAccessMode {
+  return getKnowledgeNodeAccessPolicy(nodeId, db).accessMode;
+}
+
+export function findNearestRestrictedKnowledgePolicy(
+  nodeId: string,
+  db: Database.Database = getDb(),
+): KnowledgeAccessPolicyMatch | null {
+  ensureKnowledgeAccessPolicyTable(db);
+  return (db.prepare(`
+    WITH RECURSIVE ancestors(id, parentId, depth) AS (
+      SELECT id, parentId, 0
+      FROM knowledge_tree_nodes
+      WHERE id = ?
+      UNION ALL
+      SELECT parent.id, parent.parentId, ancestors.depth + 1
+      FROM knowledge_tree_nodes parent
+      JOIN ancestors ON parent.id = ancestors.parentId
+    )
+    SELECT policy.nodeId, policy.accessMode, ancestors.depth
+    FROM ancestors
+    JOIN knowledge_tree_access_policies policy ON policy.nodeId = ancestors.id
+    WHERE policy.accessMode = 'restricted'
+    ORDER BY ancestors.depth ASC
+    LIMIT 1
+  `).get(nodeId) as KnowledgeAccessPolicyMatch | undefined) || null;
+}
+
+export function restrictKnowledgeNodeAccess(input: {
+  nodeId: string;
+  actorUserId: string;
+  db?: Database.Database;
+}): void {
+  const db = input.db || getDb();
+  ensureKnowledgeAccessPolicyTable(db);
+  const current = db.prepare(`
+    SELECT accessMode, isExplicit
+    FROM knowledge_tree_access_policies
+    WHERE nodeId = ?
+  `).get(input.nodeId) as { accessMode: KnowledgeAccessMode; isExplicit: number } | undefined;
+  if (current?.accessMode === "inherit" && current.isExplicit !== 0) return;
+
+  db.prepare(`
+    INSERT INTO knowledge_tree_access_policies (
+      nodeId, accessMode, isExplicit, updatedBy, updatedAt
+    ) VALUES (?, 'restricted', 0, ?, datetime('now'))
+    ON CONFLICT(nodeId) DO UPDATE SET
+      accessMode = 'restricted',
+      updatedBy = excluded.updatedBy,
+      updatedAt = datetime('now')
+  `).run(input.nodeId, input.actorUserId);
+}
+
+export function setKnowledgeNodeAccessMode(input: {
+  nodeId: string;
+  accessMode: KnowledgeAccessMode;
+  actorUserId: string;
+  db?: Database.Database;
+}): KnowledgeAccessPolicyState {
+  const db = input.db || getDb();
+  ensureKnowledgeAccessPolicyTable(db);
+  db.prepare(`
+    INSERT INTO knowledge_tree_access_policies (
+      nodeId, accessMode, isExplicit, updatedBy, updatedAt
+    ) VALUES (?, ?, 1, ?, datetime('now'))
+    ON CONFLICT(nodeId) DO UPDATE SET
+      accessMode = excluded.accessMode,
+      isExplicit = 1,
+      updatedBy = excluded.updatedBy,
+      updatedAt = datetime('now')
+  `).run(input.nodeId, input.accessMode, input.actorUserId);
+  return { accessMode: input.accessMode, isExplicit: true };
+}
+
+export function restoreKnowledgeNodeInheritanceIfEmpty(input: {
+  nodeId: string;
+  db?: Database.Database;
+}): boolean {
+  const db = input.db || getDb();
+  ensureKnowledgeAccessPolicyTable(db);
+  const count = (db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM knowledge_tree_acl
+    WHERE nodeId = ?
+  `).get(input.nodeId) as { count: number }).count;
+  if (count > 0) return false;
+  const policy = db.prepare(`
+    SELECT accessMode, isExplicit
+    FROM knowledge_tree_access_policies
+    WHERE nodeId = ?
+  `).get(input.nodeId) as { accessMode: KnowledgeAccessMode; isExplicit: number } | undefined;
+  if (!policy || policy.accessMode !== "restricted" || policy.isExplicit !== 0) return false;
+  return db.prepare(`
+    DELETE FROM knowledge_tree_access_policies
+    WHERE nodeId = ?
+  `).run(input.nodeId).changes > 0;
+}
+'''
+          Path("backend/src/services/knowledgeAccessPolicy.ts").write_text(policy, encoding="utf-8")
+
+          search_path = Path("backend/src/routes/search.ts")
+          search = search_path.read_text(encoding="utf-8")
+          start = search.index("function fetchFtsTermCandidates(")
+          end = search.index("function shouldUseLiteralFallback(", start)
+          candidates = r'''const TERM_CANDIDATE_PAGE_SIZE = 500;
+
+function canViewSearchCandidate(
+  db: Database.Database,
+  noteId: string,
+  userId: string,
+): boolean {
+  const access = resolveResourceKnowledgeAccess("note", noteId, userId, db);
+  return hasKnowledgeCapability(access, "canView");
+}
+
+function fetchFtsTermCandidates(
+  db: Database.Database,
+  term: string,
+  scope: SearchScope,
+  userId: string,
+): { ids: Set<string>; degraded: boolean } {
+  const ids = new Set<string>();
+  const searchTerm = buildFtsSearchTerm(term);
+  if (!searchTerm) return { ids, degraded: false };
+
+  try {
+    let offset = 0;
+    while (ids.size < MAX_TERM_CANDIDATES) {
+      const rows = db.prepare(`
+        SELECT n.id
+        FROM notes_search_fts
+        JOIN notes n ON notes_search_fts.rowid = n.rowid
+        JOIN notebooks nb ON nb.id = n.notebookId
+        WHERE notes_search_fts MATCH ?
+          AND ${scope.sql}
+          AND n.isTrashed = 0
+          AND nb.isDeleted = 0
+        ORDER BY bm25(notes_search_fts, 8.0, 1.0), n.id ASC
+        LIMIT ? OFFSET ?
+      `).all(
+        searchTerm,
+        ...scope.params,
+        TERM_CANDIDATE_PAGE_SIZE,
+        offset,
+      ) as Array<{ id: string }>;
+      for (const row of rows) {
+        if (canViewSearchCandidate(db, row.id, userId)) ids.add(row.id);
+        if (ids.size >= MAX_TERM_CANDIDATES) break;
+      }
+      if (rows.length < TERM_CANDIDATE_PAGE_SIZE) break;
+      offset += rows.length;
+    }
+    return { ids, degraded: false };
+  } catch (error) {
+    console.warn("[search] FTS candidate lookup unavailable; enabling bounded literal fallback:", error);
+    return { ids, degraded: true };
+  }
+}
+
+function fetchMetadataTermCandidates(
+  db: Database.Database,
+  term: string,
+  scope: SearchScope,
+  userId: string,
+): Set<string> {
+  const ids = new Set<string>();
+  let offset = 0;
+  while (ids.size < MAX_TERM_CANDIDATES) {
+    const rows = db.prepare(`
+      SELECT id FROM (
+        SELECT n.id AS id
+        FROM note_tags nt
+        JOIN tags t ON t.id = nt.tagId
+        JOIN notes n ON n.id = nt.noteId
+        JOIN notebooks nb ON nb.id = n.notebookId
+        WHERE ${scope.sql}
+          AND n.isTrashed = 0
+          AND nb.isDeleted = 0
+          AND instr(nowen_search_normalize(COALESCE(t.name, '')), ?) > 0
+
+        UNION
+
+        SELECT n.id AS id
+        FROM attachments a
+        LEFT JOIN attachment_chunks ac ON ac.attachmentId = a.id
+        JOIN notes n ON n.id = a.noteId
+        JOIN notebooks nb ON nb.id = n.notebookId
+        WHERE ${scope.sql}
+          AND n.isTrashed = 0
+          AND nb.isDeleted = 0
+          AND (
+            instr(nowen_search_normalize(COALESCE(a.filename, '')), ?) > 0
+            OR instr(nowen_search_normalize(COALESCE(ac.chunkText, '')), ?) > 0
+          )
+      )
+      ORDER BY id ASC
+      LIMIT ? OFFSET ?
+    `).all(
+      ...scope.params,
+      term,
+      ...scope.params,
+      term,
+      term,
+      TERM_CANDIDATE_PAGE_SIZE,
+      offset,
+    ) as Array<{ id: string }>;
+    for (const row of rows) {
+      if (canViewSearchCandidate(db, row.id, userId)) ids.add(row.id);
+      if (ids.size >= MAX_TERM_CANDIDATES) break;
+    }
+    if (rows.length < TERM_CANDIDATE_PAGE_SIZE) break;
+    offset += rows.length;
+  }
+  return ids;
+}
+
+function fetchLiteralTermCandidates(
+  db: Database.Database,
+  term: string,
+  scope: SearchScope,
+  userId: string,
+): Set<string> {
+  const ids = new Set<string>();
+  let offset = 0;
+  while (ids.size < MAX_TERM_CANDIDATES) {
+    const rows = db.prepare(`
+      SELECT n.id
+      FROM notes n
+      JOIN notebooks nb ON nb.id = n.notebookId
+      WHERE ${scope.sql}
+        AND n.isTrashed = 0
+        AND nb.isDeleted = 0
+        AND (
+          instr(nowen_search_normalize(COALESCE(n.title, '')), ?) > 0
+          OR instr(nowen_search_normalize(COALESCE(n.contentText, '')), ?) > 0
+        )
+      ORDER BY n.updatedAt DESC, n.id ASC
+      LIMIT ? OFFSET ?
+    `).all(
+      ...scope.params,
+      term,
+      term,
+      TERM_CANDIDATE_PAGE_SIZE,
+      offset,
+    ) as Array<{ id: string }>;
+    for (const row of rows) {
+      if (canViewSearchCandidate(db, row.id, userId)) ids.add(row.id);
+      if (ids.size >= MAX_TERM_CANDIDATES) break;
+    }
+    if (rows.length < TERM_CANDIDATE_PAGE_SIZE) break;
+    offset += rows.length;
+  }
+  return ids;
+}
+
+'''
+          search = search[:start] + candidates + search[end:]
+          search = replace_once(
+              search,
+              "function collectCandidates(\n  db: Database.Database,\n  terms: string[],\n  scope: SearchScope,\n): CandidateCollection {",
+              "function collectCandidates(\n  db: Database.Database,\n  terms: string[],\n  scope: SearchScope,\n  userId: string,\n): CandidateCollection {",
+              "collectCandidates signature",
+          )
+          search = search.replace("fetchFtsTermCandidates(db, term, scope)", "fetchFtsTermCandidates(db, term, scope, userId)")
+          search = search.replace("fetchMetadataTermCandidates(db, term, scope)", "fetchMetadataTermCandidates(db, term, scope, userId)")
+          search = search.replace("fetchLiteralTermCandidates(db, term, scope)", "fetchLiteralTermCandidates(db, term, scope, userId)")
+
+          score_start = search.index("function fetchFtsScores(")
+          score_end = search.index("function fetchCandidateRows(", score_start)
+          scores = r'''function fetchFtsScores(
+  db: Database.Database,
+  searchTerm: string,
+  scope: SearchScope,
+  candidateIds: Set<string>,
+): { scores: Map<string, number>; degraded: boolean } {
+  const scores = new Map<string, number>();
+  const ids = Array.from(candidateIds).slice(0, MAX_FETCH_CANDIDATES);
+  if (!searchTerm || ids.length === 0) return { scores, degraded: false };
+  const placeholders = ids.map(() => "?").join(",");
+
+  try {
+    const rows = db.prepare(`
+      SELECT n.id, bm25(notes_search_fts, 8.0, 1.0) AS score
+      FROM notes_search_fts
+      JOIN notes n ON notes_search_fts.rowid = n.rowid
+      JOIN notebooks nb ON nb.id = n.notebookId
+      WHERE notes_search_fts MATCH ?
+        AND ${scope.sql}
+        AND n.id IN (${placeholders})
+        AND n.isTrashed = 0
+        AND nb.isDeleted = 0
+      ORDER BY score
+    `).all(searchTerm, ...scope.params, ...ids) as Array<{ id: string; score: number }>;
+    for (const row of rows) scores.set(row.id, Number(row.score) || 0);
+    return { scores, degraded: false };
+  } catch (error) {
+    console.warn("[search] FTS ranking unavailable; using verified literal ranking:", error);
+    return { scores, degraded: true };
+  }
+}
+
+'''
+          search = search[:score_start] + scores + search[score_end:]
+          search = replace_once(
+              search,
+              "const candidate = collectCandidates(db, terms, scope);",
+              "const candidate = collectCandidates(db, terms, scope, userId);",
+              "search candidate call",
+          )
+          search = replace_once(
+              search,
+              "const fts = fetchFtsScores(db, buildFtsSearchTerm(q), scope);",
+              "const fts = fetchFtsScores(\n    db,\n    buildFtsSearchTerm(q),\n    scope,\n    new Set(rows.map((row) => row.id)),\n  );",
+              "search score call",
+          )
+          search_path.write_text(search, encoding="utf-8")
+
+          resolver_path = Path("backend/src/services/knowledgeCapabilitiesResolver.ts")
+          resolver = resolver_path.read_text(encoding="utf-8")
+          resolver = replace_once(
+              resolver,
+              '''  const ownsPersonalNode = !node.workspaceId && node.userId === userId;
+  const ownsWorkspace = !!node.workspaceId && workspaceOwnerId(db, node.workspaceId) === userId;
+  if (ownsPersonalNode || ownsWorkspace) {''',
+              '''  const ownsPersonalNode = !node.workspaceId && node.userId === userId;
+  const ownsWorkspace = !!node.workspaceId && workspaceOwnerId(db, node.workspaceId) === userId;
+  const workspaceRole = node.workspaceId
+    ? db.prepare("SELECT role FROM workspace_members WHERE workspaceId = ? AND userId = ?")
+        .get(node.workspaceId, userId) as { role: string } | undefined
+    : undefined;
+  const administersWorkspace = workspaceRole?.role === "owner" || workspaceRole?.role === "admin";
+  if (ownsPersonalNode || ownsWorkspace || administersWorkspace) {''',
+              "resolver workspace admin bypass",
+          )
+          resolver_path.write_text(resolver, encoding="utf-8")
+
+          core_path = Path("backend/src/services/knowledgeCapabilitiesCore.ts")
+          core = core_path.read_text(encoding="utf-8")
+          if 'findNearestKnowledgeDenial' not in core:
+              core = replace_once(
+                  core,
+                  'import {\n  findNearestRestrictedKnowledgePolicy,',
+                  'import { findNearestKnowledgeDenial } from "./knowledgeDenyPolicy.js";\nimport {\n  findNearestRestrictedKnowledgePolicy,',
+                  "core denial import",
+              )
+          core = replace_once(
+              core,
+              '''  if (node.userId === userId) {
+    return {
+      nodeId,
+      rolePreset: "admin",
+      capabilities: cloneCapabilities(KNOWLEDGE_ROLE_PRESETS.admin),
+      source: "owner",
+      sourceNodeId: node.id,
+    };
+  }
+
+  const explicit = nearestExplicitAcl(db, nodeId, userId);
+  const restricted = findNearestRestrictedKnowledgePolicy(nodeId, db);
+  if (explicit && (!restricted || (explicit.depth || 0) <= restricted.depth)) {''',
+              '''  const ownsPersonalNode = !node.workspaceId && node.userId === userId;
+  const workspaceOwner = node.workspaceId
+    ? db.prepare("SELECT ownerId FROM workspaces WHERE id = ?").get(node.workspaceId) as { ownerId: string } | undefined
+    : undefined;
+  const workspaceRole = node.workspaceId
+    ? db.prepare("SELECT role FROM workspace_members WHERE workspaceId = ? AND userId = ?")
+        .get(node.workspaceId, userId) as { role: string } | undefined
+    : undefined;
+  const administersWorkspace = workspaceRole?.role === "owner" || workspaceRole?.role === "admin";
+  if (ownsPersonalNode || workspaceOwner?.ownerId === userId || administersWorkspace) {
+    return {
+      nodeId,
+      rolePreset: "admin",
+      capabilities: cloneCapabilities(KNOWLEDGE_ROLE_PRESETS.admin),
+      source: "owner",
+      sourceNodeId: node.id,
+    };
+  }
+
+  const explicit = nearestExplicitAcl(db, nodeId, userId);
+  const denial = findNearestKnowledgeDenial(nodeId, userId, db);
+  if (denial && (!explicit || denial.depth <= (explicit.depth || 0))) {
+    return noAccess(nodeId);
+  }
+  const restricted = findNearestRestrictedKnowledgePolicy(nodeId, db);
+  if (explicit && (!restricted || (explicit.depth || 0) <= restricted.depth)) {''',
+              "core effective resolver",
+          )
+          core_path.write_text(core, encoding="utf-8")
+
+          guard_path = Path("backend/src/middleware/knowledgeCapabilityGuard.ts")
+          guard = guard_path.read_text(encoding="utf-8")
+          guard = guard.replace('if (method === "HEAD" || method === "OPTIONS") return next();', 'if (method === "OPTIONS") return next();')
+          guard = guard.replace('''  if (method === "GET") {
+    const checked = resourceAccess("note", noteId, userId, "canView");''', '''  if (method === "GET" || method === "HEAD") {
+    const checked = resourceAccess("note", noteId, userId, "canView");''')
+          guard = guard.replace('''  if (method === "GET") {
+    const checked = resourceAccess("notebook", notebookId, userId, "canView");''', '''  if (method === "GET" || method === "HEAD") {
+    const checked = resourceAccess("notebook", notebookId, userId, "canView");''')
+          guard_path.write_text(guard, encoding="utf-8")
+
+          pg_path = Path("backend/migrations/065_knowledge_tree_access_policy.sql")
+          pg = pg_path.read_text(encoding="utf-8")
+          pg = pg.replace("CHECK (\"accessMode\" IN ('restricted'))", "CHECK (\"accessMode\" IN ('inherit', 'restricted'))")
+          pg_path.write_text(pg, encoding="utf-8")
+
+          limits_path = Path("backend/tests/knowledge-tree-query-limits.test.ts")
+          limits = limits_path.read_text(encoding="utf-8")
+          limits = limits.replace('const searchRouter = (await import("../src/routes/search.js")).default;\n  await import("../src/runtime/knowledge-tree.js");', 'const searchRouter = (await import("../src/routes/search.js")).default;\n  const { wrapKnowledgeRoute } = await import("../src/runtime/knowledge-tree.js");')
+          limits = limits.replace("for (let index = 0; index < 101; index += 1)", "for (let index = 0; index < 1001; index += 1)")
+          limits = limits.replace('app.route("/api/search", searchRouter);', 'app.route("/api/search", wrapKnowledgeRoute("/api/search", searchRouter));')
+          limits = limits.replace('app.route("/api/files", fileRoutes);', 'app.route("/api/files", wrapKnowledgeRoute("/api/files", fileRoutes));')
+          limits_path.write_text(limits, encoding="utf-8")
+
+          restricted_path = Path("backend/tests/knowledge-tree-restricted-access.test.ts")
+          restricted = restricted_path.read_text(encoding="utf-8")
+          restricted = restricted.replace('for (const userId of ["owner", "allowed", "denied"])', 'for (const userId of ["owner", "admin", "allowed", "denied"])')
+          restricted = restricted.replace('''  db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
+    .run("ws", "owner", "owner");
+  db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
+    .run("ws", "allowed", "viewer");''', '''  db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
+    .run("ws", "owner", "owner");
+  db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
+    .run("ws", "admin", "admin");
+  db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
+    .run("ws", "allowed", "viewer");''')
+          restricted = restricted.replace('''  await import("../src/runtime/knowledge-tree.js");
+  const noteRoutes = new Hono();''', '''  const { wrapKnowledgeRoute } = await import("../src/runtime/knowledge-tree.js");
+  const { getKnowledgeNodeAccessPolicy, setKnowledgeNodeAccessMode } = await import("../src/services/knowledgeAccessPolicy.js");
+  const noteRoutes = new Hono();''')
+          route_pairs = [
+              ("/api/notes", "noteRoutes"),
+              ("/api/notebooks", "notebookRoutes"),
+              ("/api/search", "searchRoutes"),
+              ("/api/offline-sync", "offlineRoutes"),
+              ("/api/files", "fileRoutes"),
+              ("/api/export", "exportRoutes"),
+              ("/api/tags", "tagRoutes"),
+          ]
+          for path, router in route_pairs:
+              restricted = restricted.replace(
+                  f'api.route("{path}", {router});',
+                  f'api.route("{path}", wrapKnowledgeRoute("{path}", {router}));',
+              )
+          restricted = restricted.replace('''  const allowedTree = listKnowledgeTree({ userId: "allowed", workspaceId: "ws", db });
+  assert.equal(allowedTree.some((node) => node.id === root.id), true);
+  assert.equal(allowedTree.some((node) => node.id === child.id), true);
+''', '''  const allowedTree = listKnowledgeTree({ userId: "allowed", workspaceId: "ws", db });
+  assert.equal(allowedTree.some((node) => node.id === root.id), true);
+  assert.equal(allowedTree.some((node) => node.id === child.id), true);
+
+  const adminTree = listKnowledgeTree({ userId: "admin", workspaceId: "ws", db });
+  assert.equal(adminTree.some((node) => node.id === root.id), true);
+  assert.equal(adminTree.some((node) => node.id === child.id), true);
+''')
+          restricted = restricted.replace('''  assert.deepEqual(await deniedDirectResponse.json(), {
+    error: "资源不存在",
+    code: "NOT_FOUND",
+  });
+''', '''  assert.deepEqual(await deniedDirectResponse.json(), {
+    error: "资源不存在",
+    code: "NOT_FOUND",
+  });
+
+  const deniedHeadResponse = await api.request(
+    `http://localhost/api/notes/${child.resourceId}`,
+    { method: "HEAD", headers: deniedHeaders },
+  );
+  assert.equal(deniedHeadResponse.status, 404);
+
+  const adminDirectResponse = await api.request(
+    `http://localhost/api/notes/${child.resourceId}`,
+    { headers: { "X-User-Id": "admin" } },
+  );
+  assert.equal(adminDirectResponse.status, 200);
+''')
+          restricted = restricted.replace('''  assert.equal(resolveNotePermission(child.resourceId, "denied").permission, "read");
+});''', '''  assert.equal(resolveNotePermission(child.resourceId, "denied").permission, "read");
+
+  setKnowledgeNodeRole({
+    nodeId: root.id,
+    targetUserId: "allowed",
+    rolePreset: "readonly",
+    actorUserId: "owner",
+    db,
+  });
+  setKnowledgeNodeAccessMode({
+    nodeId: root.id,
+    accessMode: "inherit",
+    actorUserId: "owner",
+    db,
+  });
+  assert.equal(getKnowledgeNodeAccessPolicy(root.id, db).accessMode, "inherit");
+  assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", db).capabilities.canView, true);
+
+  closeDb();
+  const reopenedDb = getDb();
+  assert.equal(getKnowledgeNodeAccessPolicy(root.id, reopenedDb).accessMode, "inherit");
+  assert.equal(
+    (reopenedDb.prepare("SELECT COUNT(*) AS count FROM knowledge_tree_acl WHERE nodeId = ?")
+      .get(root.id) as { count: number }).count,
+    1,
+  );
+  assert.equal(resolveKnowledgeNodeAccess(child.id, "denied", reopenedDb).capabilities.canView, true);
+});''')
+          restricted_path.write_text(restricted, encoding="utf-8")
+          PY
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci --silent
+      - name: Run authorization regressions
+        working-directory: backend
+        run: node --import tsx --test tests/knowledge-tree-query-limits.test.ts tests/knowledge-tree-restricted-access.test.ts
+      - name: Backend typecheck
+        working-directory: backend
+        run: npm run build:tsc
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/pr645-autofix.yml
+          git add -A
+          git commit -m "fix: 完成团队空间权限链路收口"
+          git push origin HEAD:${GITHUB_REF_NAME}
