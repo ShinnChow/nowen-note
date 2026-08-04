@@ -19,14 +19,14 @@ describe("mobile image viewer contract", () => {
     expect(viewer).toContain("releasePointerCapture");
   });
 
-  it("intercepts Markdown images before window.open and mirrors Tiptap previews", () => {
+  it("intercepts Markdown images before their external-open handler and mirrors Tiptap previews", () => {
     const bridge = source("../../components/MobileImageViewerBridge.tsx");
 
     expect(bridge).toContain('document.addEventListener("click", handleMarkdownImageClick, true)');
     expect(bridge).toContain('closest<HTMLImageElement>(".nowen-md-preview img")');
+    expect(bridge).toContain("event.preventDefault()");
     expect(bridge).toContain("event.stopImmediatePropagation()");
     expect(bridge).toContain("findNativeTiptapPreview()");
     expect(bridge).toContain('img[alt="preview"]');
-    expect(bridge).not.toContain("window.open(");
   });
 });
