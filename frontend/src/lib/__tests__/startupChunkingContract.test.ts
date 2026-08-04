@@ -12,6 +12,7 @@ describe("startup chunking contract", () => {
     for (const runtime of [
       "LazyAIChatPanelRuntime.tsx",
       "LazySharedNoteViewRuntime.tsx",
+      "LazyCommandPaletteRuntime.tsx",
       "LazySidebarRuntime.tsx",
       "LazyNavRailRuntime.tsx",
       "LazyNoteListRuntime.tsx",
@@ -50,6 +51,13 @@ describe("startup chunking contract", () => {
 
     expect(aiRuntime).toContain('React.lazy(() => import("./AIChatReliabilityShell"))');
     expect(sharedRuntime).toContain('React.lazy(() => import("./SharedNoteCommentDisplayRuntime"))');
+  });
+
+  it("loads command search only when the palette is open", () => {
+    const runtime = source("../../components/common/LazyCommandPaletteRuntime.tsx");
+
+    expect(runtime).toContain('React.lazy(() => import("./CommandPalette"))');
+    expect(runtime).toContain("if (!props.open) return null");
   });
 
   it("does not statically import low-frequency feature centers from the entry module", () => {
