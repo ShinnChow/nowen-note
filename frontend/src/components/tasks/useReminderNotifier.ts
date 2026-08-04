@@ -9,6 +9,7 @@ import {
   registerTaskNotificationActionListener,
   showImmediateTaskNotification,
   syncNativeTaskNotifications,
+  wasTaskReminderScheduledNatively,
 } from "@/lib/taskNotifications";
 
 /**
@@ -21,9 +22,9 @@ import {
  *   2. Resync on login, foreground, task/reminder mutations and server changes.
  *   3. Keep the recent-reminder endpoint for automation notifications and for
  *      Web/Electron fallback delivery.
- *   4. ACK only after a notification is delivered or a native schedule is known
- *      to be active. The backend therefore never marks an unseen reminder as
- *      delivered merely because its scanner found it.
+ *   4. ACK only after a notification is delivered or that exact reminder was
+ *      previously handed to the native OS. Scanner discovery alone is never
+ *      treated as successful delivery.
  */
 
 interface RecentReminder {
@@ -90,6 +91,24 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
       }
     };
 
+    const acknowledge = async (reminderId: string) => {
+      notifiedSet.add(reminderId);
+      await api.ackRecentReminders([reminderId]);
+    };
+
+    const deliverImmediately = async (reminder: RecentReminder): Promise<boolean> => {
+      const type = reminder.type || "task_reminder";
+      const copy = notificationCopy(reminder);
+      const delivered = await showImmediateTaskNotification(copy.title, copy.body, {
+        requestPermission: false,
+        taskId: reminder.taskId,
+        reminderId: reminder.reminderId,
+        type,
+      });
+      if (delivered) await acknowledge(reminder.reminderId);
+      return delivered;
+    };
+
     const scan = async () => {
       const scanStartedAt = Date.now();
       let nextSince = scanStartedAt;
@@ -106,27 +125,27 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
             if (!nativeSchedulesReadyRef.current) {
               await syncNativeSchedules();
             }
-            if (nativeSchedulesReadyRef.current) {
-              notifiedSet.add(reminder.reminderId);
-              await api.ackRecentReminders([reminder.reminderId]);
-            } else {
+
+            if (
+              nativeSchedulesReadyRef.current
+              && wasTaskReminderScheduledNatively(reminder.reminderId)
+            ) {
+              await acknowledge(reminder.reminderId);
+              continue;
+            }
+
+            // The app may have been opened for the first time after this reminder
+            // was already due. A successful sync with no future item is not proof
+            // that Android ever received it, so deliver a catch-up notification.
+            const delivered = await deliverImmediately(reminder);
+            if (!delivered) {
               nextSince = Math.min(nextSince, reminder.triggeredAt - 1);
             }
             continue;
           }
 
-          const copy = notificationCopy(reminder);
-          const delivered = await showImmediateTaskNotification(copy.title, copy.body, {
-            requestPermission: false,
-            taskId: reminder.taskId,
-            reminderId: reminder.reminderId,
-            type,
-          });
-
-          if (delivered) {
-            notifiedSet.add(reminder.reminderId);
-            await api.ackRecentReminders([reminder.reminderId]);
-          } else {
+          const delivered = await deliverImmediately(reminder);
+          if (!delivered) {
             nextSince = Math.min(nextSince, reminder.triggeredAt - 1);
           }
         }
