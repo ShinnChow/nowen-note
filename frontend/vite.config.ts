@@ -92,6 +92,36 @@ export default defineConfig({
         find: /^@\/components\/EditorPane$/,
         replacement: path.resolve(__dirname, "./src/components/EditorPaneRuntime.tsx"),
       },
+      // 登录页不应同步下载整个工作台。以下壳只保留轻量 Suspense 边界，
+      // 真正的业务模块在用户进入对应页面时再加载。
+      {
+        find: /^@\/components\/EditorSplitView$/,
+        replacement: path.resolve(__dirname, "./src/components/LazyEditorSplitViewRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/TaskCenter$/,
+        replacement: path.resolve(__dirname, "./src/components/LazyTaskCenterRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/MindMapEditor$/,
+        replacement: path.resolve(__dirname, "./src/components/LazyMindMapEditorRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/DiaryCenter$/,
+        replacement: path.resolve(__dirname, "./src/components/LazyDiaryCenterRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/FileManager$/,
+        replacement: path.resolve(__dirname, "./src/components/LazyFileManagerRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/ShareManagementPage$/,
+        replacement: path.resolve(__dirname, "./src/components/LazyShareManagementPageRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/NotebookShareJoinView$/,
+        replacement: path.resolve(__dirname, "./src/components/LazyNotebookShareJoinViewRuntime.tsx"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
   },
@@ -117,7 +147,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
-        // 手动分包，降低构建内存峰值
+        // 把首屏必需依赖与低频导出/Markdown 依赖分开。此前 vendor-lib 同时包含
+        // framer-motion 和 JSZip/Turndown，登录页只要使用动画就会把低频工具一起下载。
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
           'vendor-tiptap': [
@@ -131,18 +162,22 @@ export default defineConfig({
             '@tiptap/extension-task-list',
             '@tiptap/extension-underline',
           ],
-          'vendor-lib': [
+          'vendor-ui': [
             'framer-motion',
             'lucide-react',
             'react-icons',
-            'jszip',
-            'react-markdown',
-            'remark-gfm',
-            'turndown',
-            'date-fns',
+          ],
+          'vendor-i18n': [
             'i18next',
             'react-i18next',
           ],
+          'vendor-markdown': [
+            'react-markdown',
+            'remark-gfm',
+            'turndown',
+          ],
+          'vendor-archive': ['jszip'],
+          'vendor-date': ['date-fns'],
         },
       },
     },
