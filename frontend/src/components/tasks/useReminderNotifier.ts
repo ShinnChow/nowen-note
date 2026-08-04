@@ -4,6 +4,7 @@ import i18n from "i18next";
 import { api } from "@/lib/api";
 import { TASK_REMINDER_SYNC_EVENT } from "@/lib/taskNotificationSchedule";
 import {
+  cancelAllNativeTaskNotifications,
   getTaskNotificationPermission,
   getTaskNotificationSurface,
   registerTaskNotificationActionListener,
@@ -180,6 +181,11 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
       void syncNativeSchedules();
     };
 
+    const onServerChanged = () => {
+      nativeSchedulesReadyRef.current = false;
+      void cancelAllNativeTaskNotifications().then(() => syncNativeSchedules());
+    };
+
     void registerTaskNotificationActionListener((taskId) => {
       onOpenTaskRef.current?.(taskId);
     }).then((remove) => {
@@ -198,7 +204,7 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
 
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener(TASK_REMINDER_SYNC_EVENT, onScheduleChanged);
-    window.addEventListener("nowen:server-url-changed", onScheduleChanged);
+    window.addEventListener("nowen:server-url-changed", onServerChanged);
     window.addEventListener("nowen:workspace-changed", onScheduleChanged);
 
     void syncNativeSchedules();
@@ -213,8 +219,9 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
       if (appStateHandle) void appStateHandle.remove();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener(TASK_REMINDER_SYNC_EVENT, onScheduleChanged);
-      window.removeEventListener("nowen:server-url-changed", onScheduleChanged);
+      window.removeEventListener("nowen:server-url-changed", onServerChanged);
       window.removeEventListener("nowen:workspace-changed", onScheduleChanged);
+      void cancelAllNativeTaskNotifications();
     };
   }, []);
 }
