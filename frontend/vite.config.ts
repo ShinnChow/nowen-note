@@ -95,6 +95,18 @@ export default defineConfig({
       // 登录页不应同步下载整个工作台。以下壳只保留轻量 Suspense 边界，
       // 真正的业务模块在用户进入对应页面时再加载。
       {
+        find: /^@\/components\/Sidebar$/,
+        replacement: path.resolve(__dirname, "./src/components/LazySidebarRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/NavRail$/,
+        replacement: path.resolve(__dirname, "./src/components/LazyNavRailRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/NoteList$/,
+        replacement: path.resolve(__dirname, "./src/components/LazyNoteListRuntime.tsx"),
+      },
+      {
         find: /^@\/components\/EditorSplitView$/,
         replacement: path.resolve(__dirname, "./src/components/LazyEditorSplitViewRuntime.tsx"),
       },
