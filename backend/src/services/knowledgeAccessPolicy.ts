@@ -150,7 +150,7 @@ export function setKnowledgeNodeAccessMode(input: {
   ensureKnowledgeAccessPolicyTable(db);
   if (input.accessMode === "inherit") {
     db.prepare("DELETE FROM knowledge_tree_access_policies WHERE nodeId = ?").run(input.nodeId);
-    return { accessMode: "inherit", isExplicit: true };
+    return { accessMode: "inherit", isExplicit: false };
   }
   db.prepare(`
     INSERT INTO knowledge_tree_access_policies (
