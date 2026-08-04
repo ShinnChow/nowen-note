@@ -14,6 +14,7 @@ import {
   enforceKnowledgeExportCapabilities,
   enforceKnowledgeTagCapabilities,
 } from "../middleware/knowledgeExportTagCapabilityGuard.js";
+import { enforceKnowledgePermissionPolicies } from "../middleware/knowledgePermissionPolicyGuard.js";
 
 const INSTALL_KEY = Symbol.for("nowen.knowledgeTree.runtimeInstalled");
 const globals = globalThis as typeof globalThis & Record<symbol, boolean>;
@@ -34,6 +35,13 @@ if (!globals[INSTALL_KEY]) {
   const nativeRoute = prototype.route as (this: Hono<any>, path: string, subApp: Hono<any>) => Hono<any>;
 
   prototype.route = function knowledgeTreeRouteWrapper(this: Hono<any>, path: string, subApp: Hono<any>) {
+    if (path === "/api/knowledge-tree/" || path === "/api/knowledge-tree") {
+      const wrapper = new Hono<any>();
+      wrapper.use("*", enforceKnowledgePermissionPolicies);
+      wrapper.route("/", subApp);
+      return nativeRoute.call(this, path, wrapper);
+    }
+
     if (path === "/api/notes") {
       const wrapper = new Hono<any>();
       wrapper.use("*", enforceKnowledgeNoteCapabilities);
