@@ -39,18 +39,18 @@ jobs:
       - name: Apply source patch
         run: node .github/scripts/issue-635-autofix.mjs
 
-      - name: Install frontend and sync Capacitor
+      - name: Install frontend
         working-directory: frontend
         run: |
           npm install --ignore-scripts
           npm install --ignore-scripts --save-dev @capacitor/cli@8.3.1
-          npx cap sync android
 
-      - name: Verify frontend
+      - name: Verify frontend and sync Android
         working-directory: frontend
         run: |
           npm run test:run -- src/lib/__tests__/taskNotificationSchedule.test.ts
           npm run build
+          npx cap sync android
 
       - name: Install backend
         working-directory: backend
