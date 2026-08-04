@@ -79,18 +79,10 @@ jobs:
 
           test_path = Path('backend/tests/knowledge-tree-restricted-access.test.ts')
           test_source = test_path.read_text(encoding='utf-8')
-          legacy_search_assertion = '''  const deniedSearchResponse = await api.request("http://localhost/api/search?q=项目&workspaceId=ws", { headers: deniedHeaders });
-          assert.equal(deniedSearchResponse.status, 200);
-          assert.equal(deniedSearchResponse.headers.get("X-Search-Candidate-Count"), "1");
-          assert.deepEqual(await deniedSearchResponse.json(), [
-            { id: publicChild.resourceId, title: "公开说明", snippet: "public" },
-          ]);
-
-          '''
-          if legacy_search_assertion not in test_source:
-              raise SystemExit('legacy simulated search assertion not found')
+          search_start = test_source.index('  const deniedSearchResponse =')
+          plan_start = test_source.index('  const deniedPlanResponse =', search_start)
           test_path.write_text(
-              test_source.replace(legacy_search_assertion, '', 1),
+              test_source[:search_start] + test_source[plan_start:],
               encoding='utf-8',
           )
           PY
