@@ -16,6 +16,8 @@ import {
   setKnowledgeNodeDenied,
 } from "../services/knowledgeDenyPolicy.js";
 
+const ALLOW_ROLES = new Set(["readonly", "editor", "maintainer", "admin"]);
+
 function replaceJsonResponse(c: Context, payload: unknown, status = c.res.status): void {
   const headers = new Headers(c.res.headers);
   headers.delete("content-length");
@@ -162,9 +164,11 @@ export async function enforceKnowledgePermissionPolicies(c: Context, next: Next)
 
   if (method === "PUT" && !permission.targetUserId) {
     const body = await readBody(c);
-    if (body.rolePreset === "deny") {
+    const rolePreset = String(body.rolePreset || "");
+    const subject = resolveKnowledgePermissionSubject(String(body.subject || body.userId || ""));
+
+    if (rolePreset === "deny") {
       if (!canManage(permission.nodeId, userId)) return forbidden(c);
-      const subject = resolveKnowledgePermissionSubject(String(body.subject || body.userId || ""));
       if (!subject) {
         return c.json({ error: "用户不存在", code: "KNOWLEDGE_PERMISSION_USER_NOT_FOUND" }, 404);
       }
@@ -181,16 +185,17 @@ export async function enforceKnowledgePermissionPolicies(c: Context, next: Next)
       });
     }
 
-    await next();
-    if (!c.res.ok) return;
-    const subject = resolveKnowledgePermissionSubject(String(body.subject || body.userId || ""));
-    if (subject) {
+    // Clear an existing denial before the canonical route writes an allow role, so
+    // the route's returned effective access is already correct. Invalid roles and
+    // unknown users are left untouched and handled by the canonical validator.
+    if (ALLOW_ROLES.has(rolePreset) && subject && canManage(permission.nodeId, userId)) {
       clearKnowledgeNodeDenied({
         nodeId: permission.nodeId,
         targetUserId: subject.id,
         actorUserId: userId,
       });
     }
+    await next();
     return;
   }
 
