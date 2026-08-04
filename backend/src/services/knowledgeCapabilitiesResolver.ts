@@ -4,6 +4,7 @@ import { getDb } from "../db/schema.js";
 import { ensureKnowledgeTreeTables } from "../db/knowledgeTreeMigration.js";
 import { memberQueryService } from "../queries/memberQueryService.js";
 import { findNearestRestrictedKnowledgePolicy } from "./knowledgeAccessPolicy.js";
+import { findNearestKnowledgeDenial } from "./knowledgeDenyPolicy.js";
 import {
   KNOWLEDGE_ROLE_PRESETS,
   type EffectiveKnowledgeAccess,
@@ -52,13 +53,13 @@ function clone(value: KnowledgeCapabilities): KnowledgeCapabilities {
   return { ...value };
 }
 
-function noAccess(nodeId: string): EffectiveKnowledgeAccess {
+function noAccess(nodeId: string, sourceNodeId: string | null = null): EffectiveKnowledgeAccess {
   return {
     nodeId,
     rolePreset: "none",
     capabilities: clone(NONE),
     source: "none",
-    sourceNodeId: null,
+    sourceNodeId,
   };
 }
 
@@ -152,12 +153,12 @@ function legacyAccess(db: Database.Database, node: TreeNodeRow, userId: string) 
 /**
  * Effective access rules:
  * 1. Personal owner / workspace owner always keeps admin access.
- * 2. A direct or inherited ACL grants access when it is located on or below the
- *    nearest restricted boundary.
- * 3. If a restricted boundary exists and no eligible ACL is found, workspace
+ * 2. The nearest explicit allow/deny wins; a child allow can re-open access below
+ *    a denied parent, while a deny on the same node wins over an allow.
+ * 3. An eligible allow must still be on or below the nearest restricted boundary.
+ * 4. If a restricted boundary exists and no eligible allow is found, workspace
  *    membership must not fall back to read access.
- * 4. Without a restricted boundary, legacy workspace/notebook permissions are
- *    preserved for backward compatibility.
+ * 5. Without a restricted boundary, legacy workspace/notebook permissions remain.
  */
 export function resolveKnowledgeNodeAccess(
   nodeId: string,
@@ -181,6 +182,11 @@ export function resolveKnowledgeNodeAccess(
   }
 
   const explicit = nearestExplicitAcl(db, nodeId, userId);
+  const denial = findNearestKnowledgeDenial(nodeId, userId, db);
+  if (denial && (!explicit || denial.depth <= explicit.depth)) {
+    return noAccess(nodeId, denial.nodeId);
+  }
+
   const restricted = findNearestRestrictedKnowledgePolicy(nodeId, db);
   const explicitIsInsideBoundary = Boolean(
     explicit && (!restricted || explicit.depth <= restricted.depth),
@@ -196,7 +202,7 @@ export function resolveKnowledgeNodeAccess(
     };
   }
 
-  if (restricted) return noAccess(nodeId);
+  if (restricted) return noAccess(nodeId, restricted.nodeId);
 
   const legacy = legacyAccess(db, node, userId);
   return {
