@@ -4,6 +4,7 @@ import { applyKnowledgeTreeSort } from "@/lib/knowledgeTreeSort";
 export type KnowledgeNodeType = "folder" | "note" | "markdown" | "word" | "mindmap" | "file";
 export type KnowledgeRolePreset = "readonly" | "editor" | "maintainer" | "admin";
 export type KnowledgeAccessSource = "owner" | "direct" | "inherited" | "legacy" | "none";
+export type KnowledgeAccessMode = "inherit" | "restricted";
 
 export interface KnowledgeCapabilities {
   canView: boolean;
@@ -66,6 +67,7 @@ export interface KnowledgePermissionRow {
 export interface KnowledgePermissionsResponse {
   direct: KnowledgePermissionRow[];
   inheritsFromParent: string | null;
+  accessMode: KnowledgeAccessMode;
   currentUserAccess: EffectiveKnowledgeAccess;
 }
 
