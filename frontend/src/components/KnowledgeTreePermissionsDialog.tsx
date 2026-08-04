@@ -6,6 +6,7 @@ import { confirm } from "@/components/ui/confirm";
 import { api } from "@/lib/api";
 import {
   knowledgeTreeApi,
+  type KnowledgeAccessMode,
   type KnowledgePermissionRow,
   type KnowledgeRolePreset,
   type KnowledgeTreeNode,
@@ -46,6 +47,7 @@ function userName(user: UserPublicInfo): string {
 export default function KnowledgeTreePermissionsDialog({ node, onClose, onChanged }: Props) {
   const [rows, setRows] = useState<KnowledgePermissionRow[]>([]);
   const [inheritsFromParent, setInheritsFromParent] = useState<string | null>(null);
+  const [accessMode, setAccessMode] = useState<KnowledgeAccessMode>("inherit");
   const [userQuery, setUserQuery] = useState("");
   const [userCandidates, setUserCandidates] = useState<UserPublicInfo[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserPublicInfo | null>(null);
@@ -70,6 +72,7 @@ export default function KnowledgeTreePermissionsDialog({ node, onClose, onChange
       ]);
       setRows(response.direct);
       setInheritsFromParent(response.inheritsFromParent);
+      setAccessMode(response.accessMode);
       setCurrentUser({ id: me.id, username: me.username, email: me.email });
     } catch (error: any) {
       toast.error(error?.message || "读取权限失败");
@@ -160,7 +163,7 @@ export default function KnowledgeTreePermissionsDialog({ node, onClose, onChange
       setActiveCandidateIndex(-1);
       await reload();
       onChanged("permission-updated");
-      toast.success("成员权限已更新");
+      toast.success(rows.length === 0 ? "已启用仅指定成员访问" : "成员权限已更新");
     } catch (error: any) {
       toast.error(error?.message || "更新权限失败");
     } finally {
@@ -224,28 +227,47 @@ export default function KnowledgeTreePermissionsDialog({ node, onClose, onChange
       return;
     }
     const inherits = Boolean(inheritsFromParent);
+    const removesLastRestrictedMember = accessMode === "restricted" && rows.length === 1;
     const name = memberName(row);
     const accepted = await confirm({
-      title: inherits ? "恢复继承权限？" : "移除成员？",
-      description: inherits
-        ? `${name} 将不再使用当前节点的独立角色，改为继承上级权限。`
-        : `${name} 在当前节点的直接权限将被移除；下级节点已有的独立权限不会被删除。`,
-      confirmText: inherits ? "恢复继承" : "移除成员",
-      danger: !inherits,
+      title: removesLastRestrictedMember
+        ? "恢复继承权限？"
+        : (inherits ? "恢复该成员继承权限？" : "移除成员？"),
+      description: removesLastRestrictedMember
+        ? `移除 ${name} 后，当前节点将不再使用仅指定成员模式，并恢复继承${inherits ? "上级" : "团队空间"}权限。`
+        : (inherits
+          ? `${name} 将不再使用当前节点的独立角色，改为继承上级权限。`
+          : `${name} 在当前节点的直接权限将被移除；下级节点已有的独立权限不会被删除。`),
+      confirmText: removesLastRestrictedMember || inherits ? "恢复继承" : "移除成员",
+      danger: !removesLastRestrictedMember && !inherits,
     });
     if (!accepted) return;
     setSavingKey(row.userId);
     try {
       await knowledgeTreeApi.clearPermission(node.id, row.userId);
-      setRows((current) => current.filter((item) => item.userId !== row.userId));
-      onChanged(inherits ? "permission-inheritance-restored" : "permission-member-removed");
-      toast.success(inherits ? "已恢复继承" : "当前节点权限已移除");
+      await reload();
+      onChanged(removesLastRestrictedMember || inherits
+        ? "permission-inheritance-restored"
+        : "permission-member-removed");
+      toast.success(removesLastRestrictedMember
+        ? "已恢复继承团队权限"
+        : (inherits ? "已恢复继承" : "当前节点权限已移除"));
     } catch (error: any) {
       toast.error(error?.message || "操作失败");
     } finally {
       setSavingKey(null);
     }
   };
+
+  const policyTitle = accessMode === "restricted"
+    ? "仅指定成员可访问"
+    : (inheritsFromParent ? "继承上级权限" : "继承团队空间权限");
+  const policyDescription = accessMode === "restricted"
+    ? "下方成员列表是允许访问名单。未列出的普通团队成员看不到当前节点及其下级内容；空间所有者始终保留管理权限。"
+    : (inheritsFromParent
+      ? "当前节点沿用上级可见范围和角色。添加第一个成员后，会切换为仅指定成员可访问。"
+      : "当前节点按团队空间角色开放。添加第一个成员后，会自动切换为仅指定成员可访问。未添加成员不会限制其他团队成员。"
+    );
 
   return createPortal(
     <div
@@ -271,22 +293,18 @@ export default function KnowledgeTreePermissionsDialog({ node, onClose, onChange
         </header>
 
         <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
-          <section className="rounded-xl border border-app-border bg-app-hover/25 px-4 py-3">
+          <section className={`rounded-xl border px-4 py-3 ${accessMode === "restricted" ? "border-amber-500/30 bg-amber-500/[0.06]" : "border-app-border bg-app-hover/25"}`}>
             <div className="flex items-center gap-2 text-sm font-medium text-tx-primary">
-              <ShieldCheck size={16} className="text-accent-primary" />
-              {inheritsFromParent ? "继承上级权限" : "当前节点独立管理"}
+              <ShieldCheck size={16} className={accessMode === "restricted" ? "text-amber-500" : "text-accent-primary"} />
+              {policyTitle}
             </div>
-            <p className="mt-1 pl-6 text-xs leading-5 text-tx-tertiary">
-              {inheritsFromParent
-                ? "未直接设置的成员继续继承上级权限；这里设置的角色优先生效。"
-                : "当前节点没有上级权限来源；直接权限仅在这里管理，下级节点已有的独立权限仍保留。"}
-            </p>
+            <p className="mt-1 pl-6 text-xs leading-5 text-tx-tertiary">{policyDescription}</p>
           </section>
 
           <section className="mt-5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-tx-primary">成员</h3>
+                <h3 className="text-sm font-semibold text-tx-primary">{accessMode === "restricted" ? "允许访问的成员" : "独立成员"}</h3>
                 <span className="rounded-full bg-app-hover px-2 py-0.5 text-[11px] text-tx-tertiary">{rows.length}</span>
               </div>
               <button
@@ -451,7 +469,7 @@ export default function KnowledgeTreePermissionsDialog({ node, onClose, onChange
                     {savingKey === "add" ? <Loader2 size={16} className="animate-spin" /> : "添加"}
                   </button>
                 </div>
-                <p className="mt-2 text-xs text-tx-tertiary">{ROLE_LABELS[role]}：{ROLE_DESCRIPTIONS[role]}</p>
+                <p className="mt-2 text-xs text-tx-tertiary">{ROLE_LABELS[role]}：{ROLE_DESCRIPTIONS[role]}。添加第一名成员后，当前节点会切换为仅指定成员可访问。</p>
               </div>
             )}
 
@@ -467,7 +485,7 @@ export default function KnowledgeTreePermissionsDialog({ node, onClose, onChange
               ) : filteredRows.length === 0 ? (
                 <div className="px-4 py-14 text-center text-sm text-tx-tertiary">
                   {rows.length === 0
-                    ? (inheritsFromParent ? "暂无独立成员，当前全部继承上级权限" : "暂无其他成员")
+                    ? (inheritsFromParent ? "暂无独立成员，当前全部继承上级权限" : "暂无独立成员，当前按团队空间角色访问")
                     : "没有匹配的成员"}
                 </div>
               ) : filteredRows.map((row) => {
