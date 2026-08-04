@@ -5,6 +5,8 @@ const ONE_YEAR_SECONDS = 31_536_000;
 const ONE_HOUR_SECONDS = 3_600;
 const HASHED_ASSET_RE = /(?:^|[-.])[A-Za-z0-9_-]{8,}(?=\.[^.]+$)/;
 
+export type StaticContentEncoding = "br" | "gzip" | null;
+
 export interface StaticAssetHeaders {
   "Cache-Control": string;
   ETag: string;
@@ -34,6 +36,47 @@ export function createStaticAssetHeaders(
     ETag: `W/\"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}\"`,
     "Last-Modified": stat.mtime.toUTCString(),
   };
+}
+
+function parseAcceptedEncodings(value: string | null | undefined): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const token of (value || "").split(",")) {
+    const [rawName, ...rawParams] = token.trim().toLowerCase().split(";");
+    if (!rawName) continue;
+    let quality = 1;
+    for (const param of rawParams) {
+      const match = /^q\s*=\s*(0(?:\.\d+)?|1(?:\.0+)?)$/.exec(param.trim());
+      if (match) quality = Number(match[1]);
+    }
+    result.set(rawName, quality);
+  }
+  return result;
+}
+
+export function selectStaticContentEncoding(
+  acceptEncoding: string | null | undefined,
+  available: { br: boolean; gzip: boolean },
+): StaticContentEncoding {
+  const accepted = parseAcceptedEncodings(acceptEncoding);
+  const wildcardQuality = accepted.get("*") ?? 0;
+  const quality = (name: string) => accepted.get(name) ?? wildcardQuality;
+
+  if (available.br && quality("br") > 0) return "br";
+  if (available.gzip && quality("gzip") > 0) return "gzip";
+  return null;
+}
+
+export function mergeVaryHeader(
+  currentValue: string | null | undefined,
+  nextValue: string,
+): string {
+  const values = new Map<string, string>();
+  for (const value of `${currentValue || ""},${nextValue}`.split(",")) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    values.set(trimmed.toLowerCase(), trimmed);
+  }
+  return Array.from(values.values()).join(", ");
 }
 
 export function isStaticAssetNotModified(
