@@ -60,11 +60,26 @@ describe("startup chunking contract", () => {
     expect(main).toContain("<DeferredGlobalFeatureCentersMount />");
     expect(main).toContain('React.lazy(() => import("./App"))');
     expect(main).toContain('React.lazy(() => import("./components/PublicNotebookView"))');
-    expect(main).not.toContain('import NoteImageExportCenter from "./components/NoteImageExportCenter"');
-    expect(main).not.toContain('import DocxImportCenter from "./components/DocxImportCenter"');
+    for (const staticImport of [
+      'import AIProfileSwitcherBridge from "./components/AIProfileSwitcherBridge"',
+      'import EmbeddingIndexTaskCopyBridge from "./components/EmbeddingIndexTaskCopyBridge"',
+      'import MarkdownExperienceBridge from "./components/MarkdownExperienceBridge"',
+      'import MindMapAppearanceBridge from "./components/MindMapAppearanceBridge"',
+      'import NoteImageExportCenter from "./components/NoteImageExportCenter"',
+      'import DocxImportCenter from "./components/DocxImportCenter"',
+    ]) {
+      expect(main).not.toContain(staticImport);
+    }
     expect(deferredMount).toContain('import("./DeferredGlobalFeatureCenters")');
     expect(deferredMount).toContain("nowen:token-changed");
-    expect(deferredCenters).toContain('import NoteImageExportCenter from "./NoteImageExportCenter"');
-    expect(deferredCenters).toContain('import DocxImportCenter from "./DocxImportCenter"');
+    for (const deferredImport of [
+      'import AIProfileSwitcherBridge from "./AIProfileSwitcherBridge"',
+      'import MarkdownExperienceBridge from "./MarkdownExperienceBridge"',
+      'import MindMapAppearanceBridge from "./MindMapAppearanceBridge"',
+      'import NoteImageExportCenter from "./NoteImageExportCenter"',
+      'import DocxImportCenter from "./DocxImportCenter"',
+    ]) {
+      expect(deferredCenters).toContain(deferredImport);
+    }
   });
 });
