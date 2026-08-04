@@ -34,6 +34,10 @@ function normalizePermission(value: string | undefined): TaskNotificationPermiss
   return value ? "prompt" : "unsupported";
 }
 
+function isNativeAndroid(): boolean {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+}
+
 function readNativeScheduleHistory(): TaskReminderScheduleHistory {
   if (typeof window === "undefined") return {};
   try {
@@ -66,7 +70,7 @@ export function wasTaskReminderScheduledNatively(reminderId: string, now = Date.
 }
 
 async function ensureTaskReminderChannel(): Promise<void> {
-  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android" || channelReady) return;
+  if (!isNativeAndroid() || channelReady) return;
   await LocalNotifications.createChannel({
     id: TASK_REMINDER_CHANNEL_ID,
     name: "任务提醒",
@@ -76,6 +80,28 @@ async function ensureTaskReminderChannel(): Promise<void> {
     vibration: true,
   });
   channelReady = true;
+}
+
+export async function getTaskExactAlarmPermission(): Promise<TaskNotificationPermission> {
+  if (!isNativeAndroid()) return "granted";
+  try {
+    const status = await LocalNotifications.checkExactNotificationSetting();
+    return normalizePermission(status.exact_alarm);
+  } catch {
+    return "unsupported";
+  }
+}
+
+async function requestTaskExactAlarmPermission(): Promise<TaskNotificationPermission> {
+  if (!isNativeAndroid()) return "granted";
+  const current = await getTaskExactAlarmPermission();
+  if (current === "granted" || current === "unsupported") return current;
+  try {
+    const status = await LocalNotifications.changeExactNotificationSetting();
+    return normalizePermission(status.exact_alarm);
+  } catch {
+    return current;
+  }
 }
 
 export async function getTaskNotificationPermission(): Promise<TaskNotificationPermission> {
@@ -100,7 +126,12 @@ export async function requestTaskNotificationPermission(): Promise<TaskNotificat
     try {
       const status = await LocalNotifications.requestPermissions();
       const permission = normalizePermission(status.display);
-      if (permission === "granted") await ensureTaskReminderChannel();
+      if (permission === "granted") {
+        await ensureTaskReminderChannel();
+        // Task deadlines are time-sensitive. This call only opens Android's exact
+        // alarm settings after the user explicitly presses "Enable notifications".
+        await requestTaskExactAlarmPermission();
+      }
       return permission;
     } catch {
       return "unsupported";
@@ -146,7 +177,7 @@ export async function showImmediateTaskNotification(
           id: taskReminderNotificationId(seed),
           title,
           body,
-          channelId: Capacitor.getPlatform() === "android" ? TASK_REMINDER_CHANNEL_ID : undefined,
+          channelId: isNativeAndroid() ? TASK_REMINDER_CHANNEL_ID : undefined,
           autoCancel: true,
           schedule: { at: new Date(Date.now() + 300), allowWhileIdle: true },
           extra: {
@@ -196,6 +227,13 @@ export async function syncNativeTaskNotifications(
   try {
     await ensureTaskReminderChannel();
     const platform = Capacitor.getPlatform();
+    if (platform === "android") {
+      const exactPermission = await getTaskExactAlarmPermission();
+      if (exactPermission !== "granted" && exactPermission !== "unsupported") {
+        console.warn("[task-notifications] exact alarms disabled; using Android's inexact fallback");
+      }
+    }
+
     const selected = selectSchedulableTaskReminders(
       reminders,
       platform === "ios" ? "ios" : "android",
