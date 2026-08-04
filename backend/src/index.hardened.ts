@@ -33,4 +33,6 @@ import "./runtime/backup-webdav.js";
 import "./runtime/notebook-publication.js";
 // Mount the unified content tree and capability guard around the legacy note/notebook routers.
 import "./runtime/knowledge-tree.js";
+// Install before the main Hono app registers its production wildcard static route.
+import "./runtime/static-precompressed-assets.js";
 import "./index.js";
