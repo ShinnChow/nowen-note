@@ -187,7 +187,7 @@ export function useReminderNotifier(onOpenTask?: (taskId: string) => void) {
     };
 
     const onServerChanged = () => {
-      resetNativeSchedules();
+      nativeSchedulesReadyRef.current = false;
       void cancelAllNativeTaskNotifications().then(() => syncNativeSchedules());
     };
 
