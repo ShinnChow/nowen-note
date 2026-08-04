@@ -32,7 +32,7 @@ jobs:
           from pathlib import Path
           path = Path('.github/scripts/issue-635-autofix.mjs')
           source = path.read_text(encoding='utf-8')
-          source = source.replace('`${row.dueDate}T23:59:59`', '`\\${row.dueDate}T23:59:59`')
+          source = source.replace('${row.dueDate}T23:59:59', '\\${row.dueDate}T23:59:59')
           path.write_text(source, encoding='utf-8')
           PY
 
