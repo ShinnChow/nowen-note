@@ -68,6 +68,14 @@ jobs:
               "backend/src/db/postgres/065_knowledge_tree_access_policy.sql",
           )
           exec(compile(script, 'pr645-autofix.py', 'exec'))
+
+          guard_path = Path('backend/src/middleware/knowledgeSearchCapabilityGuard.ts')
+          guard = guard_path.read_text(encoding='utf-8')
+          old = 'if (c.req.method.toUpperCase() !== "GET" || !/^\\/api\\/search\\/?$/.test(c.req.path)) {'
+          new = 'if (c.req.method.toUpperCase() !== "GET") {'
+          if old not in guard:
+              raise SystemExit('search guard condition not found')
+          guard_path.write_text(guard.replace(old, new, 1), encoding='utf-8')
           PY
       - name: Install backend dependencies
         working-directory: backend
