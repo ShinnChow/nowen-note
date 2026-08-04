@@ -1,0 +1,63 @@
+name: Issue 635 Android Reminder Autofix
+
+on:
+  push:
+    branches:
+      - fix/issue-635-android-native-reminders
+    paths:
+      - .github/issue-635-autofix-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      - name: Apply source patch
+        run: node .github/scripts/issue-635-autofix.mjs
+
+      - name: Install frontend and sync Capacitor
+        working-directory: frontend
+        run: |
+          npm install --ignore-scripts
+          npx cap sync android
+
+      - name: Verify frontend
+        working-directory: frontend
+        run: |
+          npm run test:run -- src/lib/__tests__/taskNotificationSchedule.test.ts
+          npm run build
+
+      - name: Install backend
+        working-directory: backend
+        run: npm ci
+
+      - name: Verify backend
+        working-directory: backend
+        run: |
+          npx tsc --noEmit
+          npx tsx --test tests/task-reminders.test.ts tests/task-reminder-delivery-contract.test.ts
+
+      - name: Commit verified fix
+        run: |
+          rm -f .github/issue-635-autofix-trigger
+          rm -f .github/scripts/issue-635-autofix.mjs
+          rm -f .github/workflows/issue-635-autofix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: 接入安卓原生任务提醒并保障交付"
+          git push origin HEAD:fix/issue-635-android-native-reminders
