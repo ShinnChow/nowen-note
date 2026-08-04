@@ -11,6 +11,8 @@ export interface KnowledgeAccessPolicyMatch {
   depth: number;
 }
 
+const initializedDatabases = new WeakSet<Database.Database>();
+
 /**
  * A node enters restricted mode as soon as it has at least one direct ACL row.
  * In restricted mode, workspace membership alone is not sufficient: only an ACL
@@ -19,6 +21,7 @@ export interface KnowledgeAccessPolicyMatch {
 export function ensureKnowledgeAccessPolicyTable(
   db: Database.Database = getDb(),
 ): void {
+  if (initializedDatabases.has(db)) return;
   ensureKnowledgeTreeTables(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS knowledge_tree_access_policies (
@@ -35,6 +38,7 @@ export function ensureKnowledgeAccessPolicyTable(
     CREATE INDEX IF NOT EXISTS idx_knowledge_tree_access_policy_mode
       ON knowledge_tree_access_policies(accessMode, nodeId);
   `);
+  initializedDatabases.add(db);
 }
 
 export function getKnowledgeNodeAccessMode(
