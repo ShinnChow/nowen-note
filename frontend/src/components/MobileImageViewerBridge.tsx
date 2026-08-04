@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import MobileImageViewer from "@/components/MobileImageViewer";
 
 interface ViewerRequest {
@@ -10,11 +11,14 @@ interface ViewerRequest {
 interface HiddenNativePreview {
   overlay: HTMLElement;
   visibility: string;
+  visibilityPriority: string;
   pointerEvents: string;
+  pointerEventsPriority: string;
   ariaHidden: string | null;
 }
 
 function isMobileViewerEnvironment(): boolean {
+  if (Capacitor.getPlatform() === "android") return true;
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(max-width: 767px), (pointer: coarse)").matches;
 }
@@ -32,6 +36,13 @@ function findNativeTiptapPreview(): { overlay: HTMLElement; image: HTMLImageElem
     return { overlay, image };
   }
   return null;
+}
+
+function restoreNativePreview(hidden: HiddenNativePreview): void {
+  hidden.overlay.style.setProperty("visibility", hidden.visibility, hidden.visibilityPriority);
+  hidden.overlay.style.setProperty("pointer-events", hidden.pointerEvents, hidden.pointerEventsPriority);
+  if (hidden.ariaHidden === null) hidden.overlay.removeAttribute("aria-hidden");
+  else hidden.overlay.setAttribute("aria-hidden", hidden.ariaHidden);
 }
 
 /**
@@ -55,17 +66,14 @@ export default function MobileImageViewerBridge() {
     const current = hiddenNativeRef.current;
     if (current?.overlay === overlay) return;
 
-    if (current?.overlay.isConnected) {
-      current.overlay.style.visibility = current.visibility;
-      current.overlay.style.pointerEvents = current.pointerEvents;
-      if (current.ariaHidden === null) current.overlay.removeAttribute("aria-hidden");
-      else current.overlay.setAttribute("aria-hidden", current.ariaHidden);
-    }
+    if (current?.overlay.isConnected) restoreNativePreview(current);
 
     hiddenNativeRef.current = {
       overlay,
-      visibility: overlay.style.visibility,
-      pointerEvents: overlay.style.pointerEvents,
+      visibility: overlay.style.getPropertyValue("visibility"),
+      visibilityPriority: overlay.style.getPropertyPriority("visibility"),
+      pointerEvents: overlay.style.getPropertyValue("pointer-events"),
+      pointerEventsPriority: overlay.style.getPropertyPriority("pointer-events"),
       ariaHidden: overlay.getAttribute("aria-hidden"),
     };
     overlay.style.setProperty("visibility", "hidden", "important");
@@ -101,10 +109,7 @@ export default function MobileImageViewerBridge() {
   }, []);
 
   useEffect(() => {
-    let frame = 0;
-
     const reconcile = () => {
-      frame = 0;
       clearDisconnectedNativePreview();
       if (!isMobileViewerEnvironment() || Date.now() < suppressNativeUntilRef.current) return;
 
@@ -119,35 +124,24 @@ export default function MobileImageViewerBridge() {
       setRequest({ src, alt: native.image.alt === "preview" ? "" : native.image.alt, source: "tiptap" });
     };
 
-    const schedule = () => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(reconcile);
-    };
-
-    schedule();
-    const observer = new MutationObserver(schedule);
+    reconcile();
+    const observer = new MutationObserver(reconcile);
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["class", "src", "style"],
+      attributeFilter: ["class", "src"],
     });
-    window.addEventListener("resize", schedule);
-    window.addEventListener("focus", schedule);
+    window.addEventListener("resize", reconcile);
+    window.addEventListener("focus", reconcile);
 
     return () => {
-      if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
-      window.removeEventListener("resize", schedule);
-      window.removeEventListener("focus", schedule);
+      window.removeEventListener("resize", reconcile);
+      window.removeEventListener("focus", reconcile);
 
       const hidden = hiddenNativeRef.current;
-      if (hidden?.overlay.isConnected) {
-        hidden.overlay.style.visibility = hidden.visibility;
-        hidden.overlay.style.pointerEvents = hidden.pointerEvents;
-        if (hidden.ariaHidden === null) hidden.overlay.removeAttribute("aria-hidden");
-        else hidden.overlay.setAttribute("aria-hidden", hidden.ariaHidden);
-      }
+      if (hidden?.overlay.isConnected) restoreNativePreview(hidden);
       hiddenNativeRef.current = null;
     };
   }, [clearDisconnectedNativePreview, hideNativePreview]);
