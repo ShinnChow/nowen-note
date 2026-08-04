@@ -10,6 +10,8 @@ describe("startup chunking contract", () => {
     const config = source("../../../vite.config.ts");
 
     for (const runtime of [
+      "LazyAIChatPanelRuntime.tsx",
+      "LazySharedNoteViewRuntime.tsx",
       "LazySidebarRuntime.tsx",
       "LazyNavRailRuntime.tsx",
       "LazyNoteListRuntime.tsx",
@@ -40,5 +42,13 @@ describe("startup chunking contract", () => {
     expect(runtime).toContain('React.lazy(() => import("./FormatAwareEditorPane"))');
     expect(runtime).toContain('React.lazy(() => import("./NoteSplitDialog"))');
     expect(runtime).not.toContain('import FormatAwareEditorPane from "./FormatAwareEditorPane"');
+  });
+
+  it("keeps AI and public sharing implementations outside the login chunk", () => {
+    const aiRuntime = source("../../components/LazyAIChatPanelRuntime.tsx");
+    const sharedRuntime = source("../../components/LazySharedNoteViewRuntime.tsx");
+
+    expect(aiRuntime).toContain('React.lazy(() => import("./AIChatReliabilityShell"))');
+    expect(sharedRuntime).toContain('React.lazy(() => import("./SharedNoteCommentDisplayRuntime"))');
   });
 });
