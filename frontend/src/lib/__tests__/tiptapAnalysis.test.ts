@@ -41,8 +41,8 @@ describe("analyzeTiptapDocument", () => {
 
     expect(result.headings).toEqual([
       { id: "h-0", level: 1, text: "上半部分", pos: 0 },
-      // First heading size: 7; empty paragraph: 2; bullet list: 6.
-      { id: "h-1", level: 2, text: "下半部分", pos: 15 },
+      // First heading size: 6; empty paragraph: 2; bullet list: 6.
+      { id: "h-1", level: 2, text: "下半部分", pos: 14 },
     ]);
   });
 
