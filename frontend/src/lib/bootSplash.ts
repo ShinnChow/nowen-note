@@ -130,7 +130,7 @@ function isApplicationReady(root: HTMLElement): boolean {
  */
 export function observeBootSplashReadiness(root: HTMLElement | null): () => void {
   if (!root || typeof MutationObserver === "undefined") {
-    revealReactRoot();
+    dismissBootSplash();
     return () => {};
   }
   let stopped = false;
