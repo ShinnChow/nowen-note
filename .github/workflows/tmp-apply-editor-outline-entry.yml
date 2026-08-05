@@ -1,0 +1,47 @@
+name: Apply Editor Outline Toolbar Entry
+
+on:
+  push:
+    branches:
+      - release/v1.4.6
+    paths:
+      - ".github/workflows/tmp-apply-editor-outline-entry.yml"
+      - "scripts/patch-editor-outline-entry.mjs"
+      - "frontend/src/components/__tests__/EditorOutlineEntry.test.ts"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.6
+          fetch-depth: 0
+
+      - name: Move outline entry to outer toolbar
+        run: node scripts/patch-editor-outline-entry.mjs
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Run outline regression tests
+        run: npm run test:run --prefix frontend -- src/components/__tests__/EditorOutlineEntry.test.ts src/components/__tests__/EditorOutlineResize.test.ts
+
+      - name: Build frontend
+        run: npm run build --prefix frontend
+
+      - name: Commit validated implementation
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-apply-editor-outline-entry.yml
+          rm scripts/patch-editor-outline-entry.mjs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/components/EditorPane.tsx frontend/src/components/__tests__/EditorOutlineEntry.test.ts .github/workflows/tmp-apply-editor-outline-entry.yml scripts/patch-editor-outline-entry.mjs
+          git commit -m "feat(editor): move outline toggle to outer toolbar"
+          git push origin HEAD:release/v1.4.6
