@@ -73,7 +73,7 @@ describe("DailyJournalContentPreview", () => {
   });
 
   it("keeps the journal card content outside a wrapping button", () => {
-    const source = readFileSync(new URL("../DailyJournalView.tsx", import.meta.url), "utf8");
+    const source = readFileSync("src/components/daily-records/DailyJournalView.tsx", "utf8");
     expect(source).toContain("<DailyJournalContentPreview");
     expect(source).not.toContain('className="block min-h-[190px] w-full px-5 py-5 text-left');
   });
