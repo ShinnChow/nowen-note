@@ -17,6 +17,28 @@ function bootWindow(): NowenBootWindow {
   return window as NowenBootWindow;
 }
 
+function getReactRoot(): HTMLElement | null {
+  return typeof document === "undefined" ? null : document.getElementById("root");
+}
+
+function concealReactRoot(): void {
+  const root = getReactRoot();
+  if (!root) return;
+  root.style.visibility = "hidden";
+  root.style.pointerEvents = "none";
+}
+
+function revealReactRoot(): void {
+  const root = getReactRoot();
+  if (!root) return;
+  root.style.visibility = "visible";
+  root.style.pointerEvents = "";
+}
+
+// This module is imported before ReactDOM.render. Hide the root before AuthGate or Suspense
+// can paint a second full-screen spinner during the 260ms no-flash startup window.
+concealReactRoot();
+
 function clearBootTimers(): void {
   const target = bootWindow();
   if (target.__NOWEN_BOOT_TIMER__) window.clearTimeout(target.__NOWEN_BOOT_TIMER__);
@@ -44,11 +66,15 @@ export function dismissBootSplash(): void {
   clearBootTimers();
 
   const element = document.getElementById(BOOT_SPLASH_ID);
-  if (!element) return;
+  if (!element) {
+    revealReactRoot();
+    return;
+  }
 
   const target = bootWindow();
   const visible = element.classList.contains(BOOT_SPLASH_VISIBLE_CLASS);
   if (!visible) {
+    revealReactRoot();
     removeSplash(element);
     return;
   }
@@ -56,6 +82,8 @@ export function dismissBootSplash(): void {
   const visibleAt = target.__NOWEN_BOOT_VISIBLE_AT__ || Date.now();
   const remaining = Math.max(0, BOOT_SPLASH_MIN_VISIBLE_MS - (Date.now() - visibleAt));
   window.setTimeout(() => {
+    // Reveal the completed application underneath, then fade the only startup surface away.
+    revealReactRoot();
     element.classList.add(BOOT_SPLASH_LEAVING_CLASS);
     removeTimer = window.setTimeout(() => removeSplash(element), BOOT_SPLASH_LEAVE_MS);
   }, remaining);
@@ -98,7 +126,10 @@ function isApplicationReady(root: HTMLElement): boolean {
  * login, share or recovery surface has mounted. Returns an idempotent cleanup function.
  */
 export function observeBootSplashReadiness(root: HTMLElement | null): () => void {
-  if (!root || typeof MutationObserver === "undefined") return () => {};
+  if (!root || typeof MutationObserver === "undefined") {
+    revealReactRoot();
+    return () => {};
+  }
   let stopped = false;
 
   const check = () => {
