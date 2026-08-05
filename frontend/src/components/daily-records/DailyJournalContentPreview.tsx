@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import DOMPurify from "dompurify";
 
-import MarkdownPreview from "@/components/MarkdownPreview";
+import { MarkdownPreview } from "@/components/MarkdownPreview";
 import { NoteLinkPreviewAnchor } from "@/components/NoteLinkPreview";
 import { openInternalNoteLink } from "@/lib/blockNavigation";
 import { resolveAttachmentUrl } from "@/lib/api";
