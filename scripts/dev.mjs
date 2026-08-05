@@ -4,6 +4,7 @@ import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { forceReleasePorts } from "./dev-port-manager.mjs"
+import { ensureWorkspaceDependencies } from "./dev-dependency-manager.mjs"
 
 const __filename = fileURLToPath(import.meta.url)
 const scriptsDir = path.dirname(__filename)
@@ -38,6 +39,16 @@ if (backendPort === frontendPort) {
 const backendUrl = `http://127.0.0.1:${backendPort}`
 const frontendUrl = `http://localhost:${frontendPort}`
 
+console.log("\n[dev] 正在检查项目依赖...")
+try {
+  ensureWorkspaceDependencies(rootDir, "根目录")
+  ensureWorkspaceDependencies(backendDir, "后端")
+  ensureWorkspaceDependencies(frontendDir, "前端")
+} catch (error) {
+  console.error(`\n[dev] 依赖检查失败：${error instanceof Error ? error.message : String(error)}\n`)
+  process.exit(1)
+}
+
 const electronCli = path.join(rootDir, "node_modules", "electron", "cli.js")
 const tsxCli = path.join(backendDir, "node_modules", "tsx", "dist", "cli.mjs")
 const backendEntry = path.join(backendDir, "src", "index.hardened.ts")
@@ -64,6 +75,7 @@ try {
 console.log("\n🚀 Nowen Note 开发环境")
 console.log(`   前端: ${frontendUrl}`)
 console.log(`   后端: ${backendUrl}`)
+console.log("   依赖变更时会自动执行对应目录的 npm install")
 console.log("   端口冲突时会强制停止占用进程并重新启动")
 console.log("   按 Ctrl+C 可同时停止前后端\n")
 
@@ -81,14 +93,14 @@ function startProcess(label, command, args, options) {
   children.push(child)
 
   child.once("error", (error) => {
-    console.error(`[dev] ${label} 启动失败:`, error)
+    console.error(`[dev] ${label}启动失败:`, error)
     void shutdown(1)
   })
 
   child.once("exit", (code, signal) => {
     if (stopping) return
     const reason = signal ? `信号 ${signal}` : `退出码 ${code ?? 1}`
-    console.error(`\n[dev] ${label} 已退出（${reason}），正在停止其余进程...`)
+    console.error(`\n[dev] ${label}已退出（${reason}），正在停止其余进程...`)
     void shutdown(code ?? 1)
   })
 
