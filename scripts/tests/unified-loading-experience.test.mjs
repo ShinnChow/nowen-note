@@ -45,12 +45,18 @@ test("startup controller hides transient auth UI and is stable in StrictMode", a
 })
 
 test("workspace and note loading use structural local feedback", async () => {
-  const css = await readRepoFile("frontend/src/loading-experience.css")
+  const [css, treePanel, noteSkeleton] = await Promise.all([
+    readRepoFile("frontend/src/loading-experience.css"),
+    readRepoFile("frontend/src/components/KnowledgeTreePanel.tsx"),
+    readRepoFile("frontend/src/components/NoteLoadingSkeleton.tsx"),
+  ])
 
   assert.match(css, /data-nowen-knowledge-tree/)
   assert.match(css, /nowen-tree-skeleton-pulse/)
   assert.match(css, /data-note-loading-state="loading"/)
   assert.match(css, /nowen-note-progress/)
+  assert.match(treePanel, /className="flex justify-center py-14"/)
+  assert.match(noteSkeleton, /data-note-loading-state=/)
 })
 
 test("note switching suppresses fast loading flashes", async () => {
