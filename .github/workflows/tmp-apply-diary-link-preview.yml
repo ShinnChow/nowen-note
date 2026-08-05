@@ -6,6 +6,9 @@ on:
       - release/v1.4.6
     paths:
       - ".github/workflows/tmp-apply-diary-link-preview.yml"
+      - "frontend/src/components/daily-records/DailyJournalContentPreview.tsx"
+      - "frontend/src/components/daily-records/__tests__/dailyJournalContentPreview.test.tsx"
+      - "scripts/patch-diary-link-preview.mjs"
 
 permissions:
   contents: write
