@@ -23,10 +23,11 @@ echo "[linux-native] rebuilding better-sqlite3 in node:20-bullseye for linux-$AR
 docker run --rm \
   -e HOME=/tmp/nowen-home \
   -e npm_config_cache=/tmp/nowen-npm-cache \
+  -e NOWEN_LINUX_BASELINE_CONTAINER=1 \
   -v "$ROOT:/workspace" \
   -w /workspace \
   node:20-bullseye \
-  bash -lc "npm run rebuild:native -- --target-platform=linux --target-arch=$ARCH"
+  bash -lc "node scripts/rebuild-native.mjs --target-platform=linux --target-arch=$ARCH"
 
 if command -v sudo >/dev/null 2>&1; then
   sudo chown -R "$(id -u):$(id -g)" backend/node_modules/better-sqlite3
