@@ -1,0 +1,226 @@
+name: Apply Linux Desktop Native Portability Fix
+
+on:
+  push:
+    branches:
+      - release/v1.4.6
+    paths:
+      - ".github/workflows/tmp-apply-linux-native-portability.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.6
+          fetch-depth: 0
+
+      - name: Patch release workflow, builder guard and startup diagnostics
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8-sig')
+              if old not in text:
+                  raise SystemExit(f'missing patch anchor in {path}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+              p.write_text(text, encoding='utf-8')
+
+          replace_once(
+              'package.json',
+              '    "rebuild:native": "node scripts/rebuild-native.mjs",\n',
+              '    "rebuild:native": "node scripts/rebuild-native.mjs",\n'
+              '    "rebuild:native:linux-portable": "bash scripts/rebuild-linux-portable.sh",\n',
+          )
+
+          replace_once(
+              '.github/workflows/release.yml',
+              '''      - name: Rebuild native modules for Electron ABI
+                if: matrix.os != 'macos-latest'
+                run: npm run rebuild:native
+                shell: bash
+          ''',
+              '''      - name: Rebuild native modules for Electron ABI (Windows)
+                if: matrix.os == 'windows-latest'
+                run: npm run rebuild:native
+                shell: bash
+
+              - name: Rebuild Linux native modules on the glibc 2.31 baseline
+                if: matrix.os == 'ubuntu-latest'
+                env:
+                  TARGET_ARCH: x64
+                  NOWEN_LINUX_MAX_GLIBC: "2.31"
+                  NOWEN_LINUX_MAX_GLIBCXX: "3.4.28"
+                  NOWEN_LINUX_MAX_CXXABI: "1.3.12"
+                run: npm run rebuild:native:linux-portable
+                shell: bash
+          ''',
+          )
+
+          replace_once(
+              'electron/builder.base.config.js',
+              'const fs = require("fs");\n',
+              'const fs = require("fs");\n'
+              'const {\n'
+              '  assertLinuxNativeBinaryCompatible,\n'
+              '  formatCompatibilityReport,\n'
+              '} = require("../scripts/lib/linux-native-compat.cjs");\n',
+          )
+
+          replace_once(
+              'electron/builder.base.config.js',
+              '''  console.log(
+                `[builder] ✓ ABI symbol verified: node_register_module_v${expectedAbi}`
+              );
+            }
+          ''',
+              '''  console.log(
+                `[builder] ✓ ABI symbol verified: node_register_module_v${expectedAbi}`
+              );
+
+              if (targetPlatform === "linux") {
+                const report = assertLinuxNativeBinaryCompatible(nodeFile, {
+                  expectedArch: targetArch,
+                });
+                console.log(formatCompatibilityReport(report));
+              }
+            }
+          ''',
+          )
+
+          replace_once(
+              'electron/main.js',
+              'let backendProcess = null;\nlet backendPort = 0;\n',
+              'let backendProcess = null;\nlet backendPort = 0;\n'
+              'let backendRecentOutput = [];\n'
+              'let backendExitInfo = null;\n'
+              'const BACKEND_RECENT_OUTPUT_LIMIT = 120;\n',
+          )
+
+          replace_once(
+              'electron/main.js',
+              '// ---------- 启动后端 ----------\nasync function startBackend() {\n  backendPort = await getFreePort();\n',
+              '''function rememberBackendOutput(source, chunk) {
+              const lines = String(chunk || "")
+                .split(/\\r?\\n/)
+                .map((line) => line.trimEnd())
+                .filter(Boolean)
+                .map((line) => `[${source}] ${line}`);
+              backendRecentOutput.push(...lines);
+              if (backendRecentOutput.length > BACKEND_RECENT_OUTPUT_LIMIT) {
+                backendRecentOutput.splice(0, backendRecentOutput.length - BACKEND_RECENT_OUTPUT_LIMIT);
+              }
+            }
+
+            function getBackendFailureSummary() {
+              const nativeFailurePattern = /ERR_DLOPEN_FAILED|GLIBC(?:XX)?_[0-9.]+|CXXABI_[0-9.]+|better_sqlite3\\.node|NODE_MODULE_VERSION|wrong ELF|invalid ELF|not found|Module did not self-register/i;
+              const priority = backendRecentOutput.filter((line) => nativeFailurePattern.test(line));
+              const selected = (priority.length > 0 ? priority : backendRecentOutput).slice(-16);
+              if (backendExitInfo) selected.push(`[exit] ${backendExitInfo}`);
+              if (selected.length === 0) return "";
+              const nativeFailure = selected.some((line) => nativeFailurePattern.test(line));
+              return (
+                (nativeFailure
+                  ? "检测到 SQLite 原生模块加载失败。安装包中的 better_sqlite3.node 与当前 Linux 运行环境不兼容。\\n"
+                  : "") +
+                selected.join("\\n")
+              );
+            }
+
+            // ---------- 启动后端 ----------
+            async function startBackend() {
+              backendRecentOutput = [];
+              backendExitInfo = null;
+              backendPort = await getFreePort();
+            ''',
+          )
+
+          replace_once(
+              'electron/main.js',
+              '''  backendProcess.stdout.on("data", (d) =>
+                console.log("[Backend]", d.toString().trimEnd())
+              );
+              backendProcess.stderr.on("data", (d) =>
+                console.error("[Backend Error]", d.toString().trimEnd())
+              );
+              backendProcess.on("exit", (code, signal) => {
+                console.error(
+                  `[Backend] Exited code=${code} signal=${signal || ""}${spawnErr ? " err=" + spawnErr.message : ""}`
+                );
+                backendProcess = null;
+              });
+          ''',
+              '''  backendProcess.stdout.on("data", (d) => {
+                const text = d.toString().trimEnd();
+                rememberBackendOutput("stdout", text);
+                console.log("[Backend]", text);
+              });
+              backendProcess.stderr.on("data", (d) => {
+                const text = d.toString().trimEnd();
+                rememberBackendOutput("stderr", text);
+                console.error("[Backend Error]", text);
+              });
+              backendProcess.on("exit", (code, signal) => {
+                backendExitInfo = `code=${code} signal=${signal || ""}${spawnErr ? " err=" + spawnErr.message : ""}`;
+                rememberBackendOutput("exit", backendExitInfo);
+                console.error(`[Backend] Exited ${backendExitInfo}`);
+                backendProcess = null;
+              });
+          ''',
+          )
+
+          replace_once(
+              'electron/main.js',
+              '''  } catch (e) {
+                // 附带 spawn 错误信息一起抛给 UI 弹窗
+                if (spawnErr) {
+                  throw new Error(`${e.message}；子进程启动错误：${spawnErr.message}`);
+                }
+                throw e;
+              }
+          ''',
+              '''  } catch (e) {
+                const failureSummary = getBackendFailureSummary();
+                const spawnMessage = spawnErr ? `；子进程启动错误：${spawnErr.message}` : "";
+                throw new Error(
+                  `${e.message}${spawnMessage}` +
+                    (failureSummary ? `\\n\\n后端原始错误：\\n${failureSummary}` : "")
+                );
+              }
+          ''',
+          )
+
+          replace_once(
+              'electron/main.js',
+              '  const tail = tailLogFile(20);\n',
+              '  const tail = tailLogFile(80);\n',
+          )
+          replace_once(
+              'electron/main.js',
+              '(tail ? `— 最近日志（尾 20 行）—\\n${tail}\\n\\n` : "") +\n',
+              '(tail ? `— 最近日志（尾 80 行）—\\n${tail}\\n\\n` : "") +\n',
+          )
+          PY
+
+      - name: Validate patches
+        run: |
+          node --check electron/main.js
+          node --check electron/builder.base.config.js
+          node --test scripts/tests/linux-native-compat.test.cjs
+
+      - name: Commit fix directly to release branch
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-apply-linux-native-portability.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json .github/workflows/release.yml electron/main.js electron/builder.base.config.js .github/workflows/tmp-apply-linux-native-portability.yml
+          git commit -m "fix(linux): build portable desktop native modules"
+          git push origin HEAD:release/v1.4.6
