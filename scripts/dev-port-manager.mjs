@@ -216,10 +216,11 @@ async function findUnixListeningPids(port) {
     for (const pid of parsePids(lsof.stdout)) pids.add(pid)
   }
 
+  // GNU fuser writes only PIDs to stdout. Never parse stderr here: error messages may
+  // contain the port number and must not be mistaken for a process id.
   const fuser = await runCommand("fuser", ["-n", "tcp", String(port)])
   if (!fuser.error) {
-    const fallbackOutput = fuser.stderr.replace(/^\s*\d+\/tcp:\s*/m, "")
-    for (const pid of parsePids(fuser.stdout || fallbackOutput)) pids.add(pid)
+    for (const pid of parsePids(fuser.stdout)) pids.add(pid)
   }
 
   const ss = await runCommand("ss", ["-ltnp", `sport = :${port}`])
