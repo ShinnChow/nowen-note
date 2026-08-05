@@ -34,6 +34,7 @@ import "./mobile-knowledge-tree-compact.css";
 import "./siyuan-rich-text-callout.css";
 import "./knowledge-tree-markdown-drop.css";
 import "./inline-comments.css";
+import "./loading-experience.css";
 import { initCodeBlockTheme } from "./lib/codeBlockTheme";
 import { installAndroidNativeHttpBridge } from "./lib/androidNativeHttpBridge";
 import { installMobileStartupBridge } from "./lib/mobileStartupBridge";
@@ -61,6 +62,7 @@ import { installKnowledgeTreeMarkdownDrop } from "./lib/knowledgeTreeMarkdownDro
 import { installInlineCommentTooltipMount } from "./lib/inlineCommentTooltipMount";
 import { resolveCurrentAppPathname } from "./lib/appPathNavigation";
 import { installUgreenCredentialedFetch } from "./lib/ugreenRemoteAccess";
+import { observeBootSplashReadiness } from "./lib/bootSplash";
 
 const App = React.lazy(() => import("./App"));
 const PublicNotebookView = React.lazy(() => import("./components/PublicNotebookView"));
@@ -68,38 +70,22 @@ const PublicNotebookView = React.lazy(() => import("./components/PublicNotebookV
 void cleanupRemovedServerProfiles();
 installUgreenCredentialedFetch();
 
-function removeBootSplash() {
-  try {
-    window.clearTimeout((window as any).__NOWEN_BOOT_TIMER__);
-    const el = document.getElementById("app-boot-splash");
-    if (!el) return;
-    el.classList.add("app-boot-splash--leaving");
-    window.setTimeout(() => el.remove(), 220);
-  } catch {
-    /* ignore */
-  }
-}
-
-function BootSplashRemover() {
-  React.useEffect(() => {
-    removeBootSplash();
-  }, []);
+/**
+ * The HTML startup card stays above React while lazy modules, auth restoration and quick
+ * login probing are running. Once a real route or interactive surface mounts, this observer
+ * dismisses it with the minimum-visible-time guard from bootSplash.ts.
+ */
+function BootSplashReadinessObserver() {
+  React.useEffect(() => observeBootSplashReadiness(document.getElementById("root")), []);
   return null;
 }
 
+/**
+ * Suspense must stay visually silent during cold start. The HTML startup card already owns
+ * that feedback; rendering another centered spinner here caused the second loading screen.
+ */
 function MainRouteFallback() {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex min-h-screen items-center justify-center bg-app-bg text-sm text-tx-tertiary"
-    >
-      <span className="inline-flex items-center gap-2">
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-app-border border-t-accent-primary" />
-        正在加载…
-      </span>
-    </div>
-  );
+  return null;
 }
 
 installKnowledgeTreeScrollbarBridge();
@@ -158,7 +144,7 @@ const publicRoute = resolvePublicNotebookRoute();
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <SiteSettingsProvider>
-      <BootSplashRemover />
+      <BootSplashReadinessObserver />
       {publicRoute.matched ? (
         <ThemeProvider>
           <React.Suspense fallback={<MainRouteFallback />}>
