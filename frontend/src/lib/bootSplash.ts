@@ -24,14 +24,17 @@ function getReactRoot(): HTMLElement | null {
 function concealReactRoot(): void {
   const root = getReactRoot();
   if (!root) return;
-  root.style.visibility = "hidden";
+  // Opacity conceals the transient AuthGate/Suspense UI without inheriting a hidden
+  // visibility state into descendants. The readiness observer can still inspect the real
+  // mounted surface and reveal it at the correct moment.
+  root.style.opacity = "0";
   root.style.pointerEvents = "none";
 }
 
 function revealReactRoot(): void {
   const root = getReactRoot();
   if (!root) return;
-  root.style.visibility = "visible";
+  root.style.opacity = "1";
   root.style.pointerEvents = "";
 }
 
