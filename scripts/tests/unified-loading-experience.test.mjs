@@ -30,10 +30,13 @@ test("React lazy loading stays visually silent behind the startup splash", async
   assert.doesNotMatch(main, />\s*正在加载…\s*</)
 })
 
-test("startup dismissal is stable in React StrictMode", async () => {
+test("startup controller hides transient auth UI and is stable in StrictMode", async () => {
   const controller = await readRepoFile("frontend/src/lib/bootSplash.ts")
 
   assert.match(controller, /BOOT_SPLASH_MIN_VISIBLE_MS\s*=\s*600/)
+  assert.match(controller, /concealReactRoot\(\);/)
+  assert.match(controller, /root\.style\.visibility\s*=\s*"hidden"/)
+  assert.match(controller, /root\.style\.visibility\s*=\s*"visible"/)
   assert.match(controller, /React\.StrictMode intentionally mounts/)
   const cleanup = controller.slice(controller.lastIndexOf("return () =>"))
   assert.doesNotMatch(cleanup, /clearTimeout/)
