@@ -35,8 +35,9 @@ test("startup controller hides transient auth UI and is stable in StrictMode", a
 
   assert.match(controller, /BOOT_SPLASH_MIN_VISIBLE_MS\s*=\s*600/)
   assert.match(controller, /concealReactRoot\(\);/)
-  assert.match(controller, /root\.style\.visibility\s*=\s*"hidden"/)
-  assert.match(controller, /root\.style\.visibility\s*=\s*"visible"/)
+  assert.match(controller, /root\.style\.opacity\s*=\s*"0"/)
+  assert.match(controller, /root\.style\.opacity\s*=\s*"1"/)
+  assert.doesNotMatch(controller, /root\.style\.visibility\s*=\s*"hidden"/)
   assert.match(controller, /React\.StrictMode intentionally mounts/)
   const cleanup = controller.slice(controller.lastIndexOf("return () =>"))
   assert.doesNotMatch(cleanup, /clearTimeout/)
