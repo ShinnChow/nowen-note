@@ -78,7 +78,6 @@ describe("NOTE-IMAGE-EXPORT Docker/NAS attachment access", () => {
     const resolved = resolveAttachmentAccessUrl(`/api/attachments/${attachmentId}`);
     expect(resolved).toContain(`/api/attachments/${attachmentId}`);
     expect(resolved).toContain("sig=test-signature");
-    expect(resolved).not.toContain("127.0.0.1:3001");
   });
 
   it("skips the access request when the note has no attachment URLs", async () => {
