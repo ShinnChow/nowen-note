@@ -82,9 +82,10 @@ ENV PORT=3001
 
 EXPOSE 3001
 
-# 主应用的容器级健康检查。Compose 会显式重复声明，兼容 NAS 面板与直接 docker run。
+# 主应用的容器级健康检查。必须读取运行时 PORT：NAS 面板可能把容器内部端口
+# 配置为 53001 等非默认值，固定检查 3001 会让正常服务被误判为 unhealthy。
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=12 \
-  CMD node -e "fetch('http://127.0.0.1:3001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+  CMD node -e "const p=process.env.PORT||'3001';fetch('http://127.0.0.1:'+p+'/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
 WORKDIR /app
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
