@@ -11,7 +11,6 @@ interface NowenBootWindow extends Window {
 }
 
 let dismissed = false;
-let leaveTimer: number | null = null;
 let removeTimer: number | null = null;
 
 function bootWindow(): NowenBootWindow {
@@ -28,7 +27,6 @@ function clearBootTimers(): void {
 
 function removeSplash(element: HTMLElement): void {
   element.remove();
-  if (removeTimer !== null) window.clearTimeout(removeTimer);
   removeTimer = null;
 }
 
@@ -57,7 +55,7 @@ export function dismissBootSplash(): void {
 
   const visibleAt = target.__NOWEN_BOOT_VISIBLE_AT__ || Date.now();
   const remaining = Math.max(0, BOOT_SPLASH_MIN_VISIBLE_MS - (Date.now() - visibleAt));
-  leaveTimer = window.setTimeout(() => {
+  window.setTimeout(() => {
     element.classList.add(BOOT_SPLASH_LEAVING_CLASS);
     removeTimer = window.setTimeout(() => removeSplash(element), BOOT_SPLASH_LEAVE_MS);
   }, remaining);
@@ -67,7 +65,9 @@ function isVisible(element: Element): boolean {
   if (!(element instanceof HTMLElement)) return true;
   if (element.hidden || element.getAttribute("aria-hidden") === "true") return false;
   const style = window.getComputedStyle(element);
-  return style.display !== "none" && style.visibility !== "hidden";
+  return style.display !== "none"
+    && style.visibility !== "hidden"
+    && style.opacity !== "0";
 }
 
 function isApplicationReady(root: HTMLElement): boolean {
@@ -78,9 +78,6 @@ function isApplicationReady(root: HTMLElement): boolean {
     "main",
     "article",
     "nav",
-    "button",
-    "input",
-    "textarea",
   ].join(",");
 
   if (Array.from(root.querySelectorAll(explicitReadySelectors)).some(isVisible)) return true;
@@ -115,10 +112,11 @@ export function observeBootSplashReadiness(root: HTMLElement | null): () => void
   observer.observe(root, { childList: true, subtree: true, attributes: true });
   check();
 
+  // React.StrictMode intentionally mounts, cleans up and mounts effects again in dev.
+  // Cleanup must only detach this observer; cancelling the global fade/removal timers here
+  // would leave the already-dismissed splash permanently covering the second mount.
   return () => {
     stopped = true;
     observer.disconnect();
-    if (leaveTimer !== null) window.clearTimeout(leaveTimer);
-    if (removeTimer !== null) window.clearTimeout(removeTimer);
   };
 }
