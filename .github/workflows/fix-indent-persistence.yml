@@ -35,7 +35,6 @@ jobs:
               assert count == 1, f"{label}: expected exactly one match, got {count}"
               return text.replace(old, new, 1)
 
-          # 1) Refresh/schema-repair path must know the indent attribute.
           path = Path("frontend/src/lib/importService.base.ts")
           text = path.read_text(encoding="utf-8")
           text = replace_once(
@@ -47,12 +46,16 @@ jobs:
           text = replace_once(
               text,
               '  TextAlign.configure({ types: ["heading", "paragraph"] }),\n  // TextStyle + Color + FontSize：与编辑器保持一致，否则导入近来的\n',
-              '  TextAlign.configure({ types: ["heading", "paragraph"] }),\n  // Tab/工具栏产生的块级视觉缩进必须进入 schema。缺少该扩展时，\n  // repairTiptapJson 的 JSON → HTML → JSON round-trip 会静默删除 attrs.indent，\n  // 表现为刷新后缩进消失。\n  IndentExtension,\n  // TextStyle + Color + FontSize：与编辑器保持一致，否则导入近来的\n',
+              '  TextAlign.configure({ types: ["heading", "paragraph"] }),\n'
+              '  // Tab/工具栏产生的块级视觉缩进必须进入 schema。缺少该扩展时，\n'
+              '  // repairTiptapJson 的 JSON → HTML → JSON round-trip 会静默删除 attrs.indent，\n'
+              '  // 表现为刷新后缩进消失。\n'
+              '  IndentExtension,\n'
+              '  // TextStyle + Color + FontSize：与编辑器保持一致，否则导入近来的\n',
               "importService indent extension",
           )
           path.write_text(text, encoding="utf-8")
 
-          # 2) Keep the format compatibility schema aligned as well.
           path = Path("frontend/src/lib/contentFormat.ts")
           text = path.read_text(encoding="utf-8")
           text = replace_once(
@@ -64,12 +67,15 @@ jobs:
           text = replace_once(
               text,
               '    TextAlign.configure({ types: ["heading", "paragraph"] }),\n    // BLOCK-ID-01: heading blockId 属性，与 TiptapEditor 对齐\n',
-              '    TextAlign.configure({ types: ["heading", "paragraph"] }),\n    // 与主编辑器和 schema repair 对齐，避免格式转换读取 Tiptap JSON 时\n    // attrs.indent 被 schema 过滤。\n    IndentExtension,\n    // BLOCK-ID-01: heading blockId 属性，与 TiptapEditor 对齐\n',
+              '    TextAlign.configure({ types: ["heading", "paragraph"] }),\n'
+              '    // 与主编辑器和 schema repair 对齐，避免格式转换读取 Tiptap JSON 时\n'
+              '    // attrs.indent 被 schema 过滤。\n'
+              '    IndentExtension,\n'
+              '    // BLOCK-ID-01: heading blockId 属性，与 TiptapEditor 对齐\n',
               "contentFormat indent extension",
           )
           path.write_text(text, encoding="utf-8")
 
-          # 3) Single-note sharing uses a custom Tiptap JSON renderer; preserve data-indent there.
           path = Path("frontend/src/components/SharedNoteView.tsx")
           text = path.read_text(encoding="utf-8")
           text = replace_once(
@@ -79,12 +85,12 @@ jobs:
               "SharedNoteView indent import",
           )
           helper_marker = '/**\n * 将编辑器的 JSON content 渲染为 HTML\n'
-          helper = '''export function renderSharedIndentAttribute(node: any): string {
-  const indent = normalizeIndentValue(node?.attrs?.indent);
-  return indent > 0 ? ` data-indent="${indent}"` : "";
-}
-
-'''
+          helper = (
+              'export function renderSharedIndentAttribute(node: any): string {\n'
+              '  const indent = normalizeIndentValue(node?.attrs?.indent);\n'
+              '  return indent > 0 ? ` data-indent="${indent}"` : "";\n'
+              '}\n\n'
+          )
           assert helper not in text, "SharedNoteView indent helper already exists"
           text = replace_once(text, helper_marker, helper + helper_marker, "SharedNoteView helper insertion")
           text = replace_once(
@@ -137,28 +143,26 @@ jobs:
           )
           path.write_text(text, encoding="utf-8")
 
-          # 4) Apply the same visual contract outside the editable ProseMirror root.
           path = Path("frontend/src/index.css")
           text = path.read_text(encoding="utf-8")
           css_marker = '.ProseMirror [data-indent="8"] { margin-left: 16rem !important; }\n'
-          shared_css = '''
-
-/* 分享页/Markdown 预览复用编辑器的块级缩进契约。data-indent 只接受 1-8，
- * 写入端和渲染端均通过 normalizeIndentValue 归一化。 */
-.shared-note-content [data-indent="1"], .nowen-md-preview [data-indent="1"] { margin-left: 2rem !important; }
-.shared-note-content [data-indent="2"], .nowen-md-preview [data-indent="2"] { margin-left: 4rem !important; }
-.shared-note-content [data-indent="3"], .nowen-md-preview [data-indent="3"] { margin-left: 6rem !important; }
-.shared-note-content [data-indent="4"], .nowen-md-preview [data-indent="4"] { margin-left: 8rem !important; }
-.shared-note-content [data-indent="5"], .nowen-md-preview [data-indent="5"] { margin-left: 10rem !important; }
-.shared-note-content [data-indent="6"], .nowen-md-preview [data-indent="6"] { margin-left: 12rem !important; }
-.shared-note-content [data-indent="7"], .nowen-md-preview [data-indent="7"] { margin-left: 14rem !important; }
-.shared-note-content [data-indent="8"], .nowen-md-preview [data-indent="8"] { margin-left: 16rem !important; }
-'''
+          shared_css = (
+              '\n'
+              '/* 分享页复用编辑器的块级缩进契约。data-indent 只接受 1-8，\n'
+              ' * 写入端和渲染端均通过 normalizeIndentValue 归一化。 */\n'
+              '.shared-note-content [data-indent="1"] { margin-left: 2rem !important; }\n'
+              '.shared-note-content [data-indent="2"] { margin-left: 4rem !important; }\n'
+              '.shared-note-content [data-indent="3"] { margin-left: 6rem !important; }\n'
+              '.shared-note-content [data-indent="4"] { margin-left: 8rem !important; }\n'
+              '.shared-note-content [data-indent="5"] { margin-left: 10rem !important; }\n'
+              '.shared-note-content [data-indent="6"] { margin-left: 12rem !important; }\n'
+              '.shared-note-content [data-indent="7"] { margin-left: 14rem !important; }\n'
+              '.shared-note-content [data-indent="8"] { margin-left: 16rem !important; }\n'
+          )
           assert shared_css.strip() not in text, "shared indent CSS already exists"
           text = replace_once(text, css_marker, css_marker + shared_css, "shared indent CSS")
           path.write_text(text, encoding="utf-8")
 
-          # 5) Refresh regression: schema repair must preserve indent attrs.
           path = Path("frontend/src/lib/__tests__/codeBlockIndent.test.ts")
           text = path.read_text(encoding="utf-8")
           text = replace_once(
@@ -167,64 +171,66 @@ jobs:
               '} from "@/lib/codeBlockIndent";\nimport { repairTiptapJson } from "@/lib/tiptapSchemaRepair";\n',
               "indent repair test import",
           )
-          refresh_test = '''
-
-  it("preserves visual indent through the refresh schema-repair round trip", () => {
-    const repaired = repairTiptapJson({
-      type: "doc",
-      content: [
-        { type: "paragraph", attrs: { indent: 1 }, content: [{ type: "text", text: "one" }] },
-        { type: "heading", attrs: { level: 2, indent: 2 }, content: [{ type: "text", text: "two" }] },
-        {
-          type: "blockquote",
-          attrs: { indent: 3 },
-          content: [{ type: "paragraph", content: [{ type: "text", text: "three" }] }],
-        },
-      ],
-    }) as any;
-
-    expect(repaired.content[0].attrs.indent).toBe(1);
-    expect(repaired.content[1].attrs.indent).toBe(2);
-    expect(repaired.content[2].attrs.indent).toBe(3);
-  });
-'''
+          refresh_test = (
+              '\n\n'
+              '  it("preserves visual indent through the refresh schema-repair round trip", () => {\n'
+              '    const repaired = repairTiptapJson({\n'
+              '      type: "doc",\n'
+              '      content: [\n'
+              '        { type: "paragraph", attrs: { indent: 1 }, content: [{ type: "text", text: "one" }] },\n'
+              '        { type: "heading", attrs: { level: 2, indent: 2 }, content: [{ type: "text", text: "two" }] },\n'
+              '        {\n'
+              '          type: "blockquote",\n'
+              '          attrs: { indent: 3 },\n'
+              '          content: [{ type: "paragraph", content: [{ type: "text", text: "three" }] }],\n'
+              '        },\n'
+              '      ],\n'
+              '    }) as any;\n\n'
+              '    expect(repaired.content[0].attrs.indent).toBe(1);\n'
+              '    expect(repaired.content[1].attrs.indent).toBe(2);\n'
+              '    expect(repaired.content[2].attrs.indent).toBe(3);\n'
+              '  });\n'
+          )
           assert "preserves visual indent through the refresh schema-repair round trip" not in text
           assert text.endswith("\n});\n"), "unexpected codeBlockIndent test ending"
           text = text[:-5] + refresh_test + "\n});\n"
           path.write_text(text, encoding="utf-8")
 
-          # 6) Share regression: custom renderer must expose data-indent for every supported block.
           path = Path("frontend/src/components/__tests__/SharedNoteViewLinks.test.ts")
           text = path.read_text(encoding="utf-8")
           text = replace_once(
               text,
               'import { isExternalHttpLink, normalizeExternalHref, prepareSharedMarkdownForDisplay } from "../SharedNoteView";\n',
-              'import {\n  isExternalHttpLink,\n  normalizeExternalHref,\n  prepareSharedMarkdownForDisplay,\n  renderTiptapJSON,\n} from "../SharedNoteView";\n',
+              'import {\n'
+              '  isExternalHttpLink,\n'
+              '  normalizeExternalHref,\n'
+              '  prepareSharedMarkdownForDisplay,\n'
+              '  renderTiptapJSON,\n'
+              '} from "../SharedNoteView";\n',
               "shared indent test import",
           )
-          share_test = '''
-
-  it("keeps Tiptap visual indent in shared HTML", () => {
-    const html = renderTiptapJSON({
-      type: "doc",
-      content: [
-        { type: "paragraph", attrs: { indent: 1 }, content: [{ type: "text", text: "one" }] },
-        { type: "heading", attrs: { level: 2, indent: 2 }, content: [{ type: "text", text: "two" }] },
-        {
-          type: "blockquote",
-          attrs: { indent: 3 },
-          content: [{ type: "paragraph", content: [{ type: "text", text: "three" }] }],
-        },
-        { type: "codeBlock", attrs: { language: null, indent: 4 }, content: [{ type: "text", text: "four" }] },
-      ],
-    });
-
-    expect(html).toContain('<p data-indent="1">one</p>');
-    expect(html).toContain('<h2 data-indent="2">two</h2>');
-    expect(html).toContain('<blockquote data-indent="3">');
-    expect(html).toContain('class="shared-code-block" data-indent="4"');
-  });
-'''
+          share_test = (
+              '\n\n'
+              '  it("keeps Tiptap visual indent in shared HTML", () => {\n'
+              '    const html = renderTiptapJSON({\n'
+              '      type: "doc",\n'
+              '      content: [\n'
+              '        { type: "paragraph", attrs: { indent: 1 }, content: [{ type: "text", text: "one" }] },\n'
+              '        { type: "heading", attrs: { level: 2, indent: 2 }, content: [{ type: "text", text: "two" }] },\n'
+              '        {\n'
+              '          type: "blockquote",\n'
+              '          attrs: { indent: 3 },\n'
+              '          content: [{ type: "paragraph", content: [{ type: "text", text: "three" }] }],\n'
+              '        },\n'
+              '        { type: "codeBlock", attrs: { language: null, indent: 4 }, content: [{ type: "text", text: "four" }] },\n'
+              '      ],\n'
+              '    });\n\n'
+              '    expect(html).toContain(\'<p data-indent="1">one</p>\');\n'
+              '    expect(html).toContain(\'<h2 data-indent="2">two</h2>\');\n'
+              '    expect(html).toContain(\'<blockquote data-indent="3">\');\n'
+              '    expect(html).toContain(\'class="shared-code-block" data-indent="4"\');\n'
+              '  });\n'
+          )
           assert "keeps Tiptap visual indent in shared HTML" not in text
           assert text.endswith("\n});\n"), "unexpected SharedNoteViewLinks test ending"
           text = text[:-5] + share_test + "\n});\n"
