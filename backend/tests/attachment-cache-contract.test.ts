@@ -31,6 +31,7 @@ let deleteThumbnailsFor: (attachmentsDir: string, id: string) => void;
 let isThumbnailable: (mime: string | null | undefined) => boolean;
 let computeAttachmentEtag: (attachmentId: string, variant: "original" | number) => string;
 let requestMatchesEtag: (headers: Headers, etag: string) => boolean;
+let handleCoreAttachmentDownload: typeof import("../src/routes/attachments-core").handleDownloadAttachment;
 
 function db() {
   return getDb();
@@ -47,8 +48,9 @@ async function responseJson<T>(response: Response): Promise<T> {
 }
 
 test.before(async () => {
-  const [attachmentsModule, schemaModule, thumbnailsModule, etagModule] = await Promise.all([
+  const [attachmentsModule, attachmentsCoreModule, schemaModule, thumbnailsModule, etagModule] = await Promise.all([
     import("../src/routes/attachments"),
+    import("../src/routes/attachments-core"),
     import("../src/db/schema"),
     import("../src/services/thumbnails"),
     import("../src/lib/attachment-etag"),
@@ -60,6 +62,7 @@ test.before(async () => {
   isThumbnailable = thumbnailsModule.isThumbnailable;
   computeAttachmentEtag = etagModule.computeAttachmentEtag;
   requestMatchesEtag = etagModule.requestMatchesEtag;
+  handleCoreAttachmentDownload = attachmentsCoreModule.handleDownloadAttachment;
 
   app = new Hono();
   app.get("/attachments/:id", attachmentsModule.handleDownloadAttachment);
@@ -185,6 +188,54 @@ test("thumbnail 304 short-circuits before source read and Sharp generation", asy
     });
     assert.equal(revalidated.status, 304);
     assert.equal(await revalidated.text(), "");
+  } finally {
+    fs.renameSync(backupPath, attachmentPath);
+  }
+});
+
+
+test("remote thumbnail failure reuses the already-read source buffer", async (t) => {
+  if (!isThumbnailable("image/png")) {
+    t.skip("当前平台未启用图片缩略图 MIME 路径");
+    return;
+  }
+
+  const backupPath = `${attachmentPath}.remote-thumbnail-fallback-backup`;
+  fs.renameSync(attachmentPath, backupPath);
+  let objectReads = 0;
+  let thumbnailAttempts = 0;
+  const coreApp = new Hono();
+  coreApp.get("/attachments/:id", (c) => handleCoreAttachmentDownload(c, {
+    readAttachmentObject: async (storagePath) => {
+      objectReads += 1;
+      assert.ok(storagePath);
+      return PNG_BYTES;
+    },
+    getOrCreateThumbnailFromBufferAsync: async (
+      _attachmentsDir,
+      id,
+      source,
+      mimeType,
+      width,
+    ) => {
+      thumbnailAttempts += 1;
+      assert.equal(id, attachmentId);
+      assert.equal(mimeType, "image/png");
+      assert.equal(width, 240);
+      assert.deepEqual(source, PNG_BYTES);
+      return null;
+    },
+  }));
+
+  try {
+    const response = await coreApp.request(signedRoute(signedUrl, { w: "240" }));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/png");
+    assert.equal(response.headers.get("x-thumbnail-width"), null);
+    assert.match(response.headers.get("etag") || "", /-original"$/);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), PNG_BYTES);
+    assert.equal(thumbnailAttempts, 1);
+    assert.equal(objectReads, 1, "缩略图失败回退原图不得再次读取远程对象");
   } finally {
     fs.renameSync(backupPath, attachmentPath);
   }

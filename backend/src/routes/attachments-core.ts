@@ -406,7 +406,13 @@ export function createDeduplicatedAttachmentRow(args: {
  *   2. 带 X-User-Id（fetch / API 调用）→ 走 note read 权限链
  *   3. 无签名无 userId → 走"UUID 不可枚举"隐式授权（可通过环境变量关闭）
  */
-export async function handleDownloadAttachment(c: Context): Promise<Response> {
+export async function handleDownloadAttachment(
+  c: Context,
+  dependencies: {
+    readAttachmentObject?: typeof readAttachmentObject;
+    getOrCreateThumbnailFromBufferAsync?: typeof getOrCreateThumbnailFromBufferAsync;
+  } = {},
+): Promise<Response> {
   const id = c.req.param("id");
   const db = getDb();
   const row = db
@@ -449,6 +455,9 @@ export async function handleDownloadAttachment(c: Context): Promise<Response> {
   // 高危类型由前端预览组件自行 sanitize 处理。
   const inlinePreview = c.req.query("inline") === "1";
   const requestedWidth = parseThumbnailWidth(c.req.query("w"));
+  const readObject = dependencies.readAttachmentObject ?? readAttachmentObject;
+  const createThumbnailFromBuffer = dependencies.getOrCreateThumbnailFromBufferAsync
+    ?? getOrCreateThumbnailFromBufferAsync;
 
   // 是否会走缩略图分支只依赖 query 参数 + row.mimeType，不需要读文件内容就能
   // 确定。据此可在读取任何字节之前算出这次响应的 ETag variant，命中
@@ -477,6 +486,7 @@ export async function handleDownloadAttachment(c: Context): Promise<Response> {
   //   2) 不是 ?download=1（下载场景必须给原文件）
   //   3) 原图是可缩略的 raster 图片
   // 三者同时满足时尝试。任何一步失败就回退到原图。
+  let sourceBuffer: Buffer | null | undefined;
   if (willServeThumbnail) {
     const thumb = localExists
       ? await getOrCreateThumbnailAsync(
@@ -486,13 +496,17 @@ export async function handleDownloadAttachment(c: Context): Promise<Response> {
           row.mimeType,
           requestedWidth!,
         )
-      : await getOrCreateThumbnailFromBufferAsync(
-          ATTACHMENTS_DIR,
-          row.id,
-          (await readAttachmentObject(row.path)) || Buffer.alloc(0),
-          row.mimeType,
-          requestedWidth!,
-        );
+      : await (async () => {
+          sourceBuffer = await readObject(row.path);
+          if (!sourceBuffer) return null;
+          return createThumbnailFromBuffer(
+            ATTACHMENTS_DIR,
+            row.id,
+            sourceBuffer,
+            row.mimeType,
+            requestedWidth!,
+          );
+        })();
     if (thumb) {
       return c.body(toResponseBody(thumb.buffer), 200, {
         "Content-Type": thumb.mimeType,
@@ -508,7 +522,12 @@ export async function handleDownloadAttachment(c: Context): Promise<Response> {
     // 不匹配，下面重新按 "original" 计算，避免客户端拿到错误的验证器。
   }
 
-  const buffer = await readAttachmentObject(row.path);
+  // undefined = 尚未读取；null = 已读取但对象不存在；Buffer = 可直接复用。
+  // 远程缩略图生成失败时必须复用同一次请求已取得的原图，避免 NAS/S3
+  // 再次下载；对象缺失时也不能为了确认 404 再读一次。
+  const buffer = sourceBuffer === undefined
+    ? await readObject(row.path)
+    : sourceBuffer;
   if (!buffer) {
     return c.json({ error: "attachment file missing" }, 404);
   }
