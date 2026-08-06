@@ -555,3 +555,40 @@ test("skips revalidation and rewrites for documents already marked mismatch", as
   assert.equal(store.readAuthoritativeNoteContent(db, noteId, synced.content).status, "healthy");
   assert.notEqual(content, null);
 });
+
+// 建表 DDL 每个连接只执行一次。
+//
+// 这些语句都是 IF NOT EXISTS，重复执行逻辑上无害但并非免费：内存库约 0.02ms，
+// 文件库（Docker volume / NAS 的真实形态）实测约 5ms —— 而 GET /api/notes/:id
+// 每次都会调用一次。这里断言重复调用不再产生 DDL，同时确认建表结果仍然齐备。
+test("runs block authority schema DDL only once per connection", async () => {
+  const { getDb } = await import("../src/db/schema");
+  const store = await import("../src/lib/blockAuthorityStore");
+  const db = getDb();
+
+  // 首次调用后，表与陈旧标记触发器都必须存在
+  store.ensureBlockAuthorityTables(db);
+  const documentsTable = db.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'note_block_documents'
+  `).get();
+  assert.ok(documentsTable, "note_block_documents 必须已建立");
+  const staleTrigger = db.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'trigger'
+      AND name = 'trg_note_block_authority_stale_after_content_update'
+  `).get();
+  assert.ok(staleTrigger, "陈旧标记触发器必须已建立");
+
+  // 重复调用不得再执行 DDL
+  const originalExec = db.exec.bind(db);
+  let execCalls = 0;
+  (db as any).exec = (sql: string) => {
+    execCalls++;
+    return originalExec(sql);
+  };
+  try {
+    for (let i = 0; i < 5; i++) store.ensureBlockAuthorityTables(db);
+  } finally {
+    (db as any).exec = originalExec;
+  }
+  assert.equal(execCalls, 0, "同一连接重复调用不应再执行建表 DDL");
+});

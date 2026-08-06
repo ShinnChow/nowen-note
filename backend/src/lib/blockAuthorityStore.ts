@@ -89,7 +89,18 @@ export function hashBlockAuthorityContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
+/**
+ * 已完成建表的连接。
+ *
+ * 这些 DDL 全是 IF NOT EXISTS，重复执行逻辑上无害，但并非免费：内存库约
+ * 0.02ms，而真实部署的文件库（Docker volume / NAS）实测约 5ms —— 每次
+ * GET /api/notes/:id 都会白付一次。用 WeakSet 按连接记忆，连接被回收时自动
+ * 释放；换新连接（重连、测试重建库）会重新建表，不影响正确性。
+ */
+const schemaReadyConnections = new WeakSet<Database.Database>();
+
 export function ensureBlockAuthorityTables(db: Database.Database): void {
+  if (schemaReadyConnections.has(db)) return;
   db.exec(`
     CREATE TABLE IF NOT EXISTS note_block_documents (
       noteId TEXT PRIMARY KEY,
@@ -162,6 +173,7 @@ export function ensureBlockAuthorityTables(db: Database.Database): void {
       WHERE noteId = NEW.id;
     END;
   `);
+  schemaReadyConnections.add(db);
 }
 
 function readIndexedBlocks(db: Database.Database, noteId: string): IndexedBlockRow[] {
