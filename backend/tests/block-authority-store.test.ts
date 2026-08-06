@@ -441,3 +441,66 @@ test("stale trigger marks an old write immediately and rebuild restores healthy 
     status: "healthy",
   });
 });
+
+// 复杂度回归：物化与重建过程中，整篇文档最多各解析一次。
+//
+// 历史问题：materializeTiptapRecords / buildIndexedPayloads 曾对每条 Block 记录
+// 调用 tiptapNodeAtPath，而该函数内部 JSON.parse 整篇文档，导致
+// "记录数 × 全文解析" 的 O(n²) 行为。5000 段 / 776KB 的笔记单次读取实测 10.6s，
+// 而 GET /api/notes/:id 每次非 slim 读取都会走到这里。
+//
+// 这里用 JSON.parse 调用次数（而非绝对耗时）断言，避免 CI 上的时间抖动。
+test("materializes large documents without re-parsing the whole doc per block", async () => {
+  const paragraphs = 400;
+  const content = JSON.stringify({
+    type: "doc",
+    content: Array.from({ length: paragraphs }, (_, index) => ({
+      type: "paragraph",
+      attrs: { blockId: `blk_perf_${index}` },
+      content: [{ type: "text", text: `第${index} 段内容` }],
+    })),
+  });
+  const noteId = "78787878-7878-4878-8878-787878787878";
+  const { db, store, content: normalized } = await createAuthorityNote(noteId, "tiptap-json", content);
+
+  const originalParse = JSON.parse;
+  let fullDocParses = 0;
+  // 只统计"整篇文档级别"的解析，忽略单个 Block payload 的小解析
+  JSON.parse = ((text: string, ...rest: unknown[]) => {
+    if (typeof text === "string" && text.length > normalized.length / 2) fullDocParses++;
+    return (originalParse as any)(text, ...rest);
+  }) as typeof JSON.parse;
+
+  let materialized: string;
+  try {
+    materialized = store.materializeBlockAuthorityContent(db, noteId);
+  } finally {
+    JSON.parse = originalParse;
+  }
+
+  assert.equal(materialized, normalized, "物化结果必须与原文一致");
+  assert.ok(
+    fullDocParses <= 1,
+    `物化 ${paragraphs} 段文档时整篇解析次数应 <= 1，实际 ${fullDocParses} 次`,
+  );
+
+  // 重建路径同样不允许逐块重复解析整篇文档
+  let rebuildParses = 0;
+  JSON.parse = ((text: string, ...rest: unknown[]) => {
+    if (typeof text === "string" && text.length > normalized.length / 2) rebuildParses++;
+    return (originalParse as any)(text, ...rest);
+  }) as typeof JSON.parse;
+  try {
+    store.rebuildBlockAuthorityStore(db, noteId, normalized, "tiptap-json", {
+      noteVersion: 2,
+      operationType: "whole-save",
+    });
+  } finally {
+    JSON.parse = originalParse;
+  }
+
+  assert.ok(
+    rebuildParses <= 2,
+    `重建 ${paragraphs} 段文档时整篇解析次数应 <= 2，实际 ${rebuildParses} 次`,
+  );
+});

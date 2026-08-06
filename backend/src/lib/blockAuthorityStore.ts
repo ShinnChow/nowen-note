@@ -172,9 +172,14 @@ function readIndexedBlocks(db: Database.Database, noteId: string): IndexedBlockR
   `).all(noteId) as IndexedBlockRow[];
 }
 
-function tiptapNodeAtPath(content: string, path: string): unknown {
-  const doc = JSON.parse(content || "{}");
-  let nodes = Array.isArray(doc?.content) ? doc.content : [];
+/**
+ * 在已解析的文档对象上按 path 定位节点。
+ *
+ * 只接受解析后的对象（而非 content 字符串），因为调用方都需要在遍历多条记录时
+ * 复用同一份解析结果 —— 每条记录各自 JSON.parse 整篇文档会退化成 O(n²)。
+ */
+function tiptapNodeAtPathInDoc(doc: unknown, path: string): unknown {
+  let nodes = Array.isArray((doc as any)?.content) ? (doc as any).content : [];
   let node: unknown = null;
   for (const part of path.split(".")) {
     const index = Number(part);
@@ -185,8 +190,9 @@ function tiptapNodeAtPath(content: string, path: string): unknown {
   return node;
 }
 
-function tiptapBlockPayload(content: string, row: IndexedBlockRow): string {
-  const node = tiptapNodeAtPath(content, row.path);
+/** 从已解析的文档对象中取出指定 Block 的 payload。 */
+function tiptapBlockPayloadFromDoc(doc: unknown, row: IndexedBlockRow): string {
+  const node = tiptapNodeAtPathInDoc(doc, row.path);
   if (!node) throw new Error(`无法从 path ${row.path} 读取 Block ${row.blockId}`);
   return JSON.stringify(node);
 }
@@ -279,9 +285,12 @@ function buildIndexedPayloads(
   if (contentFormat === "markdown" && rows.length === 0 && content.length > 0) {
     throw new Error("非空 Markdown 缺少可物化的 Block 记录");
   }
+  // tiptap 场景整篇只解析一次后复用：tiptapBlockPayload 内部会 JSON.parse 全文，
+  // 逐行调用会退化成 O(n²)（5000 段/776KB 实测 rebuild 21.6s）。
+  const parsedDoc = contentFormat === "tiptap-json" ? JSON.parse(content || "{}") : null;
   return rows.map((row, index) => {
     const payload = contentFormat === "tiptap-json"
-      ? tiptapBlockPayload(content, row)
+      ? tiptapBlockPayloadFromDoc(parsedDoc, row)
       : markdownBlockPayload(content, row, index, rows);
     return { row, payload, payloadHash: hashBlockAuthorityContent(payload) };
   });
@@ -400,9 +409,16 @@ function materializeTiptapRecords(
   const content = JSON.stringify({ type: "doc", content: roots });
   const recordsByPath = new Map(records.map((record) => [record.path, record]));
 
+  // 校验用的文档树只解析一次后复用。
+  //   之前每条 record 都调用 tiptapNodeAtPath(content, ...)，而该函数内部会
+  //   JSON.parse 整篇文档 —— 记录数 × 全文解析 = O(n²)。5000 段 / 776KB 的笔记
+  //   实测单次物化 10.6s，且 GET /api/notes/:id 每次读取都会走到这里。
+  //   这里改为复用 roots（已是解析后的对象），校验逻辑与语义保持完全一致。
+  const materializedDoc = { type: "doc", content: roots };
+
   // 顶层 payload 负责组装文档；嵌套记录用于逐 Block 校验，不能成为未验证的旁路副本。
   for (const record of records) {
-    const node = tiptapNodeAtPath(content, record.path);
+    const node = tiptapNodeAtPathInDoc(materializedDoc, record.path);
     if (!node || JSON.stringify(node) !== record.payload) {
       throw new Error(`Block ${record.blockId} 与物化文档的 path 不一致`);
     }
