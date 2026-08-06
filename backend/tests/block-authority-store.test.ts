@@ -592,3 +592,50 @@ test("runs block authority schema DDL only once per connection", async () => {
   }
   assert.equal(execCalls, 0, "同一连接重复调用不应再执行建表 DDL");
 });
+
+// healthy 判定可缓存，但任何输入变化都必须立刻重新校验。
+//
+// 物化 + 3 次全文哈希只为回答"这份数据是否仍健康"，1MB 文档一次判定实测约 30ms。
+// 同一笔记内容未变时反复读取（A→B→A、乐观锁重试）会重复得出同一结论。
+test("caches healthy verdicts without ever serving a stale one", async () => {
+  const noteId = "9a9a9a9a-9a9a-4a9a-8a9a-9a9a9a9a9a9a";
+  const { db, store, content } = await createAuthorityNote(noteId, "tiptap-json", tiptapAuthorityFixture());
+
+  // 重复读取：结论与内容都必须稳定
+  const first = store.readAuthoritativeNoteContent(db, noteId, content);
+  assert.deepEqual(first, { content, source: "blocks", status: "healthy" });
+  for (let i = 0; i < 3; i++) {
+    assert.deepEqual(store.readAuthoritativeNoteContent(db, noteId, content), {
+      content,
+      source: "blocks",
+      status: "healthy",
+    });
+  }
+
+  // notesContent 变化必须绕过缓存并判定 mismatch
+  const drifted = `${content} `;
+  assert.equal(store.readAuthoritativeNoteContent(db, noteId, drifted).status, "mismatch");
+
+  // 重建后必须重新判定 healthy 并返回新内容
+  const noteBlocks = await import("../src/lib/noteBlocks");
+  const changed = JSON.stringify({
+    type: "doc",
+    content: [{
+      type: "paragraph",
+      attrs: { blockId: "blk_root_a1" },
+      content: [{ type: "text", text: "缓存失效后的新内容" }],
+    }],
+  });
+  const synced = noteBlocks.syncNoteBlocks(db, noteId, changed, "tiptap-json");
+  db.prepare("UPDATE notes SET content = ?, contentText = ? WHERE id = ?")
+    .run(synced.content, synced.contentText, noteId);
+  store.rebuildBlockAuthorityStore(db, noteId, synced.content, "tiptap-json", {
+    noteVersion: 2,
+    operationType: "whole-save",
+  });
+  assert.deepEqual(store.readAuthoritativeNoteContent(db, noteId, synced.content), {
+    content: synced.content,
+    source: "blocks",
+    status: "healthy",
+  });
+});

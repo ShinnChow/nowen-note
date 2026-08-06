@@ -617,6 +617,56 @@ export function readBlockAuthorityHistory(
   return { items, limit, offset, hasMore: rows.length > limit };
 }
 
+/**
+ * healthy 判定结果缓存（按连接隔离）。
+ *
+ * 物化 + 3 次全文哈希只为回答"这份 Block 权威数据是否仍然健康"。同一笔记在
+ * 内容未变时反复读取（A→B→A、乐观锁重试、多端轮询）会重复得出同一结论，
+ * 而 1MB 文档的一次判定实测约 30ms。
+ *
+ * 缓存键覆盖全部影响判定的输入：
+ *   - snapshotHash / materializedHash / status 来自 note_block_documents，
+ *     任何重建都会更新它们；
+ *   - note_block_records 的改动必然经由 rebuildBlockAuthorityStore，从而刷新
+ *     上面两个 hash，因此无需单独纳入；
+ *   - notesContent 的哈希参与 notesHash !== snapshotHash 判定，必须纳入。
+ * 键不同即重新校验，所以不会返回过期结论。只缓存 healthy —— 劣化状态需要
+ * 落库并保留现场，不能走缓存。
+ *
+ * 已知边界：绕过所有写路径直接 UPDATE note_block_records 且不刷新任何 hash，
+ * 缓存命中期内无法发现（换连接或键变化后仍会被立刻检出）。正常写入都经由
+ * rebuildBlockAuthorityStore，因此不影响真实场景。
+ */
+const healthyVerdictCache = new WeakMap<Database.Database, Map<string, string>>();
+const MAX_HEALTHY_VERDICT_ENTRIES = 256;
+
+function healthyVerdictKey(row: StoredBlockDocument, notesContentHash: string): string {
+  return [row.status, row.snapshotHash, row.materializedHash, notesContentHash].join("|");
+}
+
+function readCachedHealthyVerdict(
+  db: Database.Database,
+  noteId: string,
+  key: string,
+): boolean {
+  return healthyVerdictCache.get(db)?.get(noteId) === key;
+}
+
+function rememberHealthyVerdict(db: Database.Database, noteId: string, key: string): void {
+  let perConnection = healthyVerdictCache.get(db);
+  if (!perConnection) {
+    perConnection = new Map();
+    healthyVerdictCache.set(db, perConnection);
+  }
+  perConnection.delete(noteId);
+  perConnection.set(noteId, key);
+  while (perConnection.size > MAX_HEALTHY_VERDICT_ENTRIES) {
+    const oldest = perConnection.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    perConnection.delete(oldest);
+  }
+}
+
 export function readAuthoritativeNoteContent(
   db: Database.Database,
   noteId: string,
@@ -639,6 +689,17 @@ export function readAuthoritativeNoteContent(
     return { content: notesContent, source: "notes", status: "mismatch" };
   }
 
+  const notesHash = hashBlockAuthorityContent(notesContent);
+  const verdictKey = healthyVerdictKey(row, notesHash);
+
+  // 命中缓存说明这套输入上次已判定 healthy，可跳过物化与另外两次全文哈希。
+  //   返回 notesContent 是等价的：healthy 要求 notesHash === row.snapshotHash
+  //   且 liveMaterializedHash === row.materializedHash === row.snapshotHash，
+  //   即物化结果与 notesContent 的哈希相同 —— 同一份内容。
+  if (readCachedHealthyVerdict(db, noteId, verdictKey)) {
+    return { content: notesContent, source: "blocks", status: "healthy" };
+  }
+
   let materializedContent: string;
   let mismatchReason: string | null = null;
   try {
@@ -652,7 +713,6 @@ export function readAuthoritativeNoteContent(
     mismatchReason = `record_materialization_failed:${error instanceof Error ? error.message : String(error)}`;
   }
   const snapshotContentHash = hashBlockAuthorityContent(row.snapshotContent);
-  const notesHash = hashBlockAuthorityContent(notesContent);
   const liveMaterializedHash = hashBlockAuthorityContent(materializedContent);
   if (
     row.status !== "healthy"
@@ -667,8 +727,10 @@ export function readAuthoritativeNoteContent(
       SET status = 'mismatch', mismatchReason = ?, updatedAt = datetime('now')
       WHERE noteId = ?
     `).run((mismatchReason || "authority_hash_mismatch").slice(0, 512), noteId);
+    healthyVerdictCache.get(db)?.delete(noteId);
     return { content: notesContent, source: "notes", status: "mismatch" };
   }
+  rememberHealthyVerdict(db, noteId, verdictKey);
   return { content: materializedContent, source: "blocks", status: "healthy" };
 }
 
