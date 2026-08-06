@@ -616,6 +616,17 @@ export function readAuthoritativeNoteContent(
     FROM note_block_documents WHERE noteId = ?
   `).get(noteId) as StoredBlockDocument | undefined;
   if (!row) return { content: notesContent, source: "notes", status: "missing" };
+
+  // 已知处于 mismatch 的文档无需再次物化校验。
+  //   物化 + 3 次全文哈希只用于"从 healthy 判定是否劣化"，对已经 mismatch 的
+  //   文档得不出新结论：本函数不会自愈（mismatch 必须保留现场），所以每次读取
+  //   重跑一遍纯属浪费，而且会把触发器写入的具体原因覆盖成通用的
+  //   authority_hash_mismatch，反而丢掉诊断信息。
+  //   直接返回 notes.content —— 与下方 mismatch 分支的返回值完全一致。
+  if (row.status === "mismatch") {
+    return { content: notesContent, source: "notes", status: "mismatch" };
+  }
+
   let materializedContent: string;
   let mismatchReason: string | null = null;
   try {

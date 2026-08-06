@@ -504,3 +504,54 @@ test("materializes large documents without re-parsing the whole doc per block", 
     `重建 ${paragraphs} 段文档时整篇解析次数应 <= 2，实际 ${rebuildParses} 次`,
   );
 });
+
+// 已处于 mismatch 的文档，重复读取不得再次物化校验或写库。
+//
+// 历史行为：readAuthoritativeNoteContent 对 mismatch 文档也会跑完整物化 + 3 次
+// 全文哈希，然后无条件 UPDATE。由于本函数不自愈（mismatch 必须保留现场），
+// 这些工作得不出新结论，而且会把触发器写入的具体原因覆盖成通用的
+// authority_hash_mismatch，反而丢掉诊断信息。
+test("skips revalidation and rewrites for documents already marked mismatch", async () => {
+  const noteId = "89898989-8989-4989-8989-898989898989";
+  const { db, store, content } = await createAuthorityNote(noteId, "tiptap-json", tiptapAuthorityFixture());
+
+  // 未整合的写入方改动 notes.content，触发器写入具体原因
+  db.prepare("UPDATE notes SET content = content || ' ' WHERE id = ?").run(noteId);
+  const drifted = (db.prepare("SELECT content FROM notes WHERE id = ?").get(noteId) as any).content;
+  const before = db.prepare(`
+    SELECT status, mismatchReason, updatedAt FROM note_block_documents WHERE noteId = ?
+  `).get(noteId) as { status: string; mismatchReason: string; updatedAt: string };
+  assert.equal(before.status, "mismatch");
+  assert.equal(before.mismatchReason, "notes_content_changed_without_shadow_rebuild");
+
+  // 多次读取：返回值保持"保留现场"语义
+  for (let i = 0; i < 3; i++) {
+    assert.deepEqual(store.readAuthoritativeNoteContent(db, noteId, drifted), {
+      content: drifted,
+      source: "notes",
+      status: "mismatch",
+    });
+  }
+
+  const after = db.prepare(`
+    SELECT status, mismatchReason, updatedAt FROM note_block_documents WHERE noteId = ?
+  `).get(noteId) as { status: string; mismatchReason: string; updatedAt: string };
+  assert.equal(after.status, "mismatch");
+  assert.equal(
+    after.mismatchReason,
+    "notes_content_changed_without_shadow_rebuild",
+    "读取不得覆盖触发器写入的具体诊断原因",
+  );
+  assert.equal(after.updatedAt, before.updatedAt, "已 mismatch 的文档重复读取不应再写库");
+
+  // 重建仍可恢复 healthy —— 短路不得阻断自愈路径
+  const synced = (await import("../src/lib/noteBlocks")).syncNoteBlocks(db, noteId, drifted, "tiptap-json");
+  db.prepare("UPDATE notes SET content = ?, contentText = ? WHERE id = ?")
+    .run(synced.content, synced.contentText, noteId);
+  store.rebuildBlockAuthorityStore(db, noteId, synced.content, "tiptap-json", {
+    noteVersion: 2,
+    operationType: "read-repair",
+  });
+  assert.equal(store.readAuthoritativeNoteContent(db, noteId, synced.content).status, "healthy");
+  assert.notEqual(content, null);
+});
