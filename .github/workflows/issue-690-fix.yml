@@ -187,28 +187,14 @@ jobs:
           assert marker not in test_source, "regression test already exists"
           test_source += regression_test
           test_path.write_text(test_source, encoding="utf-8")
-
-          workflow_path = Path(".github/workflows/attachment-cache-contract-ci.yml")
-          workflow = workflow_path.read_text(encoding="utf-8")
-          shared_test = '          tests/attachment-shared-access.test.ts\n'
-          assert workflow.count(shared_test) == 1, "attachment CI test list changed unexpectedly"
-          workflow = workflow.replace(
-              shared_test,
-              shared_test + '          tests/attachments-inline-video.test.ts\n',
-              1,
-          )
-          workflow_path.write_text(workflow, encoding="utf-8")
           PY
-      - name: Commit fix and remove temporary workflow
+      - name: Commit source fix
         shell: bash
         run: |
-          rm .github/workflows/issue-690-fix.yml
           git config user.name "Drug"
           git config user.email "cropflre2333@gmail.com"
           git add backend/src/routes/attachments-core.ts \
-                  backend/tests/attachment-cache-contract.test.ts \
-                  .github/workflows/attachment-cache-contract-ci.yml \
-                  .github/workflows/issue-690-fix.yml
+                  backend/tests/attachment-cache-contract.test.ts
           git diff --cached --check
           git commit -m "fix(attachments): reuse remote source buffer on thumbnail fallback"
           git push origin HEAD:release/v1.4.6
