@@ -1,0 +1,217 @@
+name: Apply Issue 690 Fix
+
+on:
+  push:
+    branches:
+      - release/v1.4.6
+    paths:
+      - ".github/workflows/issue-690-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.6
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply source and regression-test changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          core_path = Path("backend/src/routes/attachments-core.ts")
+          core = core_path.read_text(encoding="utf-8")
+
+          old_signature = 'export async function handleDownloadAttachment(c: Context): Promise<Response> {'
+          new_signature = '''export async function handleDownloadAttachment(
+            c: Context,
+            dependencies: {
+              readAttachmentObject?: typeof readAttachmentObject;
+              getOrCreateThumbnailFromBufferAsync?: typeof getOrCreateThumbnailFromBufferAsync;
+            } = {},
+          ): Promise<Response> {'''
+          assert core.count(old_signature) == 1, "unexpected download handler signature count"
+          core = core.replace(old_signature, new_signature, 1)
+
+          old_width = '  const requestedWidth = parseThumbnailWidth(c.req.query("w"));\n'
+          new_width = '''  const requestedWidth = parseThumbnailWidth(c.req.query("w"));
+            const readObject = dependencies.readAttachmentObject ?? readAttachmentObject;
+            const createThumbnailFromBuffer = dependencies.getOrCreateThumbnailFromBufferAsync
+              ?? getOrCreateThumbnailFromBufferAsync;
+          '''
+          assert core.count(old_width) == 1, "requestedWidth insertion point missing"
+          core = core.replace(old_width, new_width, 1)
+
+          old_thumbnail = '''  if (willServeThumbnail) {
+            const thumb = localExists
+              ? await getOrCreateThumbnailAsync(
+                  ATTACHMENTS_DIR,
+                  row.id,
+                  absPath,
+                  row.mimeType,
+                  requestedWidth!,
+                )
+              : await getOrCreateThumbnailFromBufferAsync(
+                  ATTACHMENTS_DIR,
+                  row.id,
+                  (await readAttachmentObject(row.path)) || Buffer.alloc(0),
+                  row.mimeType,
+                  requestedWidth!,
+                );
+          '''
+          new_thumbnail = '''  let sourceBuffer: Buffer | null | undefined;
+            if (willServeThumbnail) {
+              const thumb = localExists
+                ? await getOrCreateThumbnailAsync(
+                    ATTACHMENTS_DIR,
+                    row.id,
+                    absPath,
+                    row.mimeType,
+                    requestedWidth!,
+                  )
+                : await (async () => {
+                    sourceBuffer = await readObject(row.path);
+                    if (!sourceBuffer) return null;
+                    return createThumbnailFromBuffer(
+                      ATTACHMENTS_DIR,
+                      row.id,
+                      sourceBuffer,
+                      row.mimeType,
+                      requestedWidth!,
+                    );
+                  })();
+          '''
+          assert core.count(old_thumbnail) == 1, "remote thumbnail branch changed unexpectedly"
+          core = core.replace(old_thumbnail, new_thumbnail, 1)
+
+          old_original = '  const buffer = await readAttachmentObject(row.path);\n'
+          new_original = '''  // undefined = 尚未读取；null = 已读取但对象不存在；Buffer = 可直接复用。
+            // 远程缩略图生成失败时必须复用同一次请求已取得的原图，避免 NAS/S3
+            // 再次下载；对象缺失时也不能为了确认 404 再读一次。
+            const buffer = sourceBuffer === undefined
+              ? await readObject(row.path)
+              : sourceBuffer;
+          '''
+          assert core.count(old_original) == 1, "original object read changed unexpectedly"
+          core = core.replace(old_original, new_original, 1)
+          core_path.write_text(core, encoding="utf-8")
+
+          test_path = Path("backend/tests/attachment-cache-contract.test.ts")
+          test_source = test_path.read_text(encoding="utf-8")
+
+          old_var = 'let requestMatchesEtag: (headers: Headers, etag: string) => boolean;\n'
+          new_var = old_var + 'let handleCoreAttachmentDownload: typeof import("../src/routes/attachments-core").handleDownloadAttachment;\n'
+          assert test_source.count(old_var) == 1, "test variable insertion point missing"
+          test_source = test_source.replace(old_var, new_var, 1)
+
+          old_import = '''  const [attachmentsModule, schemaModule, thumbnailsModule, etagModule] = await Promise.all([
+              import("../src/routes/attachments"),
+              import("../src/db/schema"),
+              import("../src/services/thumbnails"),
+              import("../src/lib/attachment-etag"),
+            ]);
+          '''
+          new_import = '''  const [attachmentsModule, attachmentsCoreModule, schemaModule, thumbnailsModule, etagModule] = await Promise.all([
+              import("../src/routes/attachments"),
+              import("../src/routes/attachments-core"),
+              import("../src/db/schema"),
+              import("../src/services/thumbnails"),
+              import("../src/lib/attachment-etag"),
+            ]);
+          '''
+          assert test_source.count(old_import) == 1, "test import block changed unexpectedly"
+          test_source = test_source.replace(old_import, new_import, 1)
+
+          old_assignment = '  requestMatchesEtag = etagModule.requestMatchesEtag;\n'
+          new_assignment = old_assignment + '  handleCoreAttachmentDownload = attachmentsCoreModule.handleDownloadAttachment;\n'
+          assert test_source.count(old_assignment) == 1, "test assignment insertion point missing"
+          test_source = test_source.replace(old_assignment, new_assignment, 1)
+
+          regression_test = r'''
+
+          test("remote thumbnail failure reuses the already-read source buffer", async (t) => {
+            if (!isThumbnailable("image/png")) {
+              t.skip("当前平台未启用图片缩略图 MIME 路径");
+              return;
+            }
+
+            const backupPath = `${attachmentPath}.remote-thumbnail-fallback-backup`;
+            fs.renameSync(attachmentPath, backupPath);
+            let objectReads = 0;
+            let thumbnailAttempts = 0;
+            const coreApp = new Hono();
+            coreApp.get("/attachments/:id", (c) => handleCoreAttachmentDownload(c, {
+              readAttachmentObject: async (storagePath) => {
+                objectReads += 1;
+                assert.ok(storagePath);
+                return PNG_BYTES;
+              },
+              getOrCreateThumbnailFromBufferAsync: async (
+                _attachmentsDir,
+                id,
+                source,
+                mimeType,
+                width,
+              ) => {
+                thumbnailAttempts += 1;
+                assert.equal(id, attachmentId);
+                assert.equal(mimeType, "image/png");
+                assert.equal(width, 240);
+                assert.deepEqual(source, PNG_BYTES);
+                return null;
+              },
+            }));
+
+            try {
+              const response = await coreApp.request(signedRoute(signedUrl, { w: "240" }));
+              assert.equal(response.status, 200);
+              assert.equal(response.headers.get("content-type"), "image/png");
+              assert.equal(response.headers.get("x-thumbnail-width"), null);
+              assert.match(response.headers.get("etag") || "", /-original"$/);
+              assert.deepEqual(Buffer.from(await response.arrayBuffer()), PNG_BYTES);
+              assert.equal(thumbnailAttempts, 1);
+              assert.equal(objectReads, 1, "缩略图失败回退原图不得再次读取远程对象");
+            } finally {
+              fs.renameSync(backupPath, attachmentPath);
+            }
+          });
+          '''
+          assert "remote thumbnail failure reuses the already-read source buffer" not in test_source
+          test_source += regression_test
+          test_path.write_text(test_source, encoding="utf-8")
+
+          workflow_path = Path(".github/workflows/attachment-cache-contract-ci.yml")
+          workflow = workflow_path.read_text(encoding="utf-8")
+          old_tests = '''          tests/attachment-signed-url-window.test.ts
+                    tests/attachment-shared-access.test.ts
+          '''
+          new_tests = '''          tests/attachment-signed-url-window.test.ts
+                    tests/attachment-shared-access.test.ts
+                    tests/attachments-inline-video.test.ts
+          '''
+          assert workflow.count(old_tests) == 1, "attachment CI test list changed unexpectedly"
+          workflow = workflow.replace(old_tests, new_tests, 1)
+          workflow_path.write_text(workflow, encoding="utf-8")
+          PY
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/issue-690-fix.yml
+          git config user.name "Drug"
+          git config user.email "cropflre2333@gmail.com"
+          git add backend/src/routes/attachments-core.ts \
+                  backend/tests/attachment-cache-contract.test.ts \
+                  .github/workflows/attachment-cache-contract-ci.yml \
+                  .github/workflows/issue-690-fix.yml
+          git diff --cached --check
+          git commit -m "fix(attachments): reuse remote source buffer on thumbnail fallback"
+          git push origin HEAD:release/v1.4.6
