@@ -206,16 +206,60 @@ attachmentsRouter.route("/", attachmentsCoreRouter);
 
 export default attachmentsRouter;
 
-function hardenScopedResponse(response: Response): Response {
+function hardenScopedResponse(response: Response, attachmentId: string, requestHeaders: Headers): Response {
   const headers = new Headers(response.headers);
-  // 授权可随时撤销，禁止浏览器/CDN 把成功响应长期缓存后绕过服务端复核。
-  headers.set("Cache-Control", "private, no-store, no-transform");
-  headers.set("Pragma", "no-cache");
+  // 授权可随时撤销，因此浏览器/CDN 不得在未经服务端复核的情况下直接使用副本。
+  //
+  //   这里用 no-cache 而不是 no-store：两者都要求每次请求回源，服务端仍会执行
+  //   完整授权复核（verifyAttachmentSignature 每次都查 shares/publications 的
+  //   isActive 与 note capabilities），区别只在于 no-cache 允许浏览器保留副本，
+  //   在服务端回 304 时复用它。
+  //
+  //   no-store 会强制每次重新下载并解码整份图片/视频 —— 图片密集的笔记每次切换
+  //   都要重下全部原图，这是"图片多的笔记切换慢"的主因。而它并未换来额外安全：
+  //   签名 URL 本身的 TTL 就是 12 小时（attachment-signed-url.ts DEFAULT_TTL_MS），
+  //   期间同一 URL 可反复取用，因此禁止本地副本并不缩小暴露窗口。
+  //
+  //   must-revalidate 与 no-cache 语义重叠，这里显式写出以兼容只识别其中一个的
+  //   老代理。移除 Pragma: no-cache —— 它是 HTTP/1.0 请求头，作为响应头无标准
+  //   含义，且部分实现会把它当作 no-store 处理，反而抵消上面的意图。
+  headers.set("Cache-Control", "private, no-cache, must-revalidate, no-transform");
   headers.set("Vary", "Authorization");
+
+  // no-cache 只有配合验证器才能省下重复传输。附件内容由 UUID 唯一确定
+  // （attachments-core 对同一附件返回 immutable），因此 id 本身就是稳定的 ETag。
+  // 仅对完整成功响应启用：206 有 Content-Range 语义，304 不该再带实体头。
+  if (response.status === 200 && !headers.has("ETag")) {
+    headers.set("ETag", `"att-${attachmentId}"`);
+  }
+
+  const etag = headers.get("ETag");
+  if (response.status === 200 && etag && requestMatchesEtag(requestHeaders, etag)) {
+    // 授权复核已在上游完成，此处只是告诉浏览器"你手里那份仍然有效"。
+    const notModified = new Headers();
+    for (const key of ["Cache-Control", "Vary", "ETag"]) {
+      const value = headers.get(key);
+      if (value) notModified.set(key, value);
+    }
+    return new Response(null, { status: 304, statusText: "Not Modified", headers: notModified });
+  }
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers,
+  });
+}
+
+/** If-None-Match 比对，兼容多值与 W/弱验证器前缀。*/
+function requestMatchesEtag(requestHeaders: Headers, etag: string): boolean {
+  const ifNoneMatch = requestHeaders.get("If-None-Match");
+  if (!ifNoneMatch) return false;
+  const normalize = (value: string) => value.trim().replace(/^W\//, "");
+  const target = normalize(etag);
+  return ifNoneMatch.split(",").some((candidate) => {
+    const normalized = normalize(candidate);
+    return normalized === "*" || normalized === target;
   });
 }
 
@@ -306,5 +350,5 @@ export async function handleDownloadAttachment(c: Context): Promise<Response> {
     console.warn("[attachment.access.denied]", { id, status: response.status });
   }
 
-  return hardenScopedResponse(response);
+  return hardenScopedResponse(response, id, new Headers(c.req.raw.headers));
 }
