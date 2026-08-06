@@ -51,7 +51,7 @@ test("release version sources stay consistent", () => {
   const [major, minor, patch] = root.version.split(".").map(Number);
   const expectedCode = major * 10_000 + minor * 100 + patch;
   assert.ok(android.includes(\`versionName "\${root.version}"\`));
-  assert.match(android, new RegExp(\`versionCode\\s+\${expectedCode}\\b\`));
+  assert.ok(android.includes(\`versionCode \${expectedCode}\`));
   assert.equal(frontend.engines?.node, ">=22.0.0");
 });
 `);
