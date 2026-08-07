@@ -202,16 +202,43 @@ function translateElementAttributes(element: Element, english: boolean) {
   }
 }
 
+function translateLeafElementText(element: Element, english: boolean) {
+  if (element.childElementCount !== 0) return;
+  const raw = element.textContent ?? "";
+  if (!raw.trim()) return;
+  const match = raw.match(/^(\s*)([\s\S]*?)(\s*)$/);
+  if (!match || !match[2]) return;
+  const translated = translateText(match[2], english);
+  if (translated !== match[2]) element.textContent = `${match[1]}${translated}${match[3]}`;
+}
+
 function translateRoot(root: Element, english: boolean) {
   translateElementAttributes(root, english);
-  root.querySelectorAll("*").forEach((element) => translateElementAttributes(element, english));
+  translateLeafElementText(root, english);
+  root.querySelectorAll("*").forEach((element) => {
+    translateElementAttributes(element, english);
+    translateLeafElementText(element, english);
+  });
 
+  // Mixed-content controls (for example an icon plus label) are not leaf elements,
+  // so translate their remaining standalone text nodes without flattening markup.
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
   while (node) {
     translateNodeText(node as Text, english);
     node = walker.nextNode();
   }
+}
+
+function findSettingsRoot(node: Node): Element | null {
+  if (!(node instanceof Element)) return null;
+  if (node.matches(SETTINGS_ROOT_SELECTOR)) return node;
+  return node.querySelector(SETTINGS_ROOT_SELECTOR);
+}
+
+function containsPortalDialog(node: Node): boolean {
+  if (!(node instanceof Element)) return false;
+  return node.matches('[role="dialog"]') || !!node.querySelector('[role="dialog"]');
 }
 
 let installed = false;
@@ -221,18 +248,21 @@ export function installLegacySettingsI18nBridge(i18n: I18nInstance) {
   installed = true;
 
   let scheduled = false;
+  let settingsRoot: Element | null = null;
+  let settingsObserver: MutationObserver | null = null;
+
+  const isEnglish = () =>
+    (i18n.resolvedLanguage || i18n.language || "").toLowerCase().startsWith("en");
+
   const apply = () => {
     scheduled = false;
-    const settingsRoot = document.querySelector(SETTINGS_ROOT_SELECTOR);
-    if (!settingsRoot) return;
-    const english = (i18n.resolvedLanguage || i18n.language || "").toLowerCase().startsWith("en");
-
+    if (!settingsRoot || !document.contains(settingsRoot)) return;
+    const english = isEnglish();
     translateRoot(settingsRoot, english);
 
     // Confirm/prompt components opened from SettingsModal are portaled to body.
-    // Restrict extra roots to semantic dialogs while SettingsModal is present.
     document.querySelectorAll('[role="dialog"]').forEach((dialog) => {
-      if (dialog !== settingsRoot && !settingsRoot.contains(dialog)) translateRoot(dialog, english);
+      if (dialog !== settingsRoot && !settingsRoot!.contains(dialog)) translateRoot(dialog, english);
     });
   };
 
@@ -246,16 +276,54 @@ export function installLegacySettingsI18nBridge(i18n: I18nInstance) {
     });
   };
 
-  const startObserver = () => {
-    if (!document.body) return;
-    const observer = new MutationObserver(scheduleApply);
-    observer.observe(document.body, {
+  const detachSettingsObserver = () => {
+    settingsObserver?.disconnect();
+    settingsObserver = null;
+    settingsRoot = null;
+  };
+
+  const attachSettingsRoot = (root: Element) => {
+    if (settingsRoot === root) return;
+    detachSettingsObserver();
+    settingsRoot = root;
+    settingsObserver = new MutationObserver(scheduleApply);
+    settingsObserver.observe(root, {
       childList: true,
       subtree: true,
       characterData: true,
       attributes: true,
       attributeFilter: ["title", "aria-label", "placeholder"],
     });
+    scheduleApply();
+  };
+
+  const startObserver = () => {
+    if (!document.body) return;
+
+    const existingRoot = document.querySelector(SETTINGS_ROOT_SELECTOR);
+    if (existingRoot) attachSettingsRoot(existingRoot);
+
+    // Body observer only watches structural changes. Text/attribute changes are
+    // observed on the settings subtree itself, so editor typing does not schedule
+    // compatibility work while SettingsModal is closed.
+    const bodyObserver = new MutationObserver((mutations) => {
+      if (settingsRoot && !document.contains(settingsRoot)) detachSettingsObserver();
+
+      let shouldApplyForPortal = false;
+      for (const mutation of mutations) {
+        for (const node of Array.from(mutation.addedNodes)) {
+          if (!settingsRoot) {
+            const root = findSettingsRoot(node);
+            if (root) attachSettingsRoot(root);
+          }
+          if (settingsRoot && containsPortalDialog(node)) shouldApplyForPortal = true;
+        }
+      }
+
+      if (settingsRoot && shouldApplyForPortal) scheduleApply();
+    });
+    bodyObserver.observe(document.body, { childList: true, subtree: true });
+
     i18n.on("languageChanged", scheduleApply);
     scheduleApply();
   };
