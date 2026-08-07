@@ -13,6 +13,10 @@ import {
   enDownloadNetworkTranslations,
   zhCNDownloadNetworkTranslations,
 } from "../downloadNetworkTranslations";
+import {
+  enMiCloudProgressTranslations,
+  zhCNMiCloudProgressTranslations,
+} from "../miCloudProgressTranslations";
 
 type TranslationTree = Record<string, unknown>;
 
@@ -64,14 +68,22 @@ const zhYoudaoPatch = zhCNYoudaoTranslations as unknown as TranslationTree;
 const enYoudaoPatch = enYoudaoTranslations as unknown as TranslationTree;
 const zhDownloadNetworkPatch = zhCNDownloadNetworkTranslations as unknown as TranslationTree;
 const enDownloadNetworkPatch = enDownloadNetworkTranslations as unknown as TranslationTree;
+const zhMiCloudPatch = zhCNMiCloudProgressTranslations as unknown as TranslationTree;
+const enMiCloudPatch = enMiCloudProgressTranslations as unknown as TranslationTree;
 
 const zh = merge(
-  merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
-  zhDownloadNetworkPatch,
+  merge(
+    merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
+    zhDownloadNetworkPatch,
+  ),
+  zhMiCloudPatch,
 );
 const en = merge(
-  merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
-  enDownloadNetworkPatch,
+  merge(
+    merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
+    enDownloadNetworkPatch,
+  ),
+  enMiCloudPatch,
 );
 
 const criticalNamespaces = [
@@ -112,6 +124,10 @@ describe("release i18n coverage", () => {
 
   it("keeps download translation parity", () => {
     expectPatchParity(zhDownloadNetworkPatch, enDownloadNetworkPatch, "download");
+  });
+
+  it("keeps Mi Cloud progress translation parity", () => {
+    expectPatchParity(zhMiCloudPatch, enMiCloudPatch, "miCloud");
   });
 
   it("defines the complete LAN discovery key set in both languages", () => {
