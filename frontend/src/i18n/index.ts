@@ -27,6 +27,10 @@ import {
   enWorkspaceLayoutTranslations,
   zhCNWorkspaceLayoutTranslations,
 } from "./workspaceLayoutTranslations";
+import {
+  enSecurityAddonTranslations,
+  zhCNSecurityAddonTranslations,
+} from "./securityAddonTranslations";
 import { installLegacySettingsI18nBridge } from "./legacySettingsI18nBridge";
 
 function mergeTranslations(base: any, patch: any): any {
@@ -46,16 +50,19 @@ const zhCNWithReleaseTranslations = mergeTranslations(
     mergeTranslations(
       mergeTranslations(
         mergeTranslations(
-          mergeTranslations(zhCN, zhCNAdditionalTranslations),
-          zhCNYoudaoTranslations,
+          mergeTranslations(
+            mergeTranslations(zhCN, zhCNAdditionalTranslations),
+            zhCNYoudaoTranslations,
+          ),
+          zhCNDownloadNetworkTranslations,
         ),
-        zhCNDownloadNetworkTranslations,
+        zhCNMiCloudProgressTranslations,
       ),
-      zhCNMiCloudProgressTranslations,
+      zhCNLargeDocumentTranslations,
     ),
-    zhCNLargeDocumentTranslations,
+    zhCNWorkspaceLayoutTranslations,
   ),
-  zhCNWorkspaceLayoutTranslations,
+  zhCNSecurityAddonTranslations,
 );
 
 const enWithReleaseTranslations = mergeTranslations(
@@ -63,16 +70,19 @@ const enWithReleaseTranslations = mergeTranslations(
     mergeTranslations(
       mergeTranslations(
         mergeTranslations(
-          mergeTranslations(en, enAdditionalTranslations),
-          enYoudaoTranslations,
+          mergeTranslations(
+            mergeTranslations(en, enAdditionalTranslations),
+            enYoudaoTranslations,
+          ),
+          enDownloadNetworkTranslations,
         ),
-        enDownloadNetworkTranslations,
+        enMiCloudProgressTranslations,
       ),
-      enMiCloudProgressTranslations,
+      enLargeDocumentTranslations,
     ),
-    enLargeDocumentTranslations,
+    enWorkspaceLayoutTranslations,
   ),
-  enWorkspaceLayoutTranslations,
+  enSecurityAddonTranslations,
 );
 
 const zhCNWithRuntimeOverrides = mergeTranslations(
