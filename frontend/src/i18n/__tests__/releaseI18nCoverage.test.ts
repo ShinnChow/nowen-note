@@ -21,6 +21,10 @@ import {
   enLargeDocumentTranslations,
   zhCNLargeDocumentTranslations,
 } from "../largeDocumentTranslations";
+import {
+  enWorkspaceLayoutTranslations,
+  zhCNWorkspaceLayoutTranslations,
+} from "../workspaceLayoutTranslations";
 
 type TranslationTree = Record<string, unknown>;
 
@@ -76,26 +80,34 @@ const zhMiCloudPatch = zhCNMiCloudProgressTranslations as unknown as Translation
 const enMiCloudPatch = enMiCloudProgressTranslations as unknown as TranslationTree;
 const zhLargeDocumentPatch = zhCNLargeDocumentTranslations as unknown as TranslationTree;
 const enLargeDocumentPatch = enLargeDocumentTranslations as unknown as TranslationTree;
+const zhWorkspaceLayoutPatch = zhCNWorkspaceLayoutTranslations as unknown as TranslationTree;
+const enWorkspaceLayoutPatch = enWorkspaceLayoutTranslations as unknown as TranslationTree;
 
 const zh = merge(
   merge(
     merge(
-      merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
-      zhDownloadNetworkPatch,
+      merge(
+        merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
+        zhDownloadNetworkPatch,
+      ),
+      zhMiCloudPatch,
     ),
-    zhMiCloudPatch,
+    zhLargeDocumentPatch,
   ),
-  zhLargeDocumentPatch,
+  zhWorkspaceLayoutPatch,
 );
 const en = merge(
   merge(
     merge(
-      merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
-      enDownloadNetworkPatch,
+      merge(
+        merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
+        enDownloadNetworkPatch,
+      ),
+      enMiCloudPatch,
     ),
-    enMiCloudPatch,
+    enLargeDocumentPatch,
   ),
-  enLargeDocumentPatch,
+  enWorkspaceLayoutPatch,
 );
 
 const criticalNamespaces = [
@@ -147,6 +159,14 @@ describe("release i18n coverage", () => {
       zhLargeDocumentPatch,
       enLargeDocumentPatch,
       "markdown.largeDocument",
+    );
+  });
+
+  it("keeps workspace layout translation parity", () => {
+    expectPatchParity(
+      zhWorkspaceLayoutPatch,
+      enWorkspaceLayoutPatch,
+      "workspaceLayout",
     );
   });
 
