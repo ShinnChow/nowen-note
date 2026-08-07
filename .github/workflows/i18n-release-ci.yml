@@ -19,6 +19,8 @@ on:
       - "frontend/src/components/LargeRichTextSafeViewer.tsx"
       - "frontend/src/components/LargeMarkdownSafeEditor.tsx"
       - "frontend/src/components/NoteWorkspaceLayoutController.tsx"
+      - "frontend/src/components/diary/SayMarkdownToolbar.tsx"
+      - "frontend/src/components/diary/__tests__/SayMarkdownToolbar.test.ts"
       - ".github/workflows/i18n-release-ci.yml"
   push:
     branches: [main, release/v1.4.6]
@@ -39,6 +41,8 @@ on:
       - "frontend/src/components/LargeRichTextSafeViewer.tsx"
       - "frontend/src/components/LargeMarkdownSafeEditor.tsx"
       - "frontend/src/components/NoteWorkspaceLayoutController.tsx"
+      - "frontend/src/components/diary/SayMarkdownToolbar.tsx"
+      - "frontend/src/components/diary/__tests__/SayMarkdownToolbar.test.ts"
       - ".github/workflows/i18n-release-ci.yml"
 
 permissions:
@@ -60,7 +64,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - name: I18n release regression tests
-        run: npm run test:run -- src/i18n/__tests__/releaseI18nCoverage.test.ts src/components/__tests__/EditorErrorBoundary.test.ts
+        run: npm run test:run -- src/i18n/__tests__/releaseI18nCoverage.test.ts src/components/__tests__/EditorErrorBoundary.test.ts src/components/diary/__tests__/SayMarkdownToolbar.test.ts
       - name: Frontend typecheck
         if: always()
         run: npx tsc -b
