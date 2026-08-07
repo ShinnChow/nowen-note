@@ -33,6 +33,10 @@ import {
   enDiaryMarkdownTranslations,
   zhCNDiaryMarkdownTranslations,
 } from "../diaryMarkdownTranslations";
+import {
+  enEditorSplitTranslations,
+  zhCNEditorSplitTranslations,
+} from "../editorSplitTranslations";
 
 type TranslationTree = Record<string, unknown>;
 
@@ -98,6 +102,8 @@ const zhSecurityPatch = zhCNSecurityAddonTranslations as unknown as TranslationT
 const enSecurityPatch = enSecurityAddonTranslations as unknown as TranslationTree;
 const zhDiaryMarkdownPatch = zhCNDiaryMarkdownTranslations as unknown as TranslationTree;
 const enDiaryMarkdownPatch = enDiaryMarkdownTranslations as unknown as TranslationTree;
+const zhEditorSplitPatch = zhCNEditorSplitTranslations as unknown as TranslationTree;
+const enEditorSplitPatch = enEditorSplitTranslations as unknown as TranslationTree;
 
 const zh = mergePatches(
   zhBase as TranslationTree,
@@ -109,6 +115,7 @@ const zh = mergePatches(
   zhWorkspaceLayoutPatch,
   zhSecurityPatch,
   zhDiaryMarkdownPatch,
+  zhEditorSplitPatch,
 );
 const en = mergePatches(
   enBase as TranslationTree,
@@ -120,6 +127,7 @@ const en = mergePatches(
   enWorkspaceLayoutPatch,
   enSecurityPatch,
   enDiaryMarkdownPatch,
+  enEditorSplitPatch,
 );
 
 const criticalNamespaces = [
@@ -180,6 +188,10 @@ describe("release i18n coverage", () => {
 
   it("keeps diary Markdown translation parity", () => {
     expectPatchParity(zhDiaryMarkdownPatch, enDiaryMarkdownPatch, "diary");
+  });
+
+  it("keeps editor split translation parity", () => {
+    expectPatchParity(zhEditorSplitPatch, enEditorSplitPatch, "editorTabs");
   });
 
   it("defines the complete LAN discovery key set in both languages", () => {
