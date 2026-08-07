@@ -44,6 +44,25 @@ for ((i = 0; i < ${#ARGS[@]}; i += 1)); do
   esac
 done
 
+# Linux desktop release artifacts contain better-sqlite3, so their ABI must be
+# built against the project's glibc 2.31 / GLIBCXX 3.4.28 compatibility
+# baseline rather than whatever newer libc happens to be installed on the
+# maintainer workstation (WSL/Ubuntu 24.04 is a common example).
+#
+# rebuild-native-entry.mjs only applies this flag when the actual target is
+# Linux, so cross-building Windows/macOS from the same release run is unaffected.
+# Keep an explicit caller override, and only auto-enable when Docker is usable;
+# older Linux hosts without Docker can still use the native path and will be
+# checked by builder.config.js before packaging.
+if [ "$(uname -s 2>/dev/null || true)" = "Linux" ] && [ -z "${NOWEN_LINUX_PORTABLE+x}" ]; then
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    export NOWEN_LINUX_PORTABLE=1
+    echo "[release-guard] Linux native modules: portable glibc 2.31 baseline enabled"
+  else
+    echo "[release-guard] Docker unavailable; Linux native modules will use the host toolchain and compatibility checks" >&2
+  fi
+fi
+
 clean_directory() {
   local directory="$1"
   [ -e "$directory" ] || return 0
