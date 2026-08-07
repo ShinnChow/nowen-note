@@ -1,0 +1,192 @@
+name: v1.4.7 Recycle Lifecycle Patch
+
+on:
+  push:
+    branches: [release/v1.4.7]
+    paths:
+      - '.github/workflows/v147-recycle-lifecycle-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.7
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Apply lifecycle ACL bridge
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          acl = Path('backend/src/middleware/acl.ts')
+          text = acl.read_text()
+          old = '''import {
+            capabilitiesToLegacyPermission,
+            resolveResourceKnowledgeAccess,
+          } from "../services/knowledgeCapabilities";'''
+          new = '''import {
+            capabilitiesToLegacyPermission,
+            resolveResourceKnowledgeAccess,
+            resolveResourceKnowledgeAccessForTombstone,
+          } from "../services/knowledgeCapabilities";'''
+          if old not in text:
+              raise SystemExit('acl import needle missing')
+          text = text.replace(old, new, 1)
+
+          marker = '''/**
+           * 解析笔记本的有效权限。知识树节点存在时使用统一权限；只对尚未完成层级同步的
+           * 历史资源保留旧权限回退。
+           */'''
+          helper = '''/**
+           * 解析已进入回收站笔记的生命周期权限。
+           *
+           * 普通 resolveNotePermission 继续严格隐藏 tombstone；只有恢复和永久删除
+           * 这类删除生命周期操作显式调用本函数。权限仍来自同一套 Knowledge ACL，
+           * 因而 Restricted / explicit deny / owner-admin 语义不会被绕过。
+           */
+          export function resolveTrashedNotePermission(
+            noteId: string,
+            userId: string,
+          ): { permission: Permission | null; workspaceId: string | null; noteOwnerId: string | null } {
+            const db = getDb();
+            const note = db
+              .prepare("SELECT userId, workspaceId FROM notes WHERE id = ?")
+              .get(noteId) as { userId: string; workspaceId: string | null } | undefined;
+
+            if (!note) return { permission: null, workspaceId: null, noteOwnerId: null };
+
+            const knowledgeAccess = resolveResourceKnowledgeAccessForTombstone("note", noteId, userId, db);
+            if (knowledgeAccess.nodeId) {
+              return {
+                permission: capabilitiesToLegacyPermission(knowledgeAccess.capabilities),
+                workspaceId: note.workspaceId,
+                noteOwnerId: note.userId,
+              };
+            }
+
+            // 尚未生成统一知识树节点的历史资源继续沿用旧 ACL 回退。
+            return resolveNotePermission(noteId, userId);
+          }
+
+          ''' + marker
+          if marker not in text:
+              raise SystemExit('acl helper marker missing')
+          text = text.replace(marker, helper, 1)
+          acl.write_text(text)
+
+          notes = Path('backend/src/routes/notes.ts')
+          text = notes.read_text()
+          old = '''  resolveNotePermission,
+            resolveNotebookPermission,'''
+          new = '''  resolveNotePermission,
+            resolveTrashedNotePermission,
+            resolveNotebookPermission,'''
+          if old not in text:
+              raise SystemExit('notes import needle missing')
+          text = text.replace(old, new, 1)
+
+          old = '''  // 权限校验
+            const { permission, workspaceId: noteWorkspaceId } = resolveNotePermission(id, userId);
+
+            // 根据变更字段决定所需权限'''
+          new = '''  // 权限校验。恢复操作发生时知识树节点已经是 tombstone，必须显式使用
+            // 删除生命周期权限桥；其它编辑/软删仍保持普通严格权限。
+            const notePermissionResolver = body.isTrashed === 0
+              ? resolveTrashedNotePermission
+              : resolveNotePermission;
+            const { permission, workspaceId: noteWorkspaceId } = notePermissionResolver(id, userId);
+
+            // 根据变更字段决定所需权限'''
+          if old not in text:
+              raise SystemExit('notes PUT permission needle missing')
+          text = text.replace(old, new, 1)
+
+          old = '''// 删除笔记（永久）
+          app.delete("/:id", (c) => {
+            const db = getDb();
+            const userId = c.req.header("X-User-Id") || "";
+            const id = c.req.param("id");
+
+            const { permission } = resolveNotePermission(id, userId);'''
+          new = '''// 删除笔记（永久）
+          app.delete("/:id", (c) => {
+            const db = getDb();
+            const userId = c.req.header("X-User-Id") || "";
+            const id = c.req.param("id");
+
+            // 永久删除只针对回收站生命周期；tombstone 继续按删除前 Knowledge ACL 校验。
+            const { permission } = resolveTrashedNotePermission(id, userId);'''
+          if old not in text:
+              raise SystemExit('notes DELETE permission needle missing')
+          text = text.replace(old, new, 1)
+          notes.write_text(text)
+
+          test_file = Path('backend/tests/recycle-bin-capability-guard.test.ts')
+          text = test_file.read_text()
+          text = text.replace(
+              'const { createKnowledgeChild, restoreKnowledgeNode } = await import("../src/services/knowledgeTree.js");',
+              'const { createKnowledgeChild } = await import("../src/services/knowledgeTree.js");',
+              1,
+          )
+          old = '''  const restored = restoreKnowledgeNode({
+            actorUserId: memberId,
+            nodeId: noteNode.id,
+            includeSubtree: true,
+            db,
+          });
+            assert.deepEqual(restored.restoredNodeIds, [noteNode.id]);
+            assert.equal(
+              (db.prepare("SELECT isTrashed FROM notes WHERE id = ?").get(noteNode.resourceId) as { isTrashed: number }).isTrashed,
+              0,
+            );'''
+          new = '''  const restored = await app.request(`/api/notes/${noteNode.resourceId}`, {
+            method: "PUT",
+            headers: requestHeaders(memberId, true),
+            body: JSON.stringify({ isTrashed: 0 }),
+          });
+            assert.equal(restored.status, 200);
+            assert.equal(
+              (db.prepare("SELECT isTrashed FROM notes WHERE id = ?").get(noteNode.resourceId) as { isTrashed: number }).isTrashed,
+              0,
+            );'''
+          if old not in text:
+              raise SystemExit('test restore needle missing')
+          text = text.replace(old, new, 1)
+          test_file.write_text(text)
+          PY
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci --silent
+
+      - name: Recycle-bin lifecycle regression
+        working-directory: backend
+        run: node --import tsx --test tests/recycle-bin-capability-guard.test.ts
+
+      - name: Backend typecheck
+        working-directory: backend
+        run: npm run build:tsc
+
+      - name: Commit verified patch
+        shell: bash
+        run: |
+          git config user.name "Drug"
+          git config user.email "cropflre2333@gmail.com"
+          git add backend/src/middleware/acl.ts backend/src/routes/notes.ts backend/tests/recycle-bin-capability-guard.test.ts
+          if git diff --cached --quiet; then
+            echo "No patch changes"
+            exit 0
+          fi
+          git commit -m "fix(permissions): bridge trashed note lifecycle ACL"
+          git push origin HEAD:release/v1.4.7
