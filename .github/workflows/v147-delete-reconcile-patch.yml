@@ -1,5 +1,6 @@
 name: v1.4.7 Delete Reconcile Patch
 
+# Retry after making the delete-reconciliation fixture type-safe.
 on:
   push:
     branches: [release/v1.4.7]
