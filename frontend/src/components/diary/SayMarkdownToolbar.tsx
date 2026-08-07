@@ -6,6 +6,7 @@ import {
   Eye,
   List,
   ListOrdered,
+  MoreHorizontal,
   Pencil,
   Quote,
 } from "lucide-react";
@@ -126,61 +127,113 @@ export default function SayMarkdownToolbar({
     action: SayMarkdownAction;
     label: string;
     icon: React.ReactNode;
+    mobilePrimary?: boolean;
   }> = [
-    { action: "bold", label: t("diary.markdownBold", { defaultValue: "加粗" }), icon: <Bold size={14} /> },
-    { action: "bulletList", label: t("diary.markdownBulletList", { defaultValue: "无序列表" }), icon: <List size={14} /> },
+    { action: "bold", label: t("diary.markdownBold", { defaultValue: "加粗" }), icon: <Bold size={14} />, mobilePrimary: true },
+    { action: "bulletList", label: t("diary.markdownBulletList", { defaultValue: "无序列表" }), icon: <List size={14} />, mobilePrimary: true },
+    { action: "taskList", label: t("diary.markdownTaskList", { defaultValue: "任务列表" }), icon: <CheckSquare size={14} />, mobilePrimary: true },
     { action: "orderedList", label: t("diary.markdownOrderedList", { defaultValue: "有序列表" }), icon: <ListOrdered size={14} /> },
-    { action: "taskList", label: t("diary.markdownTaskList", { defaultValue: "任务列表" }), icon: <CheckSquare size={14} /> },
     { action: "quote", label: t("diary.markdownQuote", { defaultValue: "引用" }), icon: <Quote size={14} /> },
     { action: "inlineCode", label: t("diary.markdownInlineCode", { defaultValue: "行内代码" }), icon: <Code2 size={14} /> },
   ];
+  const secondaryActions = actions.filter((item) => !item.mobilePrimary);
+
+  const actionButtonClass = (mobilePrimary?: boolean) => cn(
+    "grid h-10 w-10 shrink-0 place-items-center rounded-lg text-tx-tertiary transition-colors sm:h-7 sm:w-7 sm:rounded-md",
+    !mobilePrimary && "hidden sm:grid",
+    mode === "write"
+      ? "hover:bg-app-hover hover:text-tx-primary"
+      : "cursor-not-allowed opacity-40",
+  );
 
   return (
-    <div className="mt-2 flex items-center gap-1 overflow-x-auto border-t border-app-border/40 pt-2">
-      {actions.map((item) => (
-        <button
-          key={item.action}
-          type="button"
-          disabled={mode !== "write"}
-          title={item.label}
-          aria-label={item.label}
-          onMouseDown={(event) => {
-            event.preventDefault();
-            apply(item.action);
-          }}
-          className={cn(
-            "grid h-7 w-7 shrink-0 place-items-center rounded-md text-tx-tertiary transition-colors",
-            mode === "write"
-              ? "hover:bg-app-hover hover:text-tx-primary"
-              : "cursor-not-allowed opacity-40",
-          )}
+    <div
+      className="mt-2 border-t border-app-border/40 pt-2"
+      data-diary-markdown-toolbar=""
+    >
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1">
+          {actions.map((item) => (
+            <button
+              key={item.action}
+              type="button"
+              disabled={mode !== "write"}
+              title={item.label}
+              aria-label={item.label}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                apply(item.action);
+              }}
+              className={actionButtonClass(item.mobilePrimary)}
+            >
+              {item.icon}
+            </button>
+          ))}
+
+          <details className="relative shrink-0 sm:hidden">
+            <summary
+              className={cn(
+                "grid h-10 w-10 cursor-pointer list-none place-items-center rounded-lg text-tx-tertiary transition-colors [&::-webkit-details-marker]:hidden",
+                mode === "write"
+                  ? "hover:bg-app-hover hover:text-tx-primary"
+                  : "pointer-events-none opacity-40",
+              )}
+              title={t("diary.media.more", { defaultValue: "更多格式" })}
+              aria-label={t("diary.media.more", { defaultValue: "更多格式" })}
+            >
+              <MoreHorizontal size={16} />
+            </summary>
+            <div className="absolute left-0 top-full z-50 mt-2 w-36 rounded-xl border border-app-border bg-app-elevated p-1.5 shadow-lg">
+              {secondaryActions.map((item) => (
+                <button
+                  key={item.action}
+                  type="button"
+                  disabled={mode !== "write"}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    apply(item.action);
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                  }}
+                  className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-xs text-tx-secondary transition-colors hover:bg-app-hover hover:text-tx-primary disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </details>
+        </div>
+
+        <div
+          className="flex shrink-0 items-center rounded-lg bg-app-hover/60 p-0.5"
+          data-diary-markdown-mode=""
         >
-          {item.icon}
-        </button>
-      ))}
-      <div className="mx-1 h-4 w-px shrink-0 bg-app-border" />
-      <button
-        type="button"
-        onClick={() => onModeChange("write")}
-        className={cn(
-          "flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors",
-          mode === "write" ? "bg-app-hover text-tx-primary" : "text-tx-tertiary hover:text-tx-secondary",
-        )}
-      >
-        <Pencil size={12} />
-        {t("diary.markdownWrite", { defaultValue: "编辑" })}
-      </button>
-      <button
-        type="button"
-        onClick={() => onModeChange("preview")}
-        className={cn(
-          "flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors",
-          mode === "preview" ? "bg-app-hover text-tx-primary" : "text-tx-tertiary hover:text-tx-secondary",
-        )}
-      >
-        <Eye size={12} />
-        {t("diary.markdownPreview", { defaultValue: "预览" })}
-      </button>
+          <button
+            type="button"
+            onClick={() => onModeChange("write")}
+            title={t("diary.markdownWrite", { defaultValue: "编辑" })}
+            className={cn(
+              "flex h-9 items-center gap-1 rounded-md px-2 text-[11px] transition-colors sm:h-auto sm:py-1",
+              mode === "write" ? "bg-app-surface text-tx-primary shadow-sm" : "text-tx-tertiary hover:text-tx-secondary",
+            )}
+          >
+            <Pencil size={12} />
+            <span>{t("diary.markdownWrite", { defaultValue: "编辑" })}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onModeChange("preview")}
+            title={t("diary.markdownPreview", { defaultValue: "预览" })}
+            className={cn(
+              "flex h-9 items-center gap-1 rounded-md px-2 text-[11px] transition-colors sm:h-auto sm:py-1",
+              mode === "preview" ? "bg-app-surface text-tx-primary shadow-sm" : "text-tx-tertiary hover:text-tx-secondary",
+            )}
+          >
+            <Eye size={12} />
+            <span>{t("diary.markdownPreview", { defaultValue: "预览" })}</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
