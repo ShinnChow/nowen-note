@@ -23,6 +23,10 @@ import {
   enTokenUsageTranslations,
   zhCNTokenUsageTranslations,
 } from "./tokenUsageTranslations";
+import {
+  enLargeDocumentTranslations,
+  zhCNLargeDocumentTranslations,
+} from "./largeDocumentTranslations";
 import { installLegacySettingsI18nBridge } from "./legacySettingsI18nBridge";
 
 function mergeTranslations(base: any, patch: any): any {
@@ -41,28 +45,34 @@ const zhCNWithReleaseTranslations = mergeTranslations(
   mergeTranslations(
     mergeTranslations(
       mergeTranslations(
-        mergeTranslations(zhCN, zhCNAdditionalTranslations),
-        zhCNYoudaoTranslations,
+        mergeTranslations(
+          mergeTranslations(zhCN, zhCNAdditionalTranslations),
+          zhCNYoudaoTranslations,
+        ),
+        zhCNDownloadNetworkTranslations,
       ),
-      zhCNDownloadNetworkTranslations,
+      zhCNMiCloudProgressTranslations,
     ),
-    zhCNMiCloudProgressTranslations,
+    zhCNTokenUsageTranslations,
   ),
-  zhCNTokenUsageTranslations,
+  zhCNLargeDocumentTranslations,
 );
 
 const enWithReleaseTranslations = mergeTranslations(
   mergeTranslations(
     mergeTranslations(
       mergeTranslations(
-        mergeTranslations(en, enAdditionalTranslations),
-        enYoudaoTranslations,
+        mergeTranslations(
+          mergeTranslations(en, enAdditionalTranslations),
+          enYoudaoTranslations,
+        ),
+        enDownloadNetworkTranslations,
       ),
-      enDownloadNetworkTranslations,
+      enMiCloudProgressTranslations,
     ),
-    enMiCloudProgressTranslations,
+    enTokenUsageTranslations,
   ),
-  enTokenUsageTranslations,
+  enLargeDocumentTranslations,
 );
 
 const zhCNWithRuntimeOverrides = mergeTranslations(
