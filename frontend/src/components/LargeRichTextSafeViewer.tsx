@@ -129,12 +129,12 @@ const LargeRichTextSafeViewer = forwardRef<
               <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
                 <span className="rounded border border-amber-400/30 px-1.5 py-0.5">
                   {t("markdown.largeDocument.charactersCount", {
-                    count: numberFormatter.format(profile.characters),
+                    value: numberFormatter.format(profile.characters),
                   })}
                 </span>
                 <span className="rounded border border-amber-400/30 px-1.5 py-0.5">
                   {t("markdown.largeDocument.approximateNodes", {
-                    count: numberFormatter.format(profile.approximateNodes),
+                    value: numberFormatter.format(profile.approximateNodes),
                   })}
                 </span>
                 {decision?.reasons.map((reason) => (
@@ -199,7 +199,7 @@ const LargeRichTextSafeViewer = forwardRef<
       <div className="flex items-center gap-3 border-t border-app-border/60 px-4 py-1.5 text-[11px] text-tx-tertiary md:px-8">
         <span>
           {t("markdown.largeDocument.charactersCount", {
-            count: numberFormatter.format(displayText.length),
+            value: numberFormatter.format(displayText.length),
           })}
         </span>
         <span className="opacity-60">·</span>
