@@ -4,8 +4,16 @@ import LanguageDetector from "i18next-browser-languagedetector";
 import zhCN from "./locales/zh-CN.json";
 import en from "./locales/en.json";
 
-const zhCNWithEditorHints = {
+const zhCNWithRuntimeOverrides = {
   ...zhCN,
+  auth: {
+    ...zhCN.auth,
+    ugreenAccess: {
+      ...zhCN.auth.ugreenAccess,
+      // Android/iOS 只能在系统浏览器中打开绿联远程工作台，不能回到当前 App 自动续登。
+      button: "在系统浏览器中打开",
+    },
+  },
   tiptap: {
     ...zhCN.tiptap,
     indent: "增加块级缩进（代码块内 Tab 仅调整代码内容）",
@@ -13,8 +21,16 @@ const zhCNWithEditorHints = {
   },
 };
 
-const enWithEditorHints = {
+const enWithRuntimeOverrides = {
   ...en,
+  auth: {
+    ...en.auth,
+    ugreenAccess: {
+      ...en.auth.ugreenAccess,
+      // Native mobile opens the UGREEN workspace in the system browser; it does not resume in-app sign-in.
+      button: "Open in system browser",
+    },
+  },
   tiptap: {
     ...en.tiptap,
     indent: "Increase block indent (Tab only indents code inside code blocks)",
@@ -27,8 +43,8 @@ i18n
   .use(initReactI18next)
   .init({
     resources: {
-      "zh-CN": { translation: zhCNWithEditorHints },
-      en: { translation: enWithEditorHints },
+      "zh-CN": { translation: zhCNWithRuntimeOverrides },
+      en: { translation: enWithRuntimeOverrides },
     },
     fallbackLng: "zh-CN",
     interpolation: {
