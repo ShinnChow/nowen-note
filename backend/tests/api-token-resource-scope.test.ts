@@ -129,6 +129,29 @@ test("discovers granted workspace notebooks and descendants even when the route 
   assert.equal(body[0]?.workspaceName, "Team Space");
 });
 
+test("workspace grant permits direct note read and write after discovery", async () => {
+  db.prepare("DELETE FROM api_token_resources WHERE tokenId = ?").run("token-1");
+  db.prepare(`
+    INSERT INTO api_token_resources
+      (id, tokenId, resourceType, resourceId, permission, includeDescendants)
+    VALUES ('resource-ws-rw', 'token-1', 'notebook', 'nb-ws', 'write', 1)
+  `).run();
+
+  const readResponse = await createApp().request("/api/notes/note-ws-child");
+  assert.equal(readResponse.status, 200);
+  const readBody = await readResponse.json() as { id: string };
+  assert.equal(readBody.id, "note-ws-child");
+
+  const writeResponse = await createApp().request("/api/notes/note-ws", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "changed" }),
+  });
+  assert.equal(writeResponse.status, 200);
+  const writeBody = await writeResponse.json() as { updated: boolean };
+  assert.equal(writeBody.updated, true);
+});
+
 test("workspace grant stops being discoverable after the user loses workspace ACL", async () => {
   db.prepare("DELETE FROM api_token_resources WHERE tokenId = ?").run("token-1");
   db.prepare(`
