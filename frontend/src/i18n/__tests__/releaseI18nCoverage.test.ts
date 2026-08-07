@@ -18,10 +18,6 @@ import {
   zhCNMiCloudProgressTranslations,
 } from "../miCloudProgressTranslations";
 import {
-  enTokenUsageTranslations,
-  zhCNTokenUsageTranslations,
-} from "../tokenUsageTranslations";
-import {
   enLargeDocumentTranslations,
   zhCNLargeDocumentTranslations,
 } from "../largeDocumentTranslations";
@@ -78,34 +74,26 @@ const zhDownloadNetworkPatch = zhCNDownloadNetworkTranslations as unknown as Tra
 const enDownloadNetworkPatch = enDownloadNetworkTranslations as unknown as TranslationTree;
 const zhMiCloudPatch = zhCNMiCloudProgressTranslations as unknown as TranslationTree;
 const enMiCloudPatch = enMiCloudProgressTranslations as unknown as TranslationTree;
-const zhTokenUsagePatch = zhCNTokenUsageTranslations as unknown as TranslationTree;
-const enTokenUsagePatch = enTokenUsageTranslations as unknown as TranslationTree;
 const zhLargeDocumentPatch = zhCNLargeDocumentTranslations as unknown as TranslationTree;
 const enLargeDocumentPatch = enLargeDocumentTranslations as unknown as TranslationTree;
 
 const zh = merge(
   merge(
     merge(
-      merge(
-        merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
-        zhDownloadNetworkPatch,
-      ),
-      zhMiCloudPatch,
+      merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
+      zhDownloadNetworkPatch,
     ),
-    zhTokenUsagePatch,
+    zhMiCloudPatch,
   ),
   zhLargeDocumentPatch,
 );
 const en = merge(
   merge(
     merge(
-      merge(
-        merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
-        enDownloadNetworkPatch,
-      ),
-      enMiCloudPatch,
+      merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
+      enDownloadNetworkPatch,
     ),
-    enTokenUsagePatch,
+    enMiCloudPatch,
   ),
   enLargeDocumentPatch,
 );
@@ -154,11 +142,7 @@ describe("release i18n coverage", () => {
     expectPatchParity(zhMiCloudPatch, enMiCloudPatch, "miCloud");
   });
 
-  it("keeps token usage translation parity", () => {
-    expectPatchParity(zhTokenUsagePatch, enTokenUsagePatch, "tokens.usage");
-  });
-
-  it("keeps large-document safe-mode translation parity", () => {
+  it("keeps large-document translation parity", () => {
     expectPatchParity(
       zhLargeDocumentPatch,
       enLargeDocumentPatch,
