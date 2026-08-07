@@ -131,39 +131,6 @@ jobs:
               raise SystemExit('notes DELETE permission needle missing')
           text = text.replace(old, new, 1)
           notes.write_text(text)
-
-          test_file = Path('backend/tests/recycle-bin-capability-guard.test.ts')
-          text = test_file.read_text()
-          text = text.replace(
-              'const { createKnowledgeChild, restoreKnowledgeNode } = await import("../src/services/knowledgeTree.js");',
-              'const { createKnowledgeChild } = await import("../src/services/knowledgeTree.js");',
-              1,
-          )
-          old = '''  const restored = restoreKnowledgeNode({
-            actorUserId: memberId,
-            nodeId: noteNode.id,
-            includeSubtree: true,
-            db,
-          });
-            assert.deepEqual(restored.restoredNodeIds, [noteNode.id]);
-            assert.equal(
-              (db.prepare("SELECT isTrashed FROM notes WHERE id = ?").get(noteNode.resourceId) as { isTrashed: number }).isTrashed,
-              0,
-            );'''
-          new = '''  const restored = await app.request(`/api/notes/${noteNode.resourceId}`, {
-            method: "PUT",
-            headers: requestHeaders(memberId, true),
-            body: JSON.stringify({ isTrashed: 0 }),
-          });
-            assert.equal(restored.status, 200);
-            assert.equal(
-              (db.prepare("SELECT isTrashed FROM notes WHERE id = ?").get(noteNode.resourceId) as { isTrashed: number }).isTrashed,
-              0,
-            );'''
-          if old not in text:
-              raise SystemExit('test restore needle missing')
-          text = text.replace(old, new, 1)
-          test_file.write_text(text)
           PY
 
       - name: Install backend dependencies
@@ -183,7 +150,7 @@ jobs:
         run: |
           git config user.name "Drug"
           git config user.email "cropflre2333@gmail.com"
-          git add backend/src/middleware/acl.ts backend/src/routes/notes.ts backend/tests/recycle-bin-capability-guard.test.ts
+          git add backend/src/middleware/acl.ts backend/src/routes/notes.ts
           if git diff --cached --quiet; then
             echo "No patch changes"
             exit 0
