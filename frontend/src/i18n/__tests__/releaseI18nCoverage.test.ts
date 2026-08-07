@@ -25,6 +25,10 @@ import {
   enWorkspaceLayoutTranslations,
   zhCNWorkspaceLayoutTranslations,
 } from "../workspaceLayoutTranslations";
+import {
+  enSecurityAddonTranslations,
+  zhCNSecurityAddonTranslations,
+} from "../securityAddonTranslations";
 
 type TranslationTree = Record<string, unknown>;
 
@@ -82,32 +86,40 @@ const zhLargeDocumentPatch = zhCNLargeDocumentTranslations as unknown as Transla
 const enLargeDocumentPatch = enLargeDocumentTranslations as unknown as TranslationTree;
 const zhWorkspaceLayoutPatch = zhCNWorkspaceLayoutTranslations as unknown as TranslationTree;
 const enWorkspaceLayoutPatch = enWorkspaceLayoutTranslations as unknown as TranslationTree;
+const zhSecurityPatch = zhCNSecurityAddonTranslations as unknown as TranslationTree;
+const enSecurityPatch = enSecurityAddonTranslations as unknown as TranslationTree;
 
 const zh = merge(
   merge(
     merge(
       merge(
-        merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
-        zhDownloadNetworkPatch,
+        merge(
+          merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
+          zhDownloadNetworkPatch,
+        ),
+        zhMiCloudPatch,
       ),
-      zhMiCloudPatch,
+      zhLargeDocumentPatch,
     ),
-    zhLargeDocumentPatch,
+    zhWorkspaceLayoutPatch,
   ),
-  zhWorkspaceLayoutPatch,
+  zhSecurityPatch,
 );
 const en = merge(
   merge(
     merge(
       merge(
-        merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
-        enDownloadNetworkPatch,
+        merge(
+          merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
+          enDownloadNetworkPatch,
+        ),
+        enMiCloudPatch,
       ),
-      enMiCloudPatch,
+      enLargeDocumentPatch,
     ),
-    enLargeDocumentPatch,
+    enWorkspaceLayoutPatch,
   ),
-  enWorkspaceLayoutPatch,
+  enSecurityPatch,
 );
 
 const criticalNamespaces = [
@@ -167,6 +179,14 @@ describe("release i18n coverage", () => {
       zhWorkspaceLayoutPatch,
       enWorkspaceLayoutPatch,
       "workspaceLayout",
+    );
+  });
+
+  it("keeps security settings addon translation parity", () => {
+    expectPatchParity(
+      zhSecurityPatch,
+      enSecurityPatch,
+      "securitySettings",
     );
   });
 
