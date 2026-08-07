@@ -7,6 +7,7 @@ import {
   enAdditionalTranslations,
   zhCNAdditionalTranslations,
 } from "./additionalTranslations";
+import { installLegacySettingsI18nBridge } from "./legacySettingsI18nBridge";
 
 function mergeTranslations(base: any, patch: any): any {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
@@ -70,5 +71,9 @@ i18n
       caches: ["localStorage"],
     },
   });
+
+// Release compatibility: translate only known legacy hardcoded copy inside SettingsModal.
+// The bridge is DOM-scoped and does not touch the note/editor workspace.
+installLegacySettingsI18nBridge(i18n);
 
 export default i18n;
