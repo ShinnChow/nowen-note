@@ -239,21 +239,27 @@ export function installLegacySettingsI18nBridge(i18n: I18nInstance) {
   const scheduleApply = () => {
     if (scheduled) return;
     scheduled = true;
-    queueMicrotask(() => {
+    // Promise microtasks work on the project's Chrome 64 compatibility baseline.
+    Promise.resolve().then(() => {
       if (typeof requestAnimationFrame === "function") requestAnimationFrame(apply);
       else apply();
     });
   };
 
-  const observer = new MutationObserver(scheduleApply);
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-    attributes: true,
-    attributeFilter: ["title", "aria-label", "placeholder"],
-  });
+  const startObserver = () => {
+    if (!document.body) return;
+    const observer = new MutationObserver(scheduleApply);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["title", "aria-label", "placeholder"],
+    });
+    i18n.on("languageChanged", scheduleApply);
+    scheduleApply();
+  };
 
-  i18n.on("languageChanged", scheduleApply);
-  scheduleApply();
+  if (document.body) startObserver();
+  else window.addEventListener("DOMContentLoaded", startObserver, { once: true });
 }
