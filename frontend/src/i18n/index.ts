@@ -15,6 +15,10 @@ import {
   enDownloadNetworkTranslations,
   zhCNDownloadNetworkTranslations,
 } from "./downloadNetworkTranslations";
+import {
+  enMiCloudProgressTranslations,
+  zhCNMiCloudProgressTranslations,
+} from "./miCloudProgressTranslations";
 import { installLegacySettingsI18nBridge } from "./legacySettingsI18nBridge";
 
 function mergeTranslations(base: any, patch: any): any {
@@ -31,18 +35,24 @@ function mergeTranslations(base: any, patch: any): any {
 
 const zhCNWithReleaseTranslations = mergeTranslations(
   mergeTranslations(
-    mergeTranslations(zhCN, zhCNAdditionalTranslations),
-    zhCNYoudaoTranslations,
+    mergeTranslations(
+      mergeTranslations(zhCN, zhCNAdditionalTranslations),
+      zhCNYoudaoTranslations,
+    ),
+    zhCNDownloadNetworkTranslations,
   ),
-  zhCNDownloadNetworkTranslations,
+  zhCNMiCloudProgressTranslations,
 );
 
 const enWithReleaseTranslations = mergeTranslations(
   mergeTranslations(
-    mergeTranslations(en, enAdditionalTranslations),
-    enYoudaoTranslations,
+    mergeTranslations(
+      mergeTranslations(en, enAdditionalTranslations),
+      enYoudaoTranslations,
+    ),
+    enDownloadNetworkTranslations,
   ),
-  enDownloadNetworkTranslations,
+  enMiCloudProgressTranslations,
 );
 
 const zhCNWithRuntimeOverrides = mergeTranslations(
