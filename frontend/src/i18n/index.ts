@@ -20,10 +20,6 @@ import {
   zhCNMiCloudProgressTranslations,
 } from "./miCloudProgressTranslations";
 import {
-  enTokenUsageTranslations,
-  zhCNTokenUsageTranslations,
-} from "./tokenUsageTranslations";
-import {
   enLargeDocumentTranslations,
   zhCNLargeDocumentTranslations,
 } from "./largeDocumentTranslations";
@@ -45,15 +41,12 @@ const zhCNWithReleaseTranslations = mergeTranslations(
   mergeTranslations(
     mergeTranslations(
       mergeTranslations(
-        mergeTranslations(
-          mergeTranslations(zhCN, zhCNAdditionalTranslations),
-          zhCNYoudaoTranslations,
-        ),
-        zhCNDownloadNetworkTranslations,
+        mergeTranslations(zhCN, zhCNAdditionalTranslations),
+        zhCNYoudaoTranslations,
       ),
-      zhCNMiCloudProgressTranslations,
+      zhCNDownloadNetworkTranslations,
     ),
-    zhCNTokenUsageTranslations,
+    zhCNMiCloudProgressTranslations,
   ),
   zhCNLargeDocumentTranslations,
 );
@@ -62,15 +55,12 @@ const enWithReleaseTranslations = mergeTranslations(
   mergeTranslations(
     mergeTranslations(
       mergeTranslations(
-        mergeTranslations(
-          mergeTranslations(en, enAdditionalTranslations),
-          enYoudaoTranslations,
-        ),
-        enDownloadNetworkTranslations,
+        mergeTranslations(en, enAdditionalTranslations),
+        enYoudaoTranslations,
       ),
-      enMiCloudProgressTranslations,
+      enDownloadNetworkTranslations,
     ),
-    enTokenUsageTranslations,
+    enMiCloudProgressTranslations,
   ),
   enLargeDocumentTranslations,
 );
