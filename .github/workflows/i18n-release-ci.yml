@@ -10,6 +10,9 @@ on:
       - "frontend/src/components/attachmentDetail/AttachmentDetailDrawer.tsx"
       - "frontend/src/components/SettingsModal.tsx"
       - "frontend/src/components/DataManager.tsx"
+      - "frontend/src/components/YoudaoImport.tsx"
+      - "frontend/src/components/LanDiscoveryPanel.tsx"
+      - "frontend/src/components/DownloadPanel.tsx"
       - ".github/workflows/i18n-release-ci.yml"
   push:
     branches: [main, release/v1.4.6]
@@ -21,6 +24,9 @@ on:
       - "frontend/src/components/attachmentDetail/AttachmentDetailDrawer.tsx"
       - "frontend/src/components/SettingsModal.tsx"
       - "frontend/src/components/DataManager.tsx"
+      - "frontend/src/components/YoudaoImport.tsx"
+      - "frontend/src/components/LanDiscoveryPanel.tsx"
+      - "frontend/src/components/DownloadPanel.tsx"
       - ".github/workflows/i18n-release-ci.yml"
 
 permissions:
