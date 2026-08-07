@@ -29,6 +29,10 @@ import {
   enSecurityAddonTranslations,
   zhCNSecurityAddonTranslations,
 } from "../securityAddonTranslations";
+import {
+  enDiaryMarkdownTranslations,
+  zhCNDiaryMarkdownTranslations,
+} from "../diaryMarkdownTranslations";
 
 type TranslationTree = Record<string, unknown>;
 
@@ -50,6 +54,10 @@ function merge(base: TranslationTree, patch: TranslationTree): TranslationTree {
     }
   }
   return result;
+}
+
+function mergePatches(base: TranslationTree, ...patches: TranslationTree[]): TranslationTree {
+  return patches.reduce((current, patch) => merge(current, patch), base);
 }
 
 function getPath(tree: TranslationTree, path: string): unknown {
@@ -88,38 +96,30 @@ const zhWorkspaceLayoutPatch = zhCNWorkspaceLayoutTranslations as unknown as Tra
 const enWorkspaceLayoutPatch = enWorkspaceLayoutTranslations as unknown as TranslationTree;
 const zhSecurityPatch = zhCNSecurityAddonTranslations as unknown as TranslationTree;
 const enSecurityPatch = enSecurityAddonTranslations as unknown as TranslationTree;
+const zhDiaryMarkdownPatch = zhCNDiaryMarkdownTranslations as unknown as TranslationTree;
+const enDiaryMarkdownPatch = enDiaryMarkdownTranslations as unknown as TranslationTree;
 
-const zh = merge(
-  merge(
-    merge(
-      merge(
-        merge(
-          merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
-          zhDownloadNetworkPatch,
-        ),
-        zhMiCloudPatch,
-      ),
-      zhLargeDocumentPatch,
-    ),
-    zhWorkspaceLayoutPatch,
-  ),
+const zh = mergePatches(
+  zhBase as TranslationTree,
+  zhAdditionalPatch,
+  zhYoudaoPatch,
+  zhDownloadNetworkPatch,
+  zhMiCloudPatch,
+  zhLargeDocumentPatch,
+  zhWorkspaceLayoutPatch,
   zhSecurityPatch,
+  zhDiaryMarkdownPatch,
 );
-const en = merge(
-  merge(
-    merge(
-      merge(
-        merge(
-          merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
-          enDownloadNetworkPatch,
-        ),
-        enMiCloudPatch,
-      ),
-      enLargeDocumentPatch,
-    ),
-    enWorkspaceLayoutPatch,
-  ),
+const en = mergePatches(
+  enBase as TranslationTree,
+  enAdditionalPatch,
+  enYoudaoPatch,
+  enDownloadNetworkPatch,
+  enMiCloudPatch,
+  enLargeDocumentPatch,
+  enWorkspaceLayoutPatch,
   enSecurityPatch,
+  enDiaryMarkdownPatch,
 );
 
 const criticalNamespaces = [
@@ -167,27 +167,19 @@ describe("release i18n coverage", () => {
   });
 
   it("keeps large-document translation parity", () => {
-    expectPatchParity(
-      zhLargeDocumentPatch,
-      enLargeDocumentPatch,
-      "markdown.largeDocument",
-    );
+    expectPatchParity(zhLargeDocumentPatch, enLargeDocumentPatch, "markdown.largeDocument");
   });
 
   it("keeps workspace layout translation parity", () => {
-    expectPatchParity(
-      zhWorkspaceLayoutPatch,
-      enWorkspaceLayoutPatch,
-      "workspaceLayout",
-    );
+    expectPatchParity(zhWorkspaceLayoutPatch, enWorkspaceLayoutPatch, "workspaceLayout");
   });
 
   it("keeps security settings addon translation parity", () => {
-    expectPatchParity(
-      zhSecurityPatch,
-      enSecurityPatch,
-      "securitySettings",
-    );
+    expectPatchParity(zhSecurityPatch, enSecurityPatch, "securitySettings");
+  });
+
+  it("keeps diary Markdown translation parity", () => {
+    expectPatchParity(zhDiaryMarkdownPatch, enDiaryMarkdownPatch, "diary");
   });
 
   it("defines the complete LAN discovery key set in both languages", () => {
