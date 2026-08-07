@@ -8,6 +8,9 @@ import "./runtime/task-inbox-migration-bootstrap.js";
 // Permission routes import ACL services that may initialize database guards, so they must load
 // only after the feature migration list has been registered.
 import "./runtime/notebook-permission-management.js";
+// Keep Markdown <-> rich-text transitions from reviving stale browser IndexedDB Yjs structs.
+// This must load before index.ts mounts /api/notes so the guarded release-room route wins.
+import "./runtime/note-format-yjs-transition.js";
 // Install schema/route hardening before the main backend module evaluates.
 import "./runtime/task-stats-hardening.js";
 // Keep the legacy Xiaomi route as a reusable, single-row-safe import pipeline.
