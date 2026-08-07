@@ -17,6 +17,10 @@ import {
   enMiCloudProgressTranslations,
   zhCNMiCloudProgressTranslations,
 } from "../miCloudProgressTranslations";
+import {
+  enTokenUsageTranslations,
+  zhCNTokenUsageTranslations,
+} from "../tokenUsageTranslations";
 
 type TranslationTree = Record<string, unknown>;
 
@@ -70,20 +74,28 @@ const zhDownloadNetworkPatch = zhCNDownloadNetworkTranslations as unknown as Tra
 const enDownloadNetworkPatch = enDownloadNetworkTranslations as unknown as TranslationTree;
 const zhMiCloudPatch = zhCNMiCloudProgressTranslations as unknown as TranslationTree;
 const enMiCloudPatch = enMiCloudProgressTranslations as unknown as TranslationTree;
+const zhTokenUsagePatch = zhCNTokenUsageTranslations as unknown as TranslationTree;
+const enTokenUsagePatch = enTokenUsageTranslations as unknown as TranslationTree;
 
 const zh = merge(
   merge(
-    merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
-    zhDownloadNetworkPatch,
+    merge(
+      merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
+      zhDownloadNetworkPatch,
+    ),
+    zhMiCloudPatch,
   ),
-  zhMiCloudPatch,
+  zhTokenUsagePatch,
 );
 const en = merge(
   merge(
-    merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
-    enDownloadNetworkPatch,
+    merge(
+      merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
+      enDownloadNetworkPatch,
+    ),
+    enMiCloudPatch,
   ),
-  enMiCloudPatch,
+  enTokenUsagePatch,
 );
 
 const criticalNamespaces = [
@@ -128,6 +140,10 @@ describe("release i18n coverage", () => {
 
   it("keeps Mi Cloud progress translation parity", () => {
     expectPatchParity(zhMiCloudPatch, enMiCloudPatch, "miCloud");
+  });
+
+  it("keeps token usage translation parity", () => {
+    expectPatchParity(zhTokenUsagePatch, enTokenUsagePatch, "tokens.usage");
   });
 
   it("defines the complete LAN discovery key set in both languages", () => {
