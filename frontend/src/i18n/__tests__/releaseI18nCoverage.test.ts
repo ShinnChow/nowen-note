@@ -21,6 +21,10 @@ import {
   enTokenUsageTranslations,
   zhCNTokenUsageTranslations,
 } from "../tokenUsageTranslations";
+import {
+  enLargeDocumentTranslations,
+  zhCNLargeDocumentTranslations,
+} from "../largeDocumentTranslations";
 
 type TranslationTree = Record<string, unknown>;
 
@@ -76,26 +80,34 @@ const zhMiCloudPatch = zhCNMiCloudProgressTranslations as unknown as Translation
 const enMiCloudPatch = enMiCloudProgressTranslations as unknown as TranslationTree;
 const zhTokenUsagePatch = zhCNTokenUsageTranslations as unknown as TranslationTree;
 const enTokenUsagePatch = enTokenUsageTranslations as unknown as TranslationTree;
+const zhLargeDocumentPatch = zhCNLargeDocumentTranslations as unknown as TranslationTree;
+const enLargeDocumentPatch = enLargeDocumentTranslations as unknown as TranslationTree;
 
 const zh = merge(
   merge(
     merge(
-      merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
-      zhDownloadNetworkPatch,
+      merge(
+        merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
+        zhDownloadNetworkPatch,
+      ),
+      zhMiCloudPatch,
     ),
-    zhMiCloudPatch,
+    zhTokenUsagePatch,
   ),
-  zhTokenUsagePatch,
+  zhLargeDocumentPatch,
 );
 const en = merge(
   merge(
     merge(
-      merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
-      enDownloadNetworkPatch,
+      merge(
+        merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
+        enDownloadNetworkPatch,
+      ),
+      enMiCloudPatch,
     ),
-    enMiCloudPatch,
+    enTokenUsagePatch,
   ),
-  enTokenUsagePatch,
+  enLargeDocumentPatch,
 );
 
 const criticalNamespaces = [
@@ -144,6 +156,14 @@ describe("release i18n coverage", () => {
 
   it("keeps token usage translation parity", () => {
     expectPatchParity(zhTokenUsagePatch, enTokenUsagePatch, "tokens.usage");
+  });
+
+  it("keeps large-document safe-mode translation parity", () => {
+    expectPatchParity(
+      zhLargeDocumentPatch,
+      enLargeDocumentPatch,
+      "markdown.largeDocument",
+    );
   });
 
   it("defines the complete LAN discovery key set in both languages", () => {
