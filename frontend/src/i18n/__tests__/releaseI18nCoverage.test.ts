@@ -5,6 +5,14 @@ import {
   enAdditionalTranslations,
   zhCNAdditionalTranslations,
 } from "../additionalTranslations";
+import {
+  enYoudaoTranslations,
+  zhCNYoudaoTranslations,
+} from "../youdaoTranslations";
+import {
+  enDownloadNetworkTranslations,
+  zhCNDownloadNetworkTranslations,
+} from "../downloadNetworkTranslations";
 
 type TranslationTree = Record<string, unknown>;
 
@@ -50,10 +58,21 @@ function interpolationNames(value: string): string[] {
   return Array.from(value.matchAll(/{{\s*([\w.-]+)\s*}}/g), (match) => match[1]).sort();
 }
 
-const zhPatch = zhCNAdditionalTranslations as unknown as TranslationTree;
-const enPatch = enAdditionalTranslations as unknown as TranslationTree;
-const zh = merge(zhBase as TranslationTree, zhPatch);
-const en = merge(enBase as TranslationTree, enPatch);
+const zhAdditionalPatch = zhCNAdditionalTranslations as unknown as TranslationTree;
+const enAdditionalPatch = enAdditionalTranslations as unknown as TranslationTree;
+const zhYoudaoPatch = zhCNYoudaoTranslations as unknown as TranslationTree;
+const enYoudaoPatch = enYoudaoTranslations as unknown as TranslationTree;
+const zhDownloadNetworkPatch = zhCNDownloadNetworkTranslations as unknown as TranslationTree;
+const enDownloadNetworkPatch = enDownloadNetworkTranslations as unknown as TranslationTree;
+
+const zh = merge(
+  merge(merge(zhBase as TranslationTree, zhAdditionalPatch), zhYoudaoPatch),
+  zhDownloadNetworkPatch,
+);
+const en = merge(
+  merge(merge(enBase as TranslationTree, enAdditionalPatch), enYoudaoPatch),
+  enDownloadNetworkPatch,
+);
 
 const criticalNamespaces = [
   "editorError",
@@ -64,20 +83,48 @@ const criticalNamespaces = [
   "dataManager.desktopData",
 ] as const;
 
+function expectPatchParity(
+  zhPatch: TranslationTree,
+  enPatch: TranslationTree,
+  namespace: string,
+) {
+  const zhEntries = leafEntries(getPath(zhPatch, namespace));
+  const enEntries = leafEntries(getPath(enPatch, namespace));
+
+  expect(zhEntries.map(([path]) => path)).toEqual(enEntries.map(([path]) => path));
+
+  const enByPath = new Map(enEntries);
+  for (const [path, zhValue] of zhEntries) {
+    const enValue = enByPath.get(path);
+    expect(enValue, `${namespace}.${path} must exist in English`).toBeTypeOf("string");
+    expect(interpolationNames(zhValue)).toEqual(interpolationNames(enValue!));
+  }
+}
+
 describe("release i18n coverage", () => {
   it.each(criticalNamespaces)("keeps %s key and interpolation parity", (namespace) => {
-    // Compare only the release patch namespace here. Historical locale debt outside
-    // this release must not turn this targeted regression test into a noisy blocker.
-    const zhEntries = leafEntries(getPath(zhPatch, namespace));
-    const enEntries = leafEntries(getPath(enPatch, namespace));
+    expectPatchParity(zhAdditionalPatch, enAdditionalPatch, namespace);
+  });
 
-    expect(zhEntries.map(([path]) => path)).toEqual(enEntries.map(([path]) => path));
+  it("keeps Youdao import translation parity", () => {
+    expectPatchParity(zhYoudaoPatch, enYoudaoPatch, "youdaoImport");
+  });
 
-    const enByPath = new Map(enEntries);
-    for (const [path, zhValue] of zhEntries) {
-      const enValue = enByPath.get(path);
-      expect(enValue, `${namespace}.${path} must exist in English`).toBeTypeOf("string");
-      expect(interpolationNames(zhValue)).toEqual(interpolationNames(enValue!));
+  it("keeps download translation parity", () => {
+    expectPatchParity(zhDownloadNetworkPatch, enDownloadNetworkPatch, "download");
+  });
+
+  it("defines the complete LAN discovery key set in both languages", () => {
+    for (const key of [
+      "lanDiscoveryTitle",
+      "lanUnavailable",
+      "lanNotFound",
+      "lanRescan",
+      "lanScanning",
+      "lanUseThis",
+    ]) {
+      expect(getPath(zh, `server.${key}`), `zh-CN server.${key}`).toBeTypeOf("string");
+      expect(getPath(en, `server.${key}`), `en server.${key}`).toBeTypeOf("string");
     }
   });
 
