@@ -7,6 +7,14 @@ import {
   enAdditionalTranslations,
   zhCNAdditionalTranslations,
 } from "./additionalTranslations";
+import {
+  enYoudaoTranslations,
+  zhCNYoudaoTranslations,
+} from "./youdaoTranslations";
+import {
+  enDownloadNetworkTranslations,
+  zhCNDownloadNetworkTranslations,
+} from "./downloadNetworkTranslations";
 import { installLegacySettingsI18nBridge } from "./legacySettingsI18nBridge";
 
 function mergeTranslations(base: any, patch: any): any {
@@ -21,8 +29,24 @@ function mergeTranslations(base: any, patch: any): any {
   return result;
 }
 
+const zhCNWithReleaseTranslations = mergeTranslations(
+  mergeTranslations(
+    mergeTranslations(zhCN, zhCNAdditionalTranslations),
+    zhCNYoudaoTranslations,
+  ),
+  zhCNDownloadNetworkTranslations,
+);
+
+const enWithReleaseTranslations = mergeTranslations(
+  mergeTranslations(
+    mergeTranslations(en, enAdditionalTranslations),
+    enYoudaoTranslations,
+  ),
+  enDownloadNetworkTranslations,
+);
+
 const zhCNWithRuntimeOverrides = mergeTranslations(
-  mergeTranslations(zhCN, zhCNAdditionalTranslations),
+  zhCNWithReleaseTranslations,
   {
     auth: {
       ugreenAccess: {
@@ -38,7 +62,7 @@ const zhCNWithRuntimeOverrides = mergeTranslations(
 );
 
 const enWithRuntimeOverrides = mergeTranslations(
-  mergeTranslations(en, enAdditionalTranslations),
+  enWithReleaseTranslations,
   {
     auth: {
       ugreenAccess: {
