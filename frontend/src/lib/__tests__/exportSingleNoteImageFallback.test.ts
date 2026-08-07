@@ -15,6 +15,15 @@ vi.mock("@/lib/contentFormat", () => ({ normalizeToMarkdown }));
 import { exportSingleNote } from "@/lib/exportService";
 import { api } from "@/lib/api";
 
+function readBlobText(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error || new Error("failed to read Blob"));
+    reader.readAsText(blob);
+  });
+}
+
 function mockImageFetch(status = 200) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
     status === 200 ? new Uint8Array([0x89, 0x50, 0x4e, 0x47]) : "missing",
@@ -59,7 +68,7 @@ describe("Issue #693 single-note Markdown image export fallback", () => {
 
     expect(saveAs).toHaveBeenCalledTimes(1);
     expect(saveAs.mock.calls[0][1]).toBe("图片笔记.md");
-    const exported = await (saveAs.mock.calls[0][0] as Blob).text();
+    const exported = await readBlobText(saveAs.mock.calls[0][0] as Blob);
     expect(exported).toContain("# 图片笔记");
     expect(exported).toContain("![截图](data:image/png;base64,");
     expect(exported).not.toContain("/api/attachments/att-image-1");
@@ -87,7 +96,7 @@ describe("Issue #693 single-note Markdown image export fallback", () => {
     expect(exportSingleNoteCore).toHaveBeenCalledWith("note-rich-image", undefined);
     expect(normalizeToMarkdown).toHaveBeenCalledTimes(1);
     expect(saveAs).toHaveBeenCalledTimes(1);
-    const exported = await (saveAs.mock.calls[0][0] as Blob).text();
+    const exported = await readBlobText(saveAs.mock.calls[0][0] as Blob);
     expect(exported).toContain("![图](data:image/png;base64,");
     expect(exported).not.toContain("/api/attachments/att-image-2");
   });
