@@ -3,17 +3,20 @@ import { describe, expect, it } from "vitest";
 import { affectedKnowledgeNoteIds } from "@/lib/knowledgeTreeDeleteReconcile";
 import type { KnowledgeTreeNode } from "@/lib/knowledgeTreeApi";
 
-function node(input: Partial<KnowledgeTreeNode> & Pick<KnowledgeTreeNode, "id" | "resourceType" | "resourceId">): KnowledgeTreeNode {
+function node(
+  input: Partial<KnowledgeTreeNode> & Pick<KnowledgeTreeNode, "id" | "resourceType" | "resourceId">,
+): KnowledgeTreeNode {
+  const { id, resourceType, resourceId, ...overrides } = input;
   return {
-    id: input.id,
+    id,
     userId: "user-1",
     workspaceId: null,
     scopeKey: "personal:user-1",
     parentId: null,
-    nodeType: input.resourceType === "notebook" ? "folder" : "note",
-    resourceType: input.resourceType,
-    resourceId: input.resourceId,
-    title: input.resourceId,
+    nodeType: resourceType === "notebook" ? "folder" : "note",
+    resourceType,
+    resourceId,
+    title: resourceId,
     sortOrder: 0,
     isExpanded: 1,
     isDeleted: 0,
@@ -21,7 +24,7 @@ function node(input: Partial<KnowledgeTreeNode> & Pick<KnowledgeTreeNode, "id" |
     createdAt: "2026-08-07T00:00:00.000Z",
     updatedAt: "2026-08-07T00:00:00.000Z",
     access: {
-      nodeId: input.id,
+      nodeId: id,
       rolePreset: "admin",
       capabilities: {
         canView: true,
@@ -35,9 +38,9 @@ function node(input: Partial<KnowledgeTreeNode> & Pick<KnowledgeTreeNode, "id" |
         canManageMembers: true,
       },
       source: "owner",
-      sourceNodeId: input.id,
+      sourceNodeId: id,
     },
-    ...input,
+    ...overrides,
   } as KnowledgeTreeNode;
 }
 
