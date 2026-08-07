@@ -31,6 +31,10 @@ import {
   enSecurityAddonTranslations,
   zhCNSecurityAddonTranslations,
 } from "./securityAddonTranslations";
+import {
+  enDiaryMarkdownTranslations,
+  zhCNDiaryMarkdownTranslations,
+} from "./diaryMarkdownTranslations";
 import { installLegacySettingsI18nBridge } from "./legacySettingsI18nBridge";
 
 function mergeTranslations(base: any, patch: any): any {
@@ -45,44 +49,32 @@ function mergeTranslations(base: any, patch: any): any {
   return result;
 }
 
-const zhCNWithReleaseTranslations = mergeTranslations(
-  mergeTranslations(
-    mergeTranslations(
-      mergeTranslations(
-        mergeTranslations(
-          mergeTranslations(
-            mergeTranslations(zhCN, zhCNAdditionalTranslations),
-            zhCNYoudaoTranslations,
-          ),
-          zhCNDownloadNetworkTranslations,
-        ),
-        zhCNMiCloudProgressTranslations,
-      ),
-      zhCNLargeDocumentTranslations,
-    ),
-    zhCNWorkspaceLayoutTranslations,
-  ),
+function mergeTranslationPatches(base: any, ...patches: any[]): any {
+  return patches.reduce((current, patch) => mergeTranslations(current, patch), base);
+}
+
+const zhCNWithReleaseTranslations = mergeTranslationPatches(
+  zhCN,
+  zhCNAdditionalTranslations,
+  zhCNYoudaoTranslations,
+  zhCNDownloadNetworkTranslations,
+  zhCNMiCloudProgressTranslations,
+  zhCNLargeDocumentTranslations,
+  zhCNWorkspaceLayoutTranslations,
   zhCNSecurityAddonTranslations,
+  zhCNDiaryMarkdownTranslations,
 );
 
-const enWithReleaseTranslations = mergeTranslations(
-  mergeTranslations(
-    mergeTranslations(
-      mergeTranslations(
-        mergeTranslations(
-          mergeTranslations(
-            mergeTranslations(en, enAdditionalTranslations),
-            enYoudaoTranslations,
-          ),
-          enDownloadNetworkTranslations,
-        ),
-        enMiCloudProgressTranslations,
-      ),
-      enLargeDocumentTranslations,
-    ),
-    enWorkspaceLayoutTranslations,
-  ),
+const enWithReleaseTranslations = mergeTranslationPatches(
+  en,
+  enAdditionalTranslations,
+  enYoudaoTranslations,
+  enDownloadNetworkTranslations,
+  enMiCloudProgressTranslations,
+  enLargeDocumentTranslations,
+  enWorkspaceLayoutTranslations,
   enSecurityAddonTranslations,
+  enDiaryMarkdownTranslations,
 );
 
 const zhCNWithRuntimeOverrides = mergeTranslations(
