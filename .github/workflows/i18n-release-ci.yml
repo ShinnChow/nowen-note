@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "frontend/src/i18n/**"
+      - "frontend/src/lib/dateTime.ts"
       - "frontend/src/components/EditorErrorBoundary.tsx"
       - "frontend/src/components/MembersPanel.tsx"
       - "frontend/src/components/attachmentDetail/AttachmentDetailDrawer.tsx"
@@ -14,6 +15,7 @@ on:
     branches: [main, release/v1.4.6]
     paths:
       - "frontend/src/i18n/**"
+      - "frontend/src/lib/dateTime.ts"
       - "frontend/src/components/EditorErrorBoundary.tsx"
       - "frontend/src/components/MembersPanel.tsx"
       - "frontend/src/components/attachmentDetail/AttachmentDetailDrawer.tsx"
