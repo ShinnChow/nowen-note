@@ -16,6 +16,7 @@ on:
       - "frontend/src/components/DownloadPanel.tsx"
       - "frontend/src/components/TokenUsageStats.tsx"
       - "frontend/src/components/LargeRichTextSafeViewer.tsx"
+      - "frontend/src/components/LargeMarkdownSafeEditor.tsx"
       - ".github/workflows/i18n-release-ci.yml"
   push:
     branches: [main, release/v1.4.6]
@@ -33,6 +34,7 @@ on:
       - "frontend/src/components/DownloadPanel.tsx"
       - "frontend/src/components/TokenUsageStats.tsx"
       - "frontend/src/components/LargeRichTextSafeViewer.tsx"
+      - "frontend/src/components/LargeMarkdownSafeEditor.tsx"
       - ".github/workflows/i18n-release-ci.yml"
 
 permissions:
