@@ -50,7 +50,7 @@ test.after(() => {
 });
 
 test("personal recycle-bin lifecycle keeps tombstones manageable without exposing ordinary reads", async () => {
-  const { createKnowledgeChild } = await import("../src/services/knowledgeTree.js");
+  const { createKnowledgeChild, listKnowledgeTree } = await import("../src/services/knowledgeTree.js");
 
   const folder = createKnowledgeChild({
     actorUserId: ownerId,
@@ -82,6 +82,11 @@ test("personal recycle-bin lifecycle keeps tombstones manageable without exposin
     .get(noteId) as { isDeleted: number };
   assert.equal(storedTrash.isTrashed, 1);
   assert.equal(treeTrash.isDeleted, 1);
+
+  const activeTree = listKnowledgeTree({ userId: ownerId, workspaceId: null, db });
+  assert.equal(activeTree.some((node) => node.resourceId === noteId), false);
+  const deletedTree = listKnowledgeTree({ userId: ownerId, workspaceId: null, includeDeleted: true, db });
+  assert.equal(deletedTree.some((node) => node.resourceId === noteId && node.isDeleted === 1), true);
 
   const trashList = await app.request("/api/notes?isTrashed=1", {
     headers: requestHeaders(ownerId),
@@ -195,4 +200,61 @@ test("workspace viewer cannot restore or permanently delete a tombstoned note", 
   });
   assert.equal(viewerPermanentDelete.status, 403);
   assert.notEqual(db.prepare("SELECT 1 FROM notes WHERE id = ?").get(noteId), undefined);
+});
+
+test("direct maintainer ACL on a tombstone survives deletion and permits restore", async () => {
+  const { createKnowledgeChild, restoreKnowledgeNode } = await import("../src/services/knowledgeTree.js");
+  const { setKnowledgeNodeRole } = await import("../src/services/knowledgeCapabilities.js");
+  const workspaceId = "recycle-direct-acl-workspace";
+
+  db.prepare("INSERT INTO workspaces (id, name, ownerId) VALUES (?, ?, ?)")
+    .run(workspaceId, "Direct ACL Workspace", ownerId);
+  db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
+    .run(workspaceId, ownerId, "owner");
+  db.prepare("INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)")
+    .run(workspaceId, memberId, "viewer");
+
+  const folder = createKnowledgeChild({
+    actorUserId: ownerId,
+    workspaceId,
+    parentId: null,
+    nodeType: "folder",
+    title: "Direct ACL Folder",
+    db,
+  });
+  const noteNode = createKnowledgeChild({
+    actorUserId: ownerId,
+    workspaceId,
+    parentId: folder.id,
+    nodeType: "note",
+    title: "Direct ACL Note",
+    db,
+  });
+
+  setKnowledgeNodeRole({
+    nodeId: noteNode.id,
+    targetUserId: memberId,
+    rolePreset: "maintainer",
+    actorUserId: ownerId,
+    db,
+  });
+
+  const trash = await app.request(`/api/notes/${noteNode.resourceId}`, {
+    method: "PUT",
+    headers: requestHeaders(ownerId, true),
+    body: JSON.stringify({ isTrashed: 1 }),
+  });
+  assert.equal(trash.status, 200);
+
+  const restored = restoreKnowledgeNode({
+    actorUserId: memberId,
+    nodeId: noteNode.id,
+    includeSubtree: true,
+    db,
+  });
+  assert.deepEqual(restored.restoredNodeIds, [noteNode.id]);
+  assert.equal(
+    (db.prepare("SELECT isTrashed FROM notes WHERE id = ?").get(noteNode.resourceId) as { isTrashed: number }).isTrashed,
+    0,
+  );
 });
