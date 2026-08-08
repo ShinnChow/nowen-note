@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { useApp, useAppActions } from "@/store/AppContext";
 import type { Note } from "@/types";
+import { getBaseUrl } from "@/lib/api";
 import {
   primaryNoteLoadCoordinator,
   type NoteLoadOptions,
@@ -10,6 +11,10 @@ import {
   canApplyRevalidatedNote,
   loadNoteCacheFirst,
 } from "@/lib/noteLoadSource";
+import {
+  hasPersistentNoteAttachmentReference,
+  primeNoteAttachmentAccess,
+} from "@/lib/noteAttachmentAccessPriming";
 import { loadDraft } from "@/lib/draftStorage";
 import {
   getEditorRuntimeDecisionForNote,
@@ -84,6 +89,14 @@ export function useNoteLoader() {
         const loaded = await loadNoteCacheFirst({
           noteId: options.noteId,
           fetchRemote,
+          beforeUseCached: async (cached) => {
+            // Cache-first can otherwise mount Tiptap/Markdown before the background GET /notes/:id
+            // has refreshed signed attachment URLs. The persisted body is correct, but the first
+            // raw `/api/attachments/<id>` request is rejected and the editor gets stuck on its
+            // image-error placeholder. Prime only notes that actually persist attachment refs.
+            if (!hasPersistentNoteAttachmentReference(cached.content)) return;
+            await primeNoteAttachmentAccess(cached.id, getBaseUrl());
+          },
           onRevalidated: (remote, cached) => {
             const currentState = stateRef.current;
             const current = currentState.activeNote;
