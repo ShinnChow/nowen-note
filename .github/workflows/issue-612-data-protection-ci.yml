@@ -159,6 +159,17 @@ jobs:
       - name: Frontend typecheck
         if: always()
         run: npx tsc -b
+      - name: Changed image persistence files lint
+        if: always()
+        run: >-
+          npx eslint
+          src/hooks/useNoteLoader.ts
+          src/lib/noteLoadSource.ts
+          src/lib/noteAttachmentAccessPriming.ts
+          src/lib/__tests__/noteLoadSource.test.ts
+          src/lib/__tests__/noteAttachmentAccessPriming.test.ts
+          src/lib/__tests__/noteImageSaveRace.test.ts
+          src/lib/__tests__/editorLifecycleSafety.test.ts
       - name: Frontend lint
         if: always()
         run: npm run lint
