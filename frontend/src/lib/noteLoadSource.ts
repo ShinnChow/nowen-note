@@ -1,18 +1,23 @@
 import type { Note } from "@/types";
+import { getBaseUrl } from "@/lib/api";
 import {
   getNote as getCachedNote,
   isNoteDetailCached,
   putNote,
   type CachedNote,
 } from "@/lib/localStore";
+import {
+  hasPersistentNoteAttachmentReference,
+  primeNoteAttachmentAccess,
+} from "@/lib/noteAttachmentAccessPriming";
 
 export interface CacheFirstNoteLoadOptions {
   noteId: string;
   fetchRemote: () => Promise<Note>;
   onRevalidated?: (remote: Note, cached: CachedNote) => void | Promise<void>;
   /**
-   * Called before a cached note becomes visible. Use this for lightweight runtime prerequisites
-   * that are normally prepared by the remote note request (for example signed attachment access).
+   * Optional override for runtime prerequisites before a cached note becomes visible.
+   * The default prepares signed attachment access for persisted `/api/attachments/<id>` refs.
    * Failures are non-fatal so offline cached-note opening keeps working.
    */
   beforeUseCached?: (cached: CachedNote) => void | Promise<void>;
@@ -48,11 +53,16 @@ async function persistDetail(note: Note): Promise<void> {
   await putNote({ ...note, __detailCached: true });
 }
 
+async function prepareCachedNoteRuntime(cached: CachedNote): Promise<void> {
+  if (!hasPersistentNoteAttachmentReference(cached.content)) return;
+  await primeNoteAttachmentAccess(cached.id, getBaseUrl());
+}
+
 export async function loadNoteCacheFirst({
   noteId,
   fetchRemote,
   onRevalidated,
-  beforeUseCached,
+  beforeUseCached = prepareCachedNoteRuntime,
 }: CacheFirstNoteLoadOptions): Promise<Note> {
   const cached = await getCachedNote(noteId);
   if (cached && isNoteDetailCached(cached)) {
@@ -67,14 +77,12 @@ export async function loadNoteCacheFirst({
         console.warn("[noteLoadSource] background revalidation failed:", error);
       });
 
-    if (beforeUseCached) {
-      try {
-        await beforeUseCached(cached);
-      } catch (error) {
-        // Cached notes must remain available offline. The background revalidation above may still
-        // recover the runtime prerequisite when connectivity returns.
-        console.warn("[noteLoadSource] cached-note preparation failed:", error);
-      }
+    try {
+      await beforeUseCached(cached);
+    } catch (error) {
+      // Cached notes must remain available offline. The background revalidation above may still
+      // recover the runtime prerequisite when connectivity returns.
+      console.warn("[noteLoadSource] cached-note preparation failed:", error);
     }
     return cached;
   }
