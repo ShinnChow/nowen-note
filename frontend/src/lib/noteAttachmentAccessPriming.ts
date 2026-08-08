@@ -44,6 +44,7 @@ export async function primeNoteAttachmentAccess(
   options: PrimeNoteAttachmentAccessOptions = {},
 ): Promise<number> {
   if (!noteId) return 0;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return 0;
 
   const token = options.token !== undefined ? options.token : readStoredToken();
   if (!token) return 0;
