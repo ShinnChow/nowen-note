@@ -6,12 +6,21 @@ const localStore = vi.hoisted(() => ({
   isNoteDetailCached: vi.fn(),
   putNote: vi.fn(),
 }));
+const attachmentRuntime = vi.hoisted(() => ({
+  hasPersistentNoteAttachmentReference: vi.fn((content: string | null | undefined) =>
+    typeof content === "string" && content.includes("/api/attachments/")),
+  primeNoteAttachmentAccess: vi.fn(async () => 1),
+}));
 
 vi.mock("@/lib/localStore", () => ({
   getNote: localStore.getNote,
   isNoteDetailCached: localStore.isNoteDetailCached,
   putNote: localStore.putNote,
 }));
+vi.mock("@/lib/api", () => ({
+  getBaseUrl: () => "https://notes.example.com/api",
+}));
+vi.mock("@/lib/noteAttachmentAccessPriming", () => attachmentRuntime);
 
 import { canApplyRevalidatedNote, loadNoteCacheFirst } from "@/lib/noteLoadSource";
 
@@ -98,6 +107,9 @@ describe("loadNoteCacheFirst", () => {
     vi.clearAllMocks();
     localStore.isNoteDetailCached.mockReturnValue(true);
     localStore.putNote.mockResolvedValue(undefined);
+    attachmentRuntime.hasPersistentNoteAttachmentReference.mockImplementation((content) =>
+      typeof content === "string" && content.includes("/api/attachments/"));
+    attachmentRuntime.primeNoteAttachmentAccess.mockResolvedValue(1);
   });
 
   it("Case 1/2: prepares a cached image note before it is reopened after a switch", async () => {
@@ -127,6 +139,44 @@ describe("loadNoteCacheFirst", () => {
     prepareGate.resolve();
     await expect(loadPromise).resolves.toBe(cached);
 
+    remoteGate.resolve(makeNote({ version: 4 }));
+    await vi.waitFor(() => expect(localStore.putNote).toHaveBeenCalled());
+  });
+
+  it("covers split-editor/direct callers by priming attachments by default", async () => {
+    const cached = makeNote({
+      content: `![image](/api/attachments/123e4567-e89b-42d3-a456-426614174216)`,
+      contentFormat: "markdown",
+    });
+    localStore.getNote.mockResolvedValue(cached);
+    const remoteGate = deferred<Note>();
+
+    await expect(loadNoteCacheFirst({
+      noteId: cached.id,
+      fetchRemote: () => remoteGate.promise,
+    })).resolves.toBe(cached);
+
+    expect(attachmentRuntime.hasPersistentNoteAttachmentReference).toHaveBeenCalledWith(cached.content);
+    expect(attachmentRuntime.primeNoteAttachmentAccess).toHaveBeenCalledWith(
+      cached.id,
+      "https://notes.example.com/api",
+    );
+
+    remoteGate.resolve(makeNote({ version: 4 }));
+    await vi.waitFor(() => expect(localStore.putNote).toHaveBeenCalled());
+  });
+
+  it("does not prime cached text-only notes", async () => {
+    const cached = makeNote({ content: "plain text only" });
+    localStore.getNote.mockResolvedValue(cached);
+    const remoteGate = deferred<Note>();
+
+    await expect(loadNoteCacheFirst({
+      noteId: cached.id,
+      fetchRemote: () => remoteGate.promise,
+    })).resolves.toBe(cached);
+
+    expect(attachmentRuntime.primeNoteAttachmentAccess).not.toHaveBeenCalled();
     remoteGate.resolve(makeNote({ version: 4 }));
     await vi.waitFor(() => expect(localStore.putNote).toHaveBeenCalled());
   });
