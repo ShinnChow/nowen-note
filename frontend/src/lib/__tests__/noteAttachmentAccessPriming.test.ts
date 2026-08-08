@@ -42,7 +42,7 @@ describe("noteAttachmentAccessPriming", () => {
   });
 
   it("Case 1/5: primes signed access before a persisted raw attachment reference is rendered", async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       noteId: "note-1",
       urls: { [ATTACHMENT_A]: signedUrl(ATTACHMENT_A, "signed-a") },
     }), {
@@ -53,7 +53,7 @@ describe("noteAttachmentAccessPriming", () => {
     const persistentSrc = `/api/attachments/${ATTACHMENT_A}`;
     const registered = await primeNoteAttachmentAccess("note-1", "https://notes.example.com/api", {
       token: "jwt-token",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
     });
 
     expect(registered).toBe(1);
@@ -71,7 +71,7 @@ describe("noteAttachmentAccessPriming", () => {
   });
 
   it("Case 3: primes all images in a note without converting their persisted references", async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       urls: {
         [ATTACHMENT_A]: signedUrl(ATTACHMENT_A, "signed-a"),
         [ATTACHMENT_B]: signedUrl(ATTACHMENT_B, "signed-b"),
@@ -83,7 +83,7 @@ describe("noteAttachmentAccessPriming", () => {
 
     const registered = await primeNoteAttachmentAccess("note-many", "/api", {
       token: "jwt-token",
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
     });
 
     expect(registered).toBe(2);
@@ -92,10 +92,10 @@ describe("noteAttachmentAccessPriming", () => {
   });
 
   it("does not issue an access request when no authenticated session is available", async () => {
-    const fetchImpl = vi.fn();
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response());
     await expect(primeNoteAttachmentAccess("note-1", "/api", {
       token: null,
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl,
     })).resolves.toBe(0);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
