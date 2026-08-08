@@ -142,3 +142,9 @@ jobs:
       - name: Frontend typecheck
         if: always()
         run: npx tsc -b
+      - name: Frontend lint
+        if: always()
+        run: npm run lint
+      - name: Frontend build
+        if: always()
+        run: npm run build
