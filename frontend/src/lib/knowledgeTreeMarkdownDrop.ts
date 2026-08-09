@@ -19,6 +19,18 @@ export const MAX_MARKDOWN_DROP_FILES = 100;
 export const MAX_MARKDOWN_DROP_FILE_SIZE = 20 * 1024 * 1024;
 export const MAX_MARKDOWN_DROP_TOTAL_SIZE = 100 * 1024 * 1024;
 
+type ImportedMarkdownNote = Awaited<ReturnType<typeof api.getNote>>;
+
+export interface MarkdownBatchImportFailure {
+  name: string;
+  reason: string;
+}
+
+export interface MarkdownBatchImportResult {
+  imported: ImportedMarkdownNote[];
+  failures: MarkdownBatchImportFailure[];
+}
+
 let installed = false;
 let importing = false;
 let activeDropRow: HTMLElement | null = null;
@@ -225,6 +237,58 @@ export async function importMarkdownFileIntoKnowledgeTree(
   }
 }
 
+export async function importMarkdownFilesIntoKnowledgeTree(
+  files: Iterable<File>,
+  parentId: string | null,
+): Promise<MarkdownBatchImportResult> {
+  const selected = Array.from(files).filter(isMarkdownDropFile);
+  const imported: ImportedMarkdownNote[] = [];
+  const failures: MarkdownBatchImportFailure[] = [];
+  let acceptedBytes = 0;
+
+  for (const [index, file] of selected.entries()) {
+    if (index >= MAX_MARKDOWN_DROP_FILES) {
+      failures.push({
+        name: file.name,
+        reason: `单次最多导入 ${MAX_MARKDOWN_DROP_FILES} 个 Markdown 文件`,
+      });
+      continue;
+    }
+    if (file.size > MAX_MARKDOWN_DROP_FILE_SIZE) {
+      failures.push({
+        name: file.name,
+        reason: `文件超过 ${formatBytes(MAX_MARKDOWN_DROP_FILE_SIZE)} 限制`,
+      });
+      continue;
+    }
+    if (acceptedBytes + file.size > MAX_MARKDOWN_DROP_TOTAL_SIZE) {
+      failures.push({
+        name: file.name,
+        reason: `本次累计大小超过 ${formatBytes(MAX_MARKDOWN_DROP_TOTAL_SIZE)} 限制`,
+      });
+      continue;
+    }
+    acceptedBytes += file.size;
+
+    try {
+      imported.push(await importMarkdownFileIntoKnowledgeTree(file, parentId));
+    } catch (error) {
+      failures.push({ name: file.name, reason: errorMessage(error) });
+    }
+  }
+
+  return { imported, failures };
+}
+
+export function formatMarkdownImportFailures(
+  failures: readonly MarkdownBatchImportFailure[],
+  limit = 3,
+): string {
+  const visible = failures.slice(0, limit).map(({ name, reason }) => `${name}：${reason}`);
+  const omitted = failures.length - visible.length;
+  return `${visible.join("；")}${omitted > 0 ? `；另有 ${omitted} 个失败` : ""}`;
+}
+
 async function importWordFileIntoKnowledgeTree(
   file: File,
   target: KnowledgeTreeNode,
@@ -284,15 +348,6 @@ async function handleKnowledgeTreeFileDrop(row: HTMLElement, dataTransfer: DataT
     toast.warning("这里只支持拖入 .md、.markdown 或 .docx 文件");
     return;
   }
-  if (supportedFiles.length > MAX_MARKDOWN_DROP_FILES) {
-    toast.error(`单次最多拖入 ${MAX_MARKDOWN_DROP_FILES} 个文档`);
-    return;
-  }
-  const totalSize = supportedFiles.reduce((sum, file) => sum + file.size, 0);
-  if (totalSize > MAX_MARKDOWN_DROP_TOTAL_SIZE) {
-    toast.error(`本次文件总大小超过 ${formatBytes(MAX_MARKDOWN_DROP_TOTAL_SIZE)} 限制`);
-    return;
-  }
   if (importing) {
     toast.warning("已有文档正在导入，请稍后再试");
     return;
@@ -302,7 +357,13 @@ async function handleKnowledgeTreeFileDrop(row: HTMLElement, dataTransfer: DataT
   const progressToast = toast.info(`正在导入 ${supportedFiles.length} 个文档…`, 0);
   let target: KnowledgeTreeNode | null = null;
   let successCount = 0;
-  const failures: Array<{ file: string; reason: string }> = [];
+  const failures: MarkdownBatchImportFailure[] = supportedFiles
+    .slice(MAX_MARKDOWN_DROP_FILES)
+    .map((file) => ({
+      name: file.name,
+      reason: `单次最多导入 ${MAX_MARKDOWN_DROP_FILES} 个文档`,
+    }));
+  const filesToImport = supportedFiles.slice(0, MAX_MARKDOWN_DROP_FILES);
 
   try {
     const resolvedTarget = await resolveTargetNode(nodeId);
@@ -312,16 +373,18 @@ async function handleKnowledgeTreeFileDrop(row: HTMLElement, dataTransfer: DataT
       throw new Error("你没有在该目录下创建文档的权限");
     }
 
-    for (const file of supportedFiles) {
+    const markdownFiles = filesToImport.filter(isMarkdownDropFile);
+    const wordFiles = filesToImport.filter(isWordDropFile);
+    const markdownResult = await importMarkdownFilesIntoKnowledgeTree(markdownFiles, target.id);
+    successCount += markdownResult.imported.length;
+    failures.push(...markdownResult.failures);
+
+    for (const file of wordFiles) {
       try {
-        if (isMarkdownDropFile(file)) {
-          await importMarkdownFileIntoKnowledgeTree(file, target.id);
-        } else {
-          await importWordFileIntoKnowledgeTree(file, target, resolvedTarget.nodes);
-        }
+        await importWordFileIntoKnowledgeTree(file, target, resolvedTarget.nodes);
         successCount += 1;
       } catch (error) {
-        failures.push({ file: file.name, reason: errorMessage(error) });
+        failures.push({ name: file.name, reason: errorMessage(error) });
       }
     }
 
@@ -330,7 +393,7 @@ async function handleKnowledgeTreeFileDrop(row: HTMLElement, dataTransfer: DataT
       emitTreeChanged(target.id, successCount);
     }
   } catch (error) {
-    failures.push({ file: "", reason: errorMessage(error) });
+    failures.push({ name: "导入", reason: errorMessage(error) });
   } finally {
     importing = false;
     toast.dismiss(progressToast);
@@ -342,16 +405,18 @@ async function handleKnowledgeTreeFileDrop(row: HTMLElement, dataTransfer: DataT
     return;
   }
 
-  const firstFailure = failures[0];
   if (successCount > 0) {
     toast.warning(
-      `已导入 ${successCount} 个，失败 ${failures.length} 个${firstFailure ? `：${firstFailure.file || "导入"} ${firstFailure.reason}` : ""}`,
-      6000,
+      `成功导入 ${successCount} 个文件，${failures.length} 个失败：${formatMarkdownImportFailures(failures)}`,
+      8000,
     );
     return;
   }
 
-  toast.error(firstFailure?.reason || "文档导入失败", 6000);
+  toast.error(
+    failures.length > 0 ? formatMarkdownImportFailures(failures) : "文档导入失败",
+    8000,
+  );
 }
 
 export function installKnowledgeTreeMarkdownDrop(): () => void {

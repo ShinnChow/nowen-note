@@ -274,7 +274,7 @@ export function KnowledgeTreeCreateDropdown({
         );
       })}
       <p className="border-t border-app-border px-2.5 pb-1 pt-2 text-[10px] text-tx-tertiary">
-        也可将 .md 文件拖拽到目录树导入
+        也可将一个或多个 .md 文件拖拽到目录树导入
       </p>
     </div>,
     document.body,

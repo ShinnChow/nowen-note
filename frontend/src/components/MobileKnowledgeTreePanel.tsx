@@ -586,13 +586,12 @@ export default function MobileKnowledgeTreePanel({
       if (!imported) return;
       activateNote(imported, parent?.id || null);
       emitTreeChanged("node-imported-quick-browse");
-      await reload();
       actions.refreshNotes();
       actions.refreshNotebooks();
     } catch (requestError: any) {
       toast.error(requestError?.message || "导入失败，请重试");
     }
-  }, [actions, activateNote, nodes, reload, state.activeNote?.notebookId, state.notebooks, state.selectedNotebookId, unlockedFolderIds]);
+  }, [actions, activateNote, nodes, state.activeNote?.notebookId, state.notebooks, state.selectedNotebookId, unlockedFolderIds]);
 
   const rename = async (node: KnowledgeTreeNode) => {
     closeMenu();

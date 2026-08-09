@@ -631,7 +631,6 @@ export function KnowledgeTreePanel({
         if (!imported) return;
         activateNote(imported, parent?.id || null);
         emitTreeChanged("node-imported-plus-menu");
-        await reload();
         actions.refreshNotes();
         actions.refreshNotebooks();
       } catch (requestError: any) {
@@ -639,7 +638,7 @@ export function KnowledgeTreePanel({
       }
     };
     void runImport();
-  }, [actions, activateNote, importRequest, nodes, reload, state.activeNote?.notebookId, state.notebooks, state.selectedNotebookId, unlockedFolderIds]);
+  }, [actions, activateNote, importRequest, nodes, state.activeNote?.notebookId, state.notebooks, state.selectedNotebookId, unlockedFolderIds]);
 
   const commitDraft = async () => {
     if (!draft || draft.saving) return;
