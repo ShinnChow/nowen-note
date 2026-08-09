@@ -44,7 +44,7 @@ import {
   shortcutMatchesEvent,
 } from "@/lib/shortcutRegistry";
 import CommandPalette from "@/components/common/CommandPalette";
-import OfflineIndicator from "@/components/common/OfflineIndicator";
+import OfflineSyncRuntime from "@/components/OfflineSyncRuntime";
 import UpdateNotifier from "@/components/common/UpdateNotifier";
 import FolderSyncScheduler from "@/components/FolderSyncScheduler";
 import NoteWorkspaceLayoutController from "@/components/NoteWorkspaceLayoutController";
@@ -820,8 +820,8 @@ function AppLayout() {
         onClose={() => setCommandPaletteOpen(false)}
       />
 
-      {/* 离线状态 + 待同步指示器 */}
-      <PhaseAPerfProfiler id="OfflineIndicator"><OfflineIndicator /></PhaseAPerfProfiler>
+      {/* 无 UI 的网络探活、离线队列重放与同步后数据刷新 */}
+      <OfflineSyncRuntime />
 
       {/* 服务端版本升级提示（前端 bundle 与服务端不一致时） */}
       <UpdateNotifier />
