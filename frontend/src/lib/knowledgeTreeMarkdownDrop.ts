@@ -3,6 +3,11 @@ import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
+import {
+  getKnowledgeTreeExpansionScope,
+  getKnowledgeTreeExpansionSnapshot,
+  saveKnowledgeTreeExpansion,
+} from "@/lib/knowledgeTreeExpansion";
 import { toast } from "@/lib/toast";
 
 const TREE_SELECTOR = '[data-nowen-knowledge-tree="embedded"]';
@@ -260,20 +265,12 @@ function emitTreeChanged(targetNodeId: string, imported: number): void {
   }));
 }
 
-function expandTargetAfterRefresh(targetNodeId: string, attempt = 0): void {
-  window.setTimeout(() => {
-    const activeTrees = Array.from(document.querySelectorAll<HTMLElement>(
-      `${TREE_SELECTOR}[data-sidebar-surface-active="true"]`,
-    ));
-    const rows = activeTrees.flatMap((tree) => Array.from(tree.querySelectorAll<HTMLElement>(TREE_NODE_SELECTOR)));
-    const row = rows.find((candidate) => candidate.dataset.knowledgeTreeNodeId === targetNodeId);
-    const toggle = row?.querySelector<HTMLButtonElement>('button[aria-label="展开"]');
-    if (toggle) {
-      toggle.click();
-      return;
-    }
-    if (attempt < 4) expandTargetAfterRefresh(targetNodeId, attempt + 1);
-  }, attempt === 0 ? 120 : 180);
+function expandImportedTarget(target: KnowledgeTreeNode): void {
+  if (target.nodeType !== "folder") return;
+  const scope = getKnowledgeTreeExpansionScope();
+  const expanded = new Set(getKnowledgeTreeExpansionSnapshot(scope).expandedNodeIds);
+  expanded.add(target.id);
+  saveKnowledgeTreeExpansion(scope, expanded);
 }
 
 async function handleKnowledgeTreeFileDrop(row: HTMLElement, dataTransfer: DataTransfer): Promise<void> {
@@ -329,8 +326,8 @@ async function handleKnowledgeTreeFileDrop(row: HTMLElement, dataTransfer: DataT
     }
 
     if (successCount > 0) {
+      expandImportedTarget(target);
       emitTreeChanged(target.id, successCount);
-      expandTargetAfterRefresh(target.id);
     }
   } catch (error) {
     failures.push({ file: "", reason: errorMessage(error) });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Check,
   ChevronDown,
@@ -54,6 +54,13 @@ import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
+import {
+  getKnowledgeTreeExpansionScope,
+  getKnowledgeTreeExpansionSnapshot,
+  initializeKnowledgeTreeExpansion,
+  saveKnowledgeTreeExpansion,
+  subscribeKnowledgeTreeExpansion,
+} from "@/lib/knowledgeTreeExpansion";
 import {
   forgetUnlockedFolder,
   hideLockedFolderDescendants,
@@ -283,7 +290,6 @@ export function KnowledgeTreePanel({
   const [error, setError] = useState<string | null>(null);
   const [sharedLoadError, setSharedLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState<KnowledgeTreeInlineDraft | null>(null);
   const [permissionsNode, setPermissionsNode] = useState<KnowledgeTreeNode | null>(null);
   const [movingNode, setMovingNode] = useState<KnowledgeTreeNode | null>(null);
@@ -298,8 +304,26 @@ export function KnowledgeTreePanel({
   const { menu, menuRef, openMenu, openMenuAt, closeMenu } = useContextMenu();
   const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const menuNode = menu.targetId ? nodes.find((candidate) => candidate.id === menu.targetId) || null : null;
+  const expansionScope = getKnowledgeTreeExpansionScope();
+  const subscribeExpansion = useCallback(
+    (listener: () => void) => subscribeKnowledgeTreeExpansion(expansionScope, listener),
+    [expansionScope],
+  );
+  const readExpansion = useCallback(
+    () => getKnowledgeTreeExpansionSnapshot(expansionScope),
+    [expansionScope],
+  );
+  const expansionSnapshot = useSyncExternalStore(subscribeExpansion, readExpansion, readExpansion);
+  const expanded = useMemo(() => new Set(expansionSnapshot.expandedNodeIds), [expansionSnapshot]);
+
+  const setNodeExpanded = useCallback((nodeId: string, opening: boolean) => {
+    const next = new Set(getKnowledgeTreeExpansionSnapshot(expansionScope).expandedNodeIds);
+    if (opening) next.add(nodeId); else next.delete(nodeId);
+    saveKnowledgeTreeExpansion(expansionScope, next);
+  }, [expansionScope]);
 
   const reload = useCallback(async () => {
+    const requestExpansionScope = getKnowledgeTreeExpansionScope();
     setLoading(true);
     setError(null);
     try {
@@ -317,14 +341,15 @@ export function KnowledgeTreePanel({
       const merged = Array.from(
         new Map([...ownedResult.value.nodes, ...shared].map((node) => [node.id, node])).values(),
       );
-      const ids = new Set(merged.map((node) => node.id));
+      if (requestExpansionScope !== getKnowledgeTreeExpansionScope()) return;
+      const folderIds = new Set(merged.filter((node) => node.nodeType === "folder").map((node) => node.id));
       setNodes(merged);
-      setExpanded((current) => {
-        if (current.size === 0) {
-          return new Set(merged.filter((node) => node.parentId === null || node.isExpanded).map((node) => node.id));
-        }
-        return new Set(Array.from(current).filter((id) => ids.has(id)));
-      });
+      initializeKnowledgeTreeExpansion(
+        requestExpansionScope,
+        merged.filter((node) => node.nodeType === "folder" && Boolean(node.isExpanded)).map((node) => node.id),
+        folderIds,
+        sharedResult.status === "fulfilled",
+      );
     } catch (requestError: any) {
       setError(requestError?.message || "加载内容树失败");
     } finally {
@@ -408,46 +433,11 @@ export function KnowledgeTreePanel({
   const hasExpandedFolders = !query.trim() && expandableFolderIds.some((id) => expanded.has(id));
   const toggleAllLabel = hasExpandedFolders ? "全部收起" : "全部展开";
 
-  useEffect(() => {
-    if (variant !== "desktop" || !surfaceActive || nodes.length === 0 || !state.activeNote?.id) return;
-
-    const activeNode = nodes.find(
-      (node) => node.resourceType === "note" && node.resourceId === state.activeNote?.id,
-    );
-    if (!activeNode) return;
-
-    const nodesById = new Map(nodes.map((node) => [node.id, node]));
-    const ancestorIds = new Set<string>();
-    let parent = activeNode.parentId ? nodesById.get(activeNode.parentId) : undefined;
-    while (parent) {
-      ancestorIds.add(parent.id);
-      parent = parent.parentId ? nodesById.get(parent.parentId) : undefined;
-    }
-
-    setExpanded((current) => {
-      const next = new Set(current);
-      let changed = false;
-      ancestorIds.forEach((id) => {
-        if (!next.has(id)) {
-          next.add(id);
-          changed = true;
-        }
-      });
-      return changed ? next : current;
-    });
-
-    const frame = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const nodeElement = Array.from(
-          rootRef.current?.querySelectorAll<HTMLElement>("[data-knowledge-tree-node-id]") ?? [],
-        ).find((element) => element.dataset.knowledgeTreeNodeId === activeNode.id);
-        nodeElement?.scrollIntoView({ block: "nearest" });
-      });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [nodes, state.activeNote?.id, surfaceActive, variant]);
-
-  const activateNote = useCallback((note: Awaited<ReturnType<typeof api.getNote>>) => {
+  // Selecting or restoring an active note must not override the user's folder disclosure choices.
+  const activateNote = useCallback((
+    note: Awaited<ReturnType<typeof api.getNote>>,
+    treeParentId?: string | null,
+  ) => {
     actions.setActiveNote(note);
     actions.setSelectedNotebook(note.notebookId);
     actions.setViewMode("notebook");
@@ -471,10 +461,8 @@ export function KnowledgeTreePanel({
   }, []);
 
   const toggle = async (node: KnowledgeTreeNode) => {
-    const next = new Set(expanded);
-    const opening = !next.has(node.id);
-    if (opening) next.add(node.id); else next.delete(node.id);
-    setExpanded(next);
+    const opening = !getKnowledgeTreeExpansionSnapshot(expansionScope).expandedNodeIds.includes(node.id);
+    setNodeExpanded(node.id, opening);
     if (!node.sharedRootId) {
       try { await knowledgeTreeApi.update(node.id, { isExpanded: opening }); } catch { /* local navigation remains usable */ }
     }
@@ -488,11 +476,11 @@ export function KnowledgeTreePanel({
       && targetIds.has(node.id)
       && !node.sharedRootId
     ));
-    setExpanded(expanding ? targetIds : new Set());
+    saveKnowledgeTreeExpansion(expansionScope, expanding ? targetIds : []);
     void Promise.allSettled(
       changedOwnedFolders.map((node) => knowledgeTreeApi.update(node.id, { isExpanded: expanding })),
     );
-  }, [expandableFolderIds, hasExpandedFolders, nodes]);
+  }, [expandableFolderIds, expansionScope, hasExpandedFolders, nodes]);
 
   const runMobileTreeAction = useCallback((value: string) => {
     setMobileActionsOpen(false);
@@ -591,7 +579,7 @@ export function KnowledgeTreePanel({
     closeMenu();
     setQuery("");
     if (parent) {
-      setExpanded((current) => new Set(current).add(parent.id));
+      setNodeExpanded(parent.id, true);
       if (!parent.sharedRootId) void knowledgeTreeApi.update(parent.id, { isExpanded: true }).catch(() => {});
     }
     setDraft({
@@ -601,7 +589,7 @@ export function KnowledgeTreePanel({
       saving: false,
       error: null,
     });
-  }, [closeMenu, unlockedFolderIds]);
+  }, [closeMenu, setNodeExpanded, unlockedFolderIds]);
 
   useEffect(() => {
     if (!createRequest || handledCreateRequestRef.current === createRequest.requestId) return;
@@ -681,7 +669,7 @@ export function KnowledgeTreePanel({
     }
 
     setDraft(null);
-    if (snapshot.parentId) setExpanded((current) => new Set(current).add(snapshot.parentId!));
+    if (snapshot.parentId) setNodeExpanded(snapshot.parentId, true);
     emitTreeChanged("node-created-inline");
     await reload();
     actions.refreshNotebooks();
@@ -1304,7 +1292,7 @@ export function KnowledgeTreePanel({
               if (pendingAction === "select" && target) {
                 selectFolder(target);
               } else if (pendingAction === "toggle") {
-                setExpanded((current) => new Set(current).add(nodeId));
+                setNodeExpanded(nodeId, true);
                 if (target && !target.sharedRootId) {
                   void knowledgeTreeApi.update(nodeId, { isExpanded: true }).catch(() => undefined);
                 }
@@ -1313,11 +1301,7 @@ export function KnowledgeTreePanel({
             onChanged={(nodeId, isPasswordProtected) => {
               setUnlockedFolderIds(forgetUnlockedFolder(nodeId));
               if (isPasswordProtected) {
-                setExpanded((current) => {
-                  const next = new Set(current);
-                  next.delete(nodeId);
-                  return next;
-                });
+                setNodeExpanded(nodeId, false);
               }
               setNodes((current) => current.map((node) => (
                 node.id === nodeId
