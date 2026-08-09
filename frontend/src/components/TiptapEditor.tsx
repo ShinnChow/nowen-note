@@ -114,6 +114,7 @@ import { sendFormatState } from "@/lib/desktopBridge";
 import { SlashCommandsMenu, getDefaultSlashCommands, createSlashExtension, createSlashEventHandlers } from "@/components/SlashCommands";
 import { NoteLinkMenu, type NoteSearchResult, type NoteLinkBlockItem, type NoteLinkSelectionOptions } from "@/components/NoteLinkExtension";
 import { NoteLinkHoverPreview } from "@/components/NoteLinkPreview";
+import { detectActiveWikiNoteQuery } from "@/lib/noteLinkSyntax";
 import { BlockEmbedExtension } from "@/components/BlockEmbedExtension";
 import { consumeBlockNavigation, subscribeBlockNavigation } from "@/lib/blockNavigation";
 import { MarkdownEnhancements } from "@/components/MarkdownEnhancements";
@@ -1672,7 +1673,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   // hover 关闭延迟定时器：用户从链接移到气泡上时给一个缓冲，避免穿过空隙时闪烁
   const linkHoverCloseTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // 笔记引用搜索菜单状态（[[ 触发）
+  // 笔记引用搜索菜单状态（[[ / 【【 触发）
   const [noteLinkMenu, setNoteLinkMenu] = useState<{
     open: boolean;
     position: { top: number; left: number };
@@ -2738,28 +2739,28 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
         }
       }, 150);
 
-      // 检测 [[ 触发笔记搜索菜单
+      // 检测 [[ / 【【 触发笔记搜索菜单
       const { state } = editor;
       const { selection } = state;
       const { $from } = selection;
       const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
 
-      // 查找最近的 [[ 触发
-      const triggerIndex = textBefore.lastIndexOf("[[");
-      if (triggerIndex !== -1) {
-        const query = textBefore.slice(triggerIndex + 2);
-        // 计算 [[ 在文档中的位置
-        const triggerDocPos = $from.pos - ($from.parentOffset - triggerIndex);
+      const activeWiki = detectActiveWikiNoteQuery(
+        textBefore,
+        $from.pos,
+        $from.pos - $from.parentOffset,
+      );
+      if (activeWiki) {
         // 计算菜单位置
         const coords = editor.view.coordsAtPos($from.pos);
         setNoteLinkMenu({
           open: true,
           position: { top: coords.bottom + 8, left: coords.left },
-          query,
-          triggerFrom: triggerDocPos,
+          query: activeWiki.query,
+          triggerFrom: activeWiki.from,
         });
       } else {
-        // 没有 [[ 触发，关闭菜单
+        // 没有活动的双链触发，关闭菜单
         if (noteLinkMenu.open) {
           setNoteLinkMenu(prev => ({ ...prev, open: false }));
         }
