@@ -78,7 +78,9 @@ import {
   compareKnowledgeTreePinnedPriority,
   KNOWLEDGE_TREE_SORT_OPTIONS,
   loadKnowledgeTreeSortMode,
+  planKnowledgeTreeSiblingReorder,
   saveKnowledgeTreeSortMode,
+  type KnowledgeTreeSiblingDropPlacement,
 } from "@/lib/knowledgeTreeSort";
 import {
   detectNoteWorkspaceSurface,
@@ -91,7 +93,6 @@ import {
 } from "@/lib/threeColumnFolderContents";
 import { cn } from "@/lib/utils";
 import {
-  canMoveWithinSharedRoot,
   filterKnowledgeTreeNodes,
   isSharedRoot,
 } from "@/lib/sharedKnowledgeTree";
@@ -301,6 +302,11 @@ export function KnowledgeTreePanel({
   } | null>(null);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [compactDesktopToolbar, setCompactDesktopToolbar] = useState(false);
+  const [treeDropTarget, setTreeDropTarget] = useState<{
+    nodeId: string;
+    placement: KnowledgeTreeSiblingDropPlacement;
+  } | null>(null);
+  const draggedTreeNodeIdRef = useRef<string | null>(null);
   const { menu, menuRef, openMenu, openMenuAt, closeMenu } = useContextMenu();
   const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const menuNode = menu.targetId ? nodes.find((candidate) => candidate.id === menu.targetId) || null : null;
@@ -743,33 +749,48 @@ export function KnowledgeTreePanel({
     }
   };
 
-  const dropMove = async (sourceId: string, targetId: string) => {
-    if (!sourceId || sourceId === targetId) return;
+  const canReorderWithTarget = (sourceId: string, target: KnowledgeTreeNode) => {
     const source = nodes.find((node) => node.id === sourceId);
-    const target = nodes.find((node) => node.id === targetId);
-    if (!source || !target) return;
-    if (Boolean(source.sharedRootId) !== Boolean(target.sharedRootId)) {
-      toast.error("自有内容与共享内容不能互相移动");
+    return Boolean(
+      source
+      && source.id !== target.id
+      && source.access.capabilities.canMove
+      && target.access.capabilities.canMove
+      && (source.parentId ?? null) === (target.parentId ?? null)
+      && Boolean(source.sharedRootId) === Boolean(target.sharedRootId)
+      && (!source.sharedRootId || source.sharedRootId === target.sharedRootId)
+      && compareKnowledgeTreePinnedPriority(source, target) === 0,
+    );
+  };
+
+  const dropReorder = async (
+    sourceId: string,
+    target: KnowledgeTreeNode,
+    placement: KnowledgeTreeSiblingDropPlacement,
+  ) => {
+    if (!sourceId || sourceId === target.id) return;
+    const source = nodes.find((node) => node.id === sourceId);
+    if (!source) return;
+    if ((source.parentId ?? null) !== (target.parentId ?? null)) {
+      toast.error("手动排序仅支持同级节点；调整层级请使用“移动到”");
       return;
     }
-    if (source.sharedRootId && !canMoveWithinSharedRoot(source, target)) {
-      toast.error("共享内容只能在同一个共享根内移动");
+    if (!canReorderWithTarget(sourceId, target)) {
+      toast.error("文件夹、置顶笔记和普通笔记请在各自分组内排序");
       return;
     }
-    const blockedTargets = descendantsOf(sourceId, allChildren);
-    if (blockedTargets.has(targetId)) {
-      toast.error("不能移动到自己的子节点中");
-      return;
-    }
+    const plan = planKnowledgeTreeSiblingReorder(nodes, sourceId, target.id, placement);
+    if (!plan) return;
+    setNodes(plan.nodes);
     try {
-      await knowledgeTreeApi.move(sourceId, { parentId: targetId });
-      setExpanded((current) => new Set(current).add(targetId));
-      emitTreeChanged("node-moved");
-      await reload();
+      await knowledgeTreeApi.reorder(plan.items);
+      emitTreeChanged("node-reordered");
       actions.refreshNotebooks();
-      toast.success("已移动");
+      actions.refreshNotes();
+      toast.success("已调整顺序");
     } catch (requestError: any) {
-      toast.error(requestError?.message || "移动失败");
+      void reload();
+      toast.error(requestError?.message || "排序失败");
     }
   };
 
@@ -893,27 +914,51 @@ export function KnowledgeTreePanel({
             "group relative flex min-w-0 items-center text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
             variant === "mobile" ? "rounded-sm" : "rounded-md",
             active && "bg-app-active text-tx-primary",
+            treeDropTarget?.nodeId === node.id && treeDropTarget.placement === "before"
+              && "before:absolute before:inset-x-0 before:top-0 before:z-10 before:h-0.5 before:bg-accent-primary",
+            treeDropTarget?.nodeId === node.id && treeDropTarget.placement === "after"
+              && "after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:h-0.5 after:bg-accent-primary",
           )}
           style={{ paddingLeft: `${depth * treeIndent + treeInset}px` }}
-          draggable={node.access.capabilities.canMove && !isSharedRoot(node)}
+          draggable={currentSortMode === "manual" && !query.trim() && node.access.capabilities.canMove && !isSharedRoot(node)}
           onDragStart={(event) => {
+            draggedTreeNodeIdRef.current = node.id;
             event.dataTransfer.effectAllowed = "move";
             event.dataTransfer.setData("application/x-nowen-tree-node", node.id);
           }}
           onDragOver={(event) => {
-            if (!node.access.capabilities.canCreate || !isFolderUnlocked(node, unlockedFolderIds)) return;
+            if (!event.dataTransfer.types.includes("application/x-nowen-tree-node")) return;
             event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-          }}
-          onDrop={(event) => {
-            if (!node.access.capabilities.canCreate) return;
-            event.preventDefault();
-            if (!isFolderUnlocked(node, unlockedFolderIds)) {
-              setPendingFolderAction(null);
-              setPasswordDialog({ node, mode: "unlock" });
+            event.stopPropagation();
+            const sourceId = event.dataTransfer.getData("application/x-nowen-tree-node") || draggedTreeNodeIdRef.current || "";
+            if (!canReorderWithTarget(sourceId, node)) {
+              event.dataTransfer.dropEffect = "none";
+              setTreeDropTarget(null);
               return;
             }
-            void dropMove(event.dataTransfer.getData("application/x-nowen-tree-node"), node.id);
+            const rect = event.currentTarget.getBoundingClientRect();
+            const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+            event.dataTransfer.dropEffect = "move";
+            setTreeDropTarget((current) => (
+              current?.nodeId === node.id && current.placement === placement
+                ? current
+                : { nodeId: node.id, placement }
+            ));
+          }}
+          onDrop={(event) => {
+            if (!event.dataTransfer.types.includes("application/x-nowen-tree-node")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const sourceId = event.dataTransfer.getData("application/x-nowen-tree-node") || draggedTreeNodeIdRef.current || "";
+            const rect = event.currentTarget.getBoundingClientRect();
+            const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+            setTreeDropTarget(null);
+            draggedTreeNodeIdRef.current = null;
+            void dropReorder(sourceId, node, placement);
+          }}
+          onDragEnd={() => {
+            draggedTreeNodeIdRef.current = null;
+            setTreeDropTarget(null);
           }}
           onContextMenu={(event) => openMenu(event, node.id, "knowledge-node")}
           onTouchStart={(event) => beginLongPress(event, node)}
