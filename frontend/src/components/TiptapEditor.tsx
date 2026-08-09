@@ -53,6 +53,7 @@ import { CellSelection } from "@tiptap/pm/tables";
 import { markdownToSimpleHtml } from "@/lib/importService";
 import { repairTiptapJson } from "@/lib/tiptapSchemaRepair";
 import { markdownToHtml as mdToFullHtml, detectFormat as detectContentFormat, tiptapJsonToMarkdown } from "@/lib/contentFormat";
+import { findInternalMarkdownMarkerRanges } from "@/lib/markdownUserContent";
 import { shouldEmitTitleUpdate, shouldSkipTitleChange, shouldSyncTitleValue } from "@/lib/titleIme";
 import { resolveEditorLifecycleSave } from "@/lib/editorLifecycleSafety";
 import { api, resolveAttachmentUrl } from "@/lib/api";
@@ -4799,11 +4800,14 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   const insertWithMarkdownDetect = useCallback((text: string, from: number, to: number) => {
     if (!editor) return;
     const view = editor.view;
+    const hasInternalBlockMarkers = findInternalMarkdownMarkerRanges(text).length > 0;
 
-    if (looksLikeMarkdown(text)) {
+    if (hasInternalBlockMarkers || looksLikeMarkdown(text)) {
       // 直接转换为富文本 HTML 后插入，一步到位
       try {
-        const convertedHtml = markdownToSimpleHtml(text);
+        const convertedHtml = hasInternalBlockMarkers
+          ? mdToFullHtml(text) || markdownToSimpleHtml(text)
+          : markdownToSimpleHtml(text);
         const parser = ProseMirrorDOMParser.fromSchema(view.state.schema);
         const tempDiv = document.createElement("div");
         tempDiv.innerHTML = convertedHtml;
