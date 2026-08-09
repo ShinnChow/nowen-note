@@ -7,11 +7,36 @@ const ATTACHMENT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 const ACCESS_QUERY_KEYS = new Set(["exp", "sig", "scope"]);
 const accessUrls = new Map<string, string>();
 const offlineObjectUrls = new Map<string, string>();
+const accessStateListeners = new Set<() => void>();
+let accessStateRevision = 0;
+
+function notifyAttachmentAccessChanged(): void {
+  accessStateRevision += 1;
+  for (const listener of accessStateListeners) listener();
+}
+
+/**
+ * Editor NodeViews keep the stable attachment id in their document node, while this bridge owns
+ * the short-lived render URL. Subscribe to the bridge so a late access refresh can re-resolve the
+ * same persisted node instead of leaving the first unauthorized image request in an error state.
+ */
+export function subscribeAttachmentAccess(listener: () => void): () => void {
+  accessStateListeners.add(listener);
+  return () => accessStateListeners.delete(listener);
+}
+
+export function getAttachmentAccessSnapshot(): number {
+  return accessStateRevision;
+}
+
 if (typeof window !== "undefined") {
   window.addEventListener("nowen:offline-attachments-removed", (event) => {
     const ids = (event as CustomEvent<{ ids?: string[] }>).detail?.ids || [];
     for (const id of ids) revokeOfflineObjectUrl(id);
-    if (ids.length > 0) queueDomScan();
+    if (ids.length > 0) {
+      notifyAttachmentAccessChanged();
+      queueDomScan();
+    }
   });
 }
 let attachmentApiOrigin = "";
@@ -172,13 +197,16 @@ export function registerAttachmentAccessUrls(
   if (sourceUrl) rememberAttachmentApiOrigin(sourceUrl);
 
   let count = 0;
+  let changed = false;
   for (const [id, url] of Object.entries(urls)) {
     if (!ATTACHMENT_ID_RE.test(id) || typeof url !== "string" || !url.includes("sig=")) continue;
     const normalized = normalizeRegisteredAccessUrl(id, url, sourceUrl);
     if (!normalized) continue;
+    if (accessUrls.get(id) !== normalized) changed = true;
     accessUrls.set(id, normalized);
     count += 1;
   }
+  if (changed) notifyAttachmentAccessChanged();
   if (count > 0) queueDomScan();
   return count;
 }
@@ -198,17 +226,22 @@ export function registerOfflineAttachmentBlob(id: string, blob: Blob): string | 
   revokeOfflineObjectUrl(id);
   const url = URL.createObjectURL(blob);
   offlineObjectUrls.set(id, url);
+  notifyAttachmentAccessChanged();
   queueDomScan();
   return url;
 }
 
 export function unregisterOfflineAttachmentObjectUrl(id: string): void {
+  const existed = offlineObjectUrls.has(id);
   revokeOfflineObjectUrl(id);
+  if (existed) notifyAttachmentAccessChanged();
   queueDomScan();
 }
 
 export function clearOfflineAttachmentObjectUrls(): void {
+  const hadEntries = offlineObjectUrls.size > 0;
   for (const id of [...offlineObjectUrls.keys()]) revokeOfflineObjectUrl(id);
+  if (hadEntries) notifyAttachmentAccessChanged();
   queueDomScan();
 }
 
@@ -248,11 +281,13 @@ export function resolveAttachmentAccessUrl(raw: string): string {
 
 /** 测试隔离；生产代码无需调用。 */
 export function resetAttachmentAccessStateForTests(): void {
+  const hadEntries = accessUrls.size > 0 || offlineObjectUrls.size > 0 || !!attachmentApiOrigin;
   accessUrls.clear();
   clearOfflineAttachmentObjectUrls();
   attachmentApiOrigin = "";
   scanQueued = false;
   lastDeniedToastAt = 0;
+  if (hadEntries) notifyAttachmentAccessChanged();
 }
 
 function isEditableDocumentElement(element: Element): boolean {

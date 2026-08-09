@@ -1,6 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
 import { resolveAttachmentUrl, getServerUrl } from "@/lib/api";
+import {
+  getAttachmentAccessSnapshot,
+  subscribeAttachmentAccess,
+} from "@/lib/noteAttachmentAccessBridge";
 import {
   getPersistentImageTransform,
   normalizeImageFlipX,
@@ -192,6 +196,11 @@ export function ResizableImageView(props: NodeViewProps) {
 
   const [imgError, setImgError] = useState(false);
   const [blobSrc, setBlobSrc] = useState<string | null>(null);
+  useSyncExternalStore(
+    subscribeAttachmentAccess,
+    getAttachmentAccessSnapshot,
+    getAttachmentAccessSnapshot,
+  );
   const resolvedSrc = resolveAttachmentUrl(src);
 
   // In progressive modes an offscreen attachment image must not start a fetch/blob conversion.
