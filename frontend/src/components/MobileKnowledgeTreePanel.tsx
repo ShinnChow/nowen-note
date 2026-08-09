@@ -426,9 +426,13 @@ export default function MobileKnowledgeTreePanel({
   const rootShared = useMemo(() => currentChildren.filter((node) => Boolean(node.sharedRootId)), [currentChildren]);
   const ownedNoteCount = useMemo(() => countOwnedNotes(nodes), [nodes]);
 
-  const activateNote = useCallback((note: Awaited<ReturnType<typeof api.getNote>>) => {
+  const activateNote = useCallback((
+    note: Awaited<ReturnType<typeof api.getNote>>,
+    treeParentId?: string | null,
+  ) => {
     actions.setActiveNote(note);
     actions.setSelectedNotebook(note.notebookId);
+    actions.setSelectedKnowledgeTreeParent(treeParentId);
     actions.setViewMode("notebook");
     actions.openNoteTab({
       id: note.id,
@@ -462,7 +466,7 @@ export default function MobileKnowledgeTreePanel({
     if (node.resourceType !== "note") return;
     rememberOpened(node.id);
     try {
-      activateNote(await api.getNote(node.resourceId));
+      activateNote(await api.getNote(node.resourceId), node.parentId);
     } catch (requestError: any) {
       toast.error(requestError?.message || "打开文档失败");
     }
@@ -533,7 +537,7 @@ export default function MobileKnowledgeTreePanel({
         return;
       }
       rememberOpened(created.id);
-      activateNote(await api.getNote(created.resourceId));
+      activateNote(await api.getNote(created.resourceId), snapshot.parentId);
     } catch (requestError: any) {
       setDraft((current) => current ? {
         ...current,
@@ -580,7 +584,7 @@ export default function MobileKnowledgeTreePanel({
           ? await importWordIntoKnowledgeTree(options)
           : await importWeChatArticleIntoKnowledgeTree(options);
       if (!imported) return;
-      activateNote(imported);
+      activateNote(imported, parent?.id || null);
       emitTreeChanged("node-imported-quick-browse");
       await reload();
       actions.refreshNotes();

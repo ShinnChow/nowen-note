@@ -45,6 +45,7 @@ import {
   saveThreeColumnFolderScopeMode,
   type ThreeColumnFolderScopeMode,
 } from "@/lib/threeColumnFolderContents";
+import { isRootDocumentNotebookId } from "@/lib/rootDocumentCreatePolicy";
 // "导入 Word 文档" 走 dynamic import（见 createNoteInNotebook），减少首屏 bundle 体积。
 
 /* ===== 排序模式 ===== */
@@ -1439,9 +1440,28 @@ export default function NoteList() {
     () => hideLockedFolderDescendants(folderTreeNodes, unlockedFolderIds),
     [folderTreeNodes, unlockedFolderIds],
   );
+  const selectedKnowledgeTreeParentId = useMemo((): string | null | undefined => {
+    if (state.selectedKnowledgeTreeParentId !== undefined) {
+      return state.selectedKnowledgeTreeParentId;
+    }
+
+    const selectedFolder = visibleFolderTreeNodes.find((node) => (
+      node.nodeType === "folder"
+      && node.resourceType === "notebook"
+      && node.resourceId === state.selectedNotebookId
+    ));
+    if (selectedFolder) return selectedFolder.id;
+
+    if (isRootDocumentNotebookId(state.selectedNotebookId)) return null;
+    return undefined;
+  }, [state.selectedKnowledgeTreeParentId, state.selectedNotebookId, visibleFolderTreeNodes]);
   const threeColumnFolderContents = useMemo(
-    () => buildThreeColumnFolderContents(visibleFolderTreeNodes, state.selectedNotebookId),
-    [state.selectedNotebookId, visibleFolderTreeNodes],
+    () => buildThreeColumnFolderContents(
+      visibleFolderTreeNodes,
+      state.selectedNotebookId,
+      selectedKnowledgeTreeParentId,
+    ),
+    [selectedKnowledgeTreeParentId, state.selectedNotebookId, visibleFolderTreeNodes],
   );
   const visibleChildFolders = showThreeColumnFolderContents
     ? threeColumnFolderContents.childFolders
@@ -1532,6 +1552,7 @@ export default function NoteList() {
   const notesQueryKey = useMemo(() => JSON.stringify({
     viewMode: state.viewMode,
     selectedNotebookId: state.selectedNotebookId,
+    selectedKnowledgeTreeParentId,
     // RV1: 排序确保 A+B 和 B+A 产生相同 queryKey
     selectedTagIds: [...state.selectedTagIds].sort(),
     searchQuery: state.searchQuery,
@@ -1542,6 +1563,7 @@ export default function NoteList() {
   }), [
     state.viewMode,
     state.selectedNotebookId,
+    selectedKnowledgeTreeParentId,
     state.selectedTagIds,
     state.searchQuery,
     dateFilter,
@@ -1567,10 +1589,12 @@ export default function NoteList() {
       };
       if (state.viewMode === "notebook" && state.selectedNotebookId) {
         const params: Record<string, string> = {
-        notebookId: state.selectedNotebookId,
-        ...(currentFolderOnly ? { includeDescendants: "0" } : {}),
-        ...sortParams,
-      };
+          ...(selectedKnowledgeTreeParentId !== undefined
+            ? { treeParentId: selectedKnowledgeTreeParentId || "root" }
+            : { notebookId: state.selectedNotebookId }),
+          ...(currentFolderOnly ? { includeDescendants: "0" } : {}),
+          ...sortParams,
+        };
         if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
         notes = await api.getNotes(params);
       } else if (state.viewMode === "favorites") {
@@ -1636,7 +1660,7 @@ export default function NoteList() {
         actions.setLoading(false);
       }
     }
-  }, [actions, notesQueryKey, state.viewMode, state.selectedNotebookId, state.searchQuery, state.selectedTagIds, dateFilter, sortPref.by, sortPref.dir, currentFolderOnly, t]);
+  }, [actions, notesQueryKey, state.viewMode, state.selectedNotebookId, selectedKnowledgeTreeParentId, state.searchQuery, state.selectedTagIds, dateFilter, sortPref.by, sortPref.dir, currentFolderOnly, t]);
 
   useEffect(() => {
     void fetchNotes();
@@ -1680,10 +1704,12 @@ export default function NoteList() {
     const fetcher = async (): Promise<NoteListItem[]> => {
       if (state.viewMode === "notebook" && state.selectedNotebookId) {
         return api.getNotes({
-        notebookId: state.selectedNotebookId,
-        ...(currentFolderOnly ? { includeDescendants: "0" } : {}),
-        ...sortParams,
-      });
+          ...(selectedKnowledgeTreeParentId !== undefined
+            ? { treeParentId: selectedKnowledgeTreeParentId || "root" }
+            : { notebookId: state.selectedNotebookId }),
+          ...(currentFolderOnly ? { includeDescendants: "0" } : {}),
+          ...sortParams,
+        });
       }
       if (state.viewMode === "favorites") {
         return api.getNotes({ isFavorite: "1", ...sortParams });
@@ -1706,6 +1732,7 @@ export default function NoteList() {
     showCalendar,
     state.viewMode,
     state.selectedNotebookId,
+    selectedKnowledgeTreeParentId,
     state.selectedTagIds,
     sortPref.by,
     sortPref.dir,

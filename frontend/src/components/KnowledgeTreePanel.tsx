@@ -440,6 +440,7 @@ export function KnowledgeTreePanel({
   ) => {
     actions.setActiveNote(note);
     actions.setSelectedNotebook(note.notebookId);
+    actions.setSelectedKnowledgeTreeParent(treeParentId);
     actions.setViewMode("notebook");
     actions.openNoteTab({
       id: note.id,
@@ -498,6 +499,7 @@ export function KnowledgeTreePanel({
   const selectFolder = useCallback((node: KnowledgeTreeNode) => {
     if (node.resourceType !== "notebook") return;
     actions.setSelectedNotebook(node.resourceId);
+    actions.setSelectedKnowledgeTreeParent(node.id);
     actions.clearSelectedTags();
     actions.setSearchQuery("");
     actions.setViewMode("notebook");
@@ -524,7 +526,7 @@ export function KnowledgeTreePanel({
     if (node.resourceType !== "note") return;
     rememberOpened(node.id);
     try {
-      activateNote(await api.getNote(node.resourceId));
+      activateNote(await api.getNote(node.resourceId), node.parentId);
     } catch (requestError: any) {
       toast.error(requestError?.message || "打开文档失败");
     }
@@ -627,7 +629,7 @@ export function KnowledgeTreePanel({
             ? await importWordIntoKnowledgeTree(options)
             : await importWeChatArticleIntoKnowledgeTree(options);
         if (!imported) return;
-        activateNote(imported);
+        activateNote(imported, parent?.id || null);
         emitTreeChanged("node-imported-plus-menu");
         await reload();
         actions.refreshNotes();
@@ -681,7 +683,7 @@ export function KnowledgeTreePanel({
     }
 
     try {
-      activateNote(await api.getNote(created.resourceId));
+      activateNote(await api.getNote(created.resourceId), snapshot.parentId);
     } catch (requestError: any) {
       toast.error(requestError?.message || "文档已创建，但自动打开失败");
     }

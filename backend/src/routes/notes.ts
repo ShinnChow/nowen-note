@@ -46,6 +46,7 @@ import { rebuildYjsSubdocumentsIfEnabled } from "../services/yjs-subdocuments";
 import { reclaimSpace } from "../lib/reclaimSpace";
 import { buildFtsSearchTerm } from "../lib/searchQuery";
 import { resolveNotebookNoteScopeIds } from "../lib/notebookNoteScope";
+import { resolveKnowledgeTreeNoteScopeIds } from "../lib/knowledgeTreeNoteScope";
 
 const app = new Hono();
 
@@ -91,6 +92,9 @@ app.get("/", (c) => {
   const userId = c.req.header("X-User-Id") || "";
   const workspaceId = c.req.query("workspaceId");
   const notebookId = c.req.query("notebookId");
+  const treeParentIdParam = c.req.query("treeParentId");
+  const hasKnowledgeTreeScope = treeParentIdParam !== undefined;
+  const treeParentId = treeParentIdParam === "root" ? null : treeParentIdParam || null;
   // 三栏式目录默认传 0：只显示当前文件夹直属笔记；未传时保持历史递归行为。
   const includeDescendants = c.req.query("includeDescendants") !== "0";
   const isFavorite = c.req.query("isFavorite");
@@ -137,16 +141,35 @@ app.get("/", (c) => {
     notes.isLocked, notes.isArchived, notes.isTrashed, notes.version, notes.sortOrder,
     notes.createdAt, notes.updatedAt,
     notes.contentFormat,
+    (SELECT tree.parentId
+       FROM knowledge_tree_nodes tree
+      WHERE tree.resourceType = 'note' AND tree.resourceId = notes.id AND tree.isDeleted = 0
+      ORDER BY tree.updatedAt DESC
+      LIMIT 1) AS treeParentId,
     users.username AS creatorName
     FROM notes
     LEFT JOIN users ON users.id = notes.userId
     WHERE 1=1`;
   const params: any[] = [userId];
+  const useKnowledgeTreeScope =
+    hasKnowledgeTreeScope
+    && !search
+    && isTrashed !== "1"
+    && isFavorite !== "1"
+    && tagIds.length === 0;
   const useNotebookScope =
-    Boolean(notebookId) && !search && isTrashed !== "1" && isFavorite !== "1" && tagIds.length === 0;
+    !hasKnowledgeTreeScope
+    && Boolean(notebookId)
+    && !search
+    && isTrashed !== "1"
+    && isFavorite !== "1"
+    && tagIds.length === 0;
 
   // Scope 过滤
-  if (useNotebookScope && notebookId) {
+  if (useKnowledgeTreeScope) {
+    // Knowledge-tree access is checked per node below. Do not apply the physical
+    // notebook filter here: root documents deliberately live in a hidden notebook.
+  } else if (useNotebookScope && notebookId) {
     const { permission } = resolveNotebookPermission(notebookId, userId);
     if (!hasPermission(permission, "read")) {
       return c.json({ error: "Notebook not found or forbidden" }, 404);
@@ -189,6 +212,19 @@ app.get("/", (c) => {
     const placeholders = filteredNoteIds.map(() => "?").join(",");
     query += ` AND notes.id IN (${placeholders})`;
     params.push(...filteredNoteIds);
+  } else if (useKnowledgeTreeScope) {
+    const noteIds = resolveKnowledgeTreeNoteScopeIds(
+      db,
+      userId,
+      workspaceId && workspaceId !== "personal" ? workspaceId : null,
+      treeParentId,
+      includeDescendants,
+    );
+    if (noteIds === null) return c.json({ error: "Folder not found or forbidden" }, 404);
+    if (noteIds.length === 0) return c.json([]);
+    const placeholders = noteIds.map(() => "?").join(",");
+    query += ` AND notes.id IN (${placeholders}) AND notes.isTrashed = 0`;
+    params.push(...noteIds);
   } else if (notebookId) {
     const ids = resolveNotebookNoteScopeIds(db, notebookId, includeDescendants);
     if (ids.length === 0) {
@@ -225,7 +261,10 @@ app.get("/", (c) => {
     // updatedAt | createdAt
     query += ` ORDER BY notes.isPinned DESC, notes.${sortBy} ${sortDir}, notes.id ASC`;
   }
-  const notes = db.prepare(query).all(...params);
+  const notes = db.prepare(query).all(...params) as Array<Record<string, unknown>>;
+  if (useKnowledgeTreeScope && !includeDescendants) {
+    return c.json(notes.map((note) => ({ ...note, treeParentId })));
+  }
   return c.json(notes);
 });
 

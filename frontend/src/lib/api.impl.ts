@@ -42,6 +42,7 @@ import {
 import { normalizeServerBaseUrl as _normalizeBase } from "@/lib/serverUrl";
 import { withShareSessionHeader } from "@/lib/shareSession";
 import { clearFolderUnlockTokens, folderUnlockRequestHeaders } from "@/lib/knowledgeTreePassword";
+import { isRootDocumentNotebookId } from "@/lib/rootDocumentCreatePolicy";
 import {
   registerAttachmentAccessUrls,
   resolveAttachmentAccessUrl,
@@ -1390,7 +1391,18 @@ export const api = {
         ? !n.workspaceId
         : n.workspaceId === offlineWorkspace;
       if (!wsMatch) return false;
-      if (finalParams.notebookId && n.notebookId !== finalParams.notebookId) return false;
+      if (finalParams.treeParentId) {
+        const requestedParentId = finalParams.treeParentId === "root" ? null : finalParams.treeParentId;
+        const recursiveRoot = requestedParentId === null && finalParams.includeDescendants !== "0";
+        const cachedParentId = n.treeParentId !== undefined
+          ? n.treeParentId
+          : isRootDocumentNotebookId(n.notebookId)
+            ? null
+            : undefined;
+        if (!recursiveRoot && cachedParentId !== requestedParentId) return false;
+      } else if (finalParams.notebookId && n.notebookId !== finalParams.notebookId) {
+        return false;
+      }
       if (finalParams.isFavorite === "1" && !n.isFavorite) return false;
       if (finalParams.isTrashed === "1" && !n.isTrashed) return false;
       // 默认返回未在垃圾桶的（服务端默认过滤）
