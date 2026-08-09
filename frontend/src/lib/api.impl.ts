@@ -39,7 +39,10 @@ import {
   readNote as _readNote,
 } from "@/lib/offlineRead";
 
-import { normalizeServerBaseUrl as _normalizeBase } from "@/lib/serverUrl";
+import {
+  inferBrowserServerBaseUrl as _inferBrowserServerBaseUrl,
+  normalizeServerBaseUrl as _normalizeBase,
+} from "@/lib/serverUrl";
 import { withShareSessionHeader } from "@/lib/shareSession";
 import { clearFolderUnlockTokens, folderUnlockRequestHeaders } from "@/lib/knowledgeTreePassword";
 import { isRootDocumentNotebookId } from "@/lib/rootDocumentCreatePolicy";
@@ -47,6 +50,18 @@ import {
   registerAttachmentAccessUrls,
   resolveAttachmentAccessUrl,
 } from "@/lib/noteAttachmentAccessBridge";
+import {
+  clearAuthTokens,
+  fetchWithAuthRefresh,
+  getAccessToken,
+  getRefreshToken,
+  storeAuthTokens,
+} from "@/lib/authSession";
+
+// 本模块所有显式携带 Authorization 的请求共享同一套 401 刷新与单飞锁；
+// 公共请求不带 Authorization，authSession 会原样透传。
+const fetch: typeof globalThis.fetch = (input, init) =>
+  fetchWithAuthRefresh(input, init, getBaseUrl());
 
 // 服务器地址管理
 const SERVER_URL_KEY = "nowen-server-url";
@@ -134,7 +149,7 @@ export function getServerUrl(): string {
   const injected = readServerUrlFromQuery();
   const stored = localStorage.getItem(SERVER_URL_KEY) || "";
   const raw = shouldPreferInjectedServerUrl(stored, injected) ? injected : stored;
-  return _normalizeBase(raw);
+  return _normalizeBase(raw) || _inferBrowserServerBaseUrl();
 }
 
 /**
@@ -600,7 +615,7 @@ function reconcileAcknowledgedDeletion(
 }
 
 function getToken(): string | null {
-  return localStorage.getItem("nowen-token");
+  return getAccessToken();
 }
 
 /**
@@ -629,11 +644,16 @@ export function broadcastLogout(reason?: string): Promise<void> {
   // Phase 6: 登出时顺便告诉后端吊销当前 session（不等待结果，失败忽略）。
   //   注意必须在 removeItem 前拿到 token；使用 keepalive 以让浏览器关闭时也尽量发出去。
   try {
-    const token = localStorage.getItem("nowen-token");
-    if (token) {
+    const token = getAccessToken();
+    const refreshToken = getRefreshToken();
+    if (token || refreshToken) {
       fetch(`${getBaseUrl()}/auth/logout`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refreshToken }),
         keepalive: true,
       }).catch(() => { });
     }
@@ -641,7 +661,7 @@ export function broadcastLogout(reason?: string): Promise<void> {
     /* ignore */
   }
   try {
-    localStorage.removeItem("nowen-token");
+    clearAuthTokens();
     // 清理所有用户缓存（nowen-auth-user:*），防止切换账号后旧缓存被复用
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -791,7 +811,11 @@ async function request<T>(url: string, options?: RequestOptions): Promise<T> {
       }
     };
     try {
-      res = await fetch(fullUrl, { ...restOptions, signal: linkedController.signal, headers: buildHeaders(true) });
+      res = await fetchWithAuthRefresh(
+        fullUrl,
+        { ...restOptions, signal: linkedController.signal, headers: buildHeaders(true) },
+        getBaseUrl(),
+      );
     } catch (firstErr: any) {
       // 兜底：当后端 CORS allowHeaders 没把 X-Connection-Id 加进白名单时，
       //   带它的请求会在 OPTIONS 预检阶段直接被浏览器/WebView 拦下，抛
@@ -802,7 +826,11 @@ async function request<T>(url: string, options?: RequestOptions): Promise<T> {
       //   只在 connId 存在时才尝试，否则跳过直接走原错误路径，避免无谓重试。
       if (connId) {
         try {
-          res = await fetch(fullUrl, { ...restOptions, signal: linkedController.signal, headers: buildHeaders(false) });
+          res = await fetchWithAuthRefresh(
+            fullUrl,
+            { ...restOptions, signal: linkedController.signal, headers: buildHeaders(false) },
+            getBaseUrl(),
+          );
           // eslint-disable-next-line no-console
           console.warn(
             "[api] retry without X-Connection-Id succeeded — backend CORS likely missing this header in allowHeaders. Disabling injection for this session.",
@@ -1953,24 +1981,24 @@ export const api = {
     newEmail?: string | null;
     newDisplayName?: string | null;
   }) => {
-    const res = await request<{ success: boolean; message: string; token?: string }>(
+    const res = await request<{ success: boolean; message: string; token?: string; refreshToken?: string }>(
       "/auth/change-password",
       { method: "POST", body: JSON.stringify(data) },
     );
     if (res.token) {
-      try { localStorage.setItem("nowen-token", res.token); } catch { }
+      storeAuthTokens({ token: res.token, refreshToken: res.refreshToken ?? null });
     }
     return res;
   },
   factoryReset: async (confirmText: string, sudoToken?: string) => {
     // factory-reset 同样会 bump tokenVersion 并下发新 token，必须更新本地存储，
     // 否则管理员当前 tab 会立刻收到 401 被踢下线。
-    const res = await request<{ success: boolean; message: string; token?: string; mustChangePassword?: boolean }>(
+    const res = await request<{ success: boolean; message: string; token?: string; refreshToken?: string; mustChangePassword?: boolean }>(
       "/auth/factory-reset",
       { method: "POST", body: JSON.stringify({ confirmText }), sudoToken },
     );
     if (res.token) {
-      try { localStorage.setItem("nowen-token", res.token); } catch { }
+      storeAuthTokens({ token: res.token, refreshToken: res.refreshToken ?? null });
     }
     return res;
   },
@@ -4413,14 +4441,24 @@ export async function withSudo<T>(
 
 // 测试服务器连接（不需要 token）
 export async function testServerConnection(serverUrl: string): Promise<{ ok: boolean; error?: string }> {
-  const url = `${serverUrl.replace(/\/+$/, "")}/api/health`;
+  const base = _normalizeBase(serverUrl);
+  if (!base) return { ok: false, error: "服务器地址格式无效" };
+  const url = `${base}/api/health`;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
+    const contentType = res.headers.get("content-type") || "";
+    const text = await res.text();
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-    const data = await res.json();
+    if (contentType.includes("text/html") || /^\s*</.test(text)) {
+      return {
+        ok: false,
+        error: "该地址返回的是 NAS 门户页面，不是可供客户端直连的 Nowen Note API",
+      };
+    }
+    const data = JSON.parse(text);
     if (data.status === "ok") return { ok: true };
     return { ok: false, error: "Invalid response" };
   } catch (e: any) {
@@ -4516,7 +4554,7 @@ export async function diagnoseConnection(serverUrl: string): Promise<DiagnosisRe
 export async function registerAccount(
   data: { username: string; password: string; email?: string; displayName?: string },
   baseUrlOverride?: string,
-): Promise<{ token: string; user: User }> {
+): Promise<{ token: string; refreshToken: string; user: User }> {
   const base = baseUrlOverride ? `${baseUrlOverride.replace(/\/+$/, "")}/api` : getBaseUrl();
   const res = await fetch(`${base}/auth/register`, {
     method: "POST",

@@ -23,6 +23,7 @@ import { useApp, useAppActions } from "@/store/AppContext";
 import { api, withSudo, getCurrentWorkspace, setCurrentWorkspace, getBaseUrl } from "@/lib/api";
 import { emitKnowledgeTreeRefresh } from "@/lib/workspaceRefreshBridge";
 import { toast } from "@/lib/toast";
+import { storeAuthTokens } from "@/lib/authSession";
 import { scheduleObjectUrlRevocation } from "@/lib/reliableExportDownloadBridge";
 import {
   chooseDesktopDataDir,
@@ -268,7 +269,7 @@ function DesktopDataSafetyCard() {
     const res = await resetDesktopLocalAuth();
     setResetting(false);
     if (res.ok && res.token) {
-      localStorage.setItem("nowen-token", res.token);
+      storeAuthTokens({ token: res.token, refreshToken: res.refreshToken ?? null });
       setMessage("本地自动登录已恢复，正在刷新。");
       window.setTimeout(() => window.location.reload(), 400);
     } else {

@@ -698,6 +698,8 @@
     "openedTabs": "Open notes",
     "allOpenedTabs": "All open tabs",
     "openedTabCount": "{{count}} open tabs",
+    "moreTabs": "More",
+    "overflowTabCount": "{{count}} more tabs",
     "closeOtherTabs": "Close other tabs",
     "closeTabsToRight": "Close tabs to the right",
     "closeTabsToLeft": "Close tabs to the left",

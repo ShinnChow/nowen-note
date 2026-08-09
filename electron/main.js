@@ -399,20 +399,27 @@ function waitForRemoteReady(remoteUrl, timeoutMs = 15000) {
     timeout: 3000,
     rejectUnauthorized: false, // 容忍自签
   };
+  const pathPrefix = parsed.pathname.replace(/\/+$/, "");
 
   const start = Date.now();
   return new Promise((resolve, reject) => {
     let lastErr = null;
     const tick = () => {
-      const req = lib.get({ ...baseOpts, path: "/api/health" }, (res) => {
-        // 任何 2xx/3xx/4xx 都说明服务器在跑（4xx 可能是没鉴权的健康端点）
-        if (res.statusCode < 500) {
-          res.resume();
-          return resolve();
-        }
-        res.resume();
-        lastErr = new Error(`HTTP ${res.statusCode}`);
-        retry();
+      const req = lib.get({ ...baseOpts, path: `${pathPrefix}/api/health` }, (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => { if (body.length < 4096) body += chunk; });
+        res.on("end", () => {
+          let payload = null;
+          try { payload = JSON.parse(body); } catch { /* 门户 HTML / 反代错误 */ }
+          if (res.statusCode >= 200 && res.statusCode < 300 && payload?.status === "ok") {
+            return resolve();
+          }
+          lastErr = new Error(
+            `HTTP ${res.statusCode}，未检测到 Nowen Note API（可能仍是 NAS 门户或反代路径不正确）`,
+          );
+          retry();
+        });
       });
       req.on("error", (e) => {
         lastErr = e;
@@ -686,7 +693,7 @@ async function ensureLocalAccount() {
     const r = await localApiRequest("/auth/login", { username, password });
     if (r.status === 200 && r.data?.token) {
       console.log("[Electron] local desktop account login OK");
-      return { token: r.data.token, user: r.data.user };
+      return { token: r.data.token, refreshToken: r.data.refreshToken, user: r.data.user };
     }
     // 401：密码错或用户存在但密码对不上；404 / 400：用户不存在 → 走注册
   } catch (e) {
@@ -703,7 +710,7 @@ async function ensureLocalAccount() {
     });
     if ((r.status === 200 || r.status === 201) && r.data?.token) {
       console.log("[Electron] local desktop account registered");
-      return { token: r.data.token, user: r.data.user };
+      return { token: r.data.token, refreshToken: r.data.refreshToken, user: r.data.user };
     }
     // 409：用户名已存在（说明密码被人改了或 secret 文件丢了），
     //   不去暴力重置，让用户在登录页手动处理
@@ -728,8 +735,8 @@ async function resetLocalAccountAuth() {
       { "X-Nowen-Desktop-Secret": password },
     );
     if (r.status === 200 && r.data?.token) {
-      localAuthCache = { token: r.data.token, user: r.data.user };
-      return { ok: true, token: r.data.token, user: r.data.user };
+      localAuthCache = { token: r.data.token, refreshToken: r.data.refreshToken, user: r.data.user };
+      return { ok: true, token: r.data.token, refreshToken: r.data.refreshToken, user: r.data.user };
     }
     return { ok: false, error: r.data?.error || `status=${r.status}` };
   } catch (e) {

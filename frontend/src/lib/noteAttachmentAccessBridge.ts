@@ -383,6 +383,13 @@ function requestMethod(input: RequestInfo | URL, init?: RequestInit): string {
   return (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
 }
 
+function apiBaseFromRequestUrl(url: URL): string {
+  const marker = "/api/";
+  const index = url.pathname.indexOf(marker);
+  const prefix = index >= 0 ? url.pathname.slice(0, index) : "";
+  return `${url.origin}${prefix}/api`;
+}
+
 function requestHeaders(input: RequestInfo | URL, init?: RequestInit): Headers {
   const headers = new Headers(input instanceof Request ? input.headers : undefined);
   if (init?.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value));
@@ -503,12 +510,12 @@ export function installNoteAttachmentAccessBridge(): void {
 
     let accessPromise: Promise<void> | null = null;
     if (method === "GET" && noteMatch && url.searchParams.get("slim") !== "1") {
-      const accessUrl = new URL("/api/attachments/access/urls", url.origin);
+      const accessUrl = new URL(`${apiBaseFromRequestUrl(url)}/attachments/access/urls`);
       accessUrl.searchParams.set("noteId", decodeURIComponent(noteMatch[1]));
       accessPromise = fetchAccessUrls(originalFetch, accessUrl, authHeaders(input, init), credentials);
     } else if (method === "GET" && shareMatch) {
       // 必须在正文接口自增 viewCount 之前签发，否则 maxViews=1 的首次访问会立即失效。
-      const accessUrl = new URL("/api/attachments/share-access", url.origin);
+      const accessUrl = new URL(`${apiBaseFromRequestUrl(url)}/attachments/share-access`);
       accessUrl.searchParams.set("token", decodeURIComponent(shareMatch[1]));
       const headers = authHeaders(input, init);
       if (!headers.has("X-Share-Session")) headers.set("X-Share-Session", getShareSessionId());

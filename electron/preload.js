@@ -256,6 +256,7 @@ contextBridge.exposeInMainWorld("nowenDesktop", {
       if (typeof payload.displayName === "string") safe.displayName = payload.displayName.slice(0, 256);
       if (typeof payload.avatarUrl === "string") safe.avatarUrl = payload.avatarUrl.slice(0, 2048);
       if (typeof payload.token === "string") safe.token = payload.token.slice(0, 16384);
+      if (typeof payload.refreshToken === "string") safe.refreshToken = payload.refreshToken.slice(0, 16384);
       if (typeof payload.lastUsedAt === "number") safe.lastUsedAt = payload.lastUsedAt;
       return ipcRenderer.invoke("account-history:save", safe);
     },

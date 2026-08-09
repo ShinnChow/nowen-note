@@ -303,9 +303,9 @@ interface NowenDesktopAPI {
     choose?: () => Promise<DataDirChooseResult>;
     migrate?: (targetPath: string) => Promise<DataDirMigrationResult>;
   };
-  getLocalAuth?: () => Promise<{ token: string; user: unknown } | null>;
+  getLocalAuth?: () => Promise<{ token: string; refreshToken?: string; user: unknown } | null>;
   clearLocalAuth?: () => Promise<{ ok: boolean }>;
-  resetLocalAuth?: () => Promise<{ ok: boolean; token?: string; user?: unknown; error?: string }>;
+  resetLocalAuth?: () => Promise<{ ok: boolean; token?: string; refreshToken?: string; user?: unknown; error?: string }>;
   isDesktop: true;
   platform: string;
   /**
@@ -525,7 +525,7 @@ export async function migrateDesktopDataDir(targetPath: string): Promise<DataDir
   return bridge.dataDir.migrate(targetPath);
 }
 
-export async function resetDesktopLocalAuth(): Promise<{ ok: boolean; token?: string; user?: unknown; error?: string; reason?: string }> {
+export async function resetDesktopLocalAuth(): Promise<{ ok: boolean; token?: string; refreshToken?: string; user?: unknown; error?: string; reason?: string }> {
   const bridge = getBridge();
   if (!bridge?.resetLocalAuth) return { ok: false, reason: "not-supported" };
   return bridge.resetLocalAuth();
