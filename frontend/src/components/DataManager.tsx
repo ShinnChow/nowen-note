@@ -773,12 +773,24 @@ export default function DataManager() {
             targetNotebookId: safeNotebookId || undefined,
             workspaceId: effectiveWorkspaceId,
             contentFormat: siyuanImportContentFormat,
+            onProgress: (job) => setImportProgress({
+              phase: "uploading",
+              current: job.status === "completed" ? 1 : 0,
+              total: 1,
+              message: job.message,
+            }),
           });
+          const importedAssets = imported.stats?.importedAssets || 0;
+          const failedItems = imported.stats?.unresolvedAssets || 0;
           setImportProgress({
             phase: "done",
             current: imported.count,
             total: imported.count,
-            message: t("dataManager.importSuccessCount", { count: imported.count }),
+            message: t("dataManager.siyuanImportCompletedStats", {
+              count: imported.count,
+              assets: importedAssets,
+              failed: failedItems,
+            }),
           });
           const noticeMessages: string[] = [];
           if (imported.warnings?.length) {

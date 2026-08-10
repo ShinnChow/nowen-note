@@ -1050,6 +1050,28 @@ type ImportNotesResponse = {
   workspaceId?: string | null;
 };
 
+type SiyuanImportResult = ImportNotesResponse & {
+  warnings?: string[];
+  stats?: {
+    syFiles: number;
+    importedDocuments: number;
+    assets: number;
+    importedAssets: number;
+    unresolvedAssets: number;
+    unsupportedNodes?: Record<string, number>;
+  };
+};
+
+type SiyuanImportJob = {
+  id: string;
+  requestId: string;
+  status: "queued" | "running" | "completed" | "failed";
+  phase: string;
+  message: string;
+  result: SiyuanImportResult | null;
+  error: string | null;
+};
+
 const IMPORT_NOTES_MAX_BATCH_BODY_CHARS = 8 * 1024 * 1024;
 const IMPORT_NOTES_MAX_BATCH_COUNT = 20;
 
@@ -2230,21 +2252,16 @@ export const api = {
 
     return mergeImportNoteResponses(results);
   },
-  /** 服务端导入思源 .sy 数据包：用于大 zip，避免浏览器解压和 base64 JSON 膨胀。 */
+  /** 服务端任务化导入思源 .sy 数据包：流式上传后按任务状态等待最终结果。 */
   importSiyuanPackage: async (
     file: File,
-    opts?: { targetNotebookId?: string; workspaceId?: string; contentFormat?: "tiptap-json" | "markdown" },
-  ): Promise<ImportNotesResponse & {
-    warnings?: string[];
-    stats?: {
-      syFiles: number;
-      importedDocuments: number;
-      assets: number;
-      importedAssets: number;
-      unresolvedAssets: number;
-      unsupportedNodes?: Record<string, number>;
-    };
-  }> => {
+    opts?: {
+      targetNotebookId?: string;
+      workspaceId?: string;
+      contentFormat?: "tiptap-json" | "markdown";
+      onProgress?: (job: SiyuanImportJob) => void;
+    },
+  ): Promise<SiyuanImportResult> => {
     const token = getToken();
     const ws = opts?.workspaceId ?? getCurrentWorkspace();
     const params = new URLSearchParams();
@@ -2254,15 +2271,88 @@ export const api = {
     const qs = params.toString() ? `?${params.toString()}` : "";
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(`${getBaseUrl()}/export/import/siyuan-package${qs}`, {
-      method: "POST",
-      credentials: "include",
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: form,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
+    const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `siyuan-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const headers = {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      "X-Import-Request-Id": requestId,
+    };
+    const wait = (ms: number) => new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms));
+    const httpError = (message: string, status: number): Error & { status: number } =>
+      Object.assign(new Error(message), { status });
+    const isClientHttpError = (error: unknown): boolean => {
+      const status = Number((error as { status?: number } | null)?.status);
+      return status >= 400 && status < 500;
+    };
+
+    const readJobResponse = async (url: string): Promise<{ job: SiyuanImportJob | null; status: number }> => {
+      const response = await fetch(url, { credentials: "include", headers });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) return { job: data.job as SiyuanImportJob, status: response.status };
+      if (response.status === 404 || response.status >= 500) return { job: null, status: response.status };
+      throw httpError(data.error || `HTTP ${response.status}`, response.status);
+    };
+
+    const createTask = async (): Promise<SiyuanImportJob | null> => {
+      const response = await fetch(`${getBaseUrl()}/export/import/siyuan-package${qs}`, {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: form,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) return data.job as SiyuanImportJob;
+      if (response.status >= 500) return null;
+      throw httpError(data.error || `HTTP ${response.status}`, response.status);
+    };
+
+    let job: SiyuanImportJob | null = null;
+    try {
+      job = await createTask();
+    } catch (error) {
+      if (isClientHttpError(error)) throw error;
+    }
+
+    let recoveryAttempts = 0;
+    while (!job) {
+      try {
+        const recovered = await readJobResponse(
+          `${getBaseUrl()}/export/import/siyuan-package/jobs/by-request/${encodeURIComponent(requestId)}`,
+        );
+        job = recovered.job;
+      } catch (error) {
+        if (isClientHttpError(error)) throw error;
+      }
+      if (job) break;
+      recoveryAttempts += 1;
+      await wait(1_000);
+      if (recoveryAttempts % 10 === 0) {
+        try {
+          job = await createTask();
+        } catch (error) {
+          if (isClientHttpError(error)) throw error;
+        }
+      }
+    }
+
+    while (true) {
+      opts?.onProgress?.(job);
+      if (job.status === "failed") throw new Error(job.error || job.message || "思源导入失败");
+      if (job.status === "completed") {
+        if (!job.result) throw new Error("思源导入任务已完成，但结果缺失");
+        return job.result;
+      }
+      await wait(800);
+      try {
+        const current = await readJobResponse(
+          `${getBaseUrl()}/export/import/siyuan-package/jobs/${encodeURIComponent(job.id)}`,
+        );
+        if (current.job) job = current.job;
+      } catch (error) {
+        if (isClientHttpError(error)) throw error;
+      }
+    }
   },
   /** Nowen 数据包 dry-run 预检 */
   dryRunNowenPackage: async (file: File) => {

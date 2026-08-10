@@ -1110,6 +1110,7 @@
     "noFilesSelected": "没有选择要导入的文件",
     "uploadingProgress": "正在上传...",
     "importSuccessCount": "成功导入 {{count}} 篇笔记",
+    "siyuanImportCompletedStats": "导入成功 {{count}} 篇，附件 {{assets}} 个，失败/未解析 {{failed}} 个",
     "importFailed": "导入失败: {{error}}",
     "dataFile": {
       "title": "数据库文件 (.data)",

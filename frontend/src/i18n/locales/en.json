@@ -1093,6 +1093,7 @@
     "noFilesSelected": "No files selected for import",
     "uploadingProgress": "Uploading...",
     "importSuccessCount": "Successfully imported {{count}} notes",
+    "siyuanImportCompletedStats": "Imported {{count}} notes, {{assets}} attachments, {{failed}} failed/unresolved",
     "importFailed": "Import failed: {{error}}",
     "dataFile": {
       "title": "Database File (.data)",
