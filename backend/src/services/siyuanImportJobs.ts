@@ -54,6 +54,7 @@ export type SiyuanImportJobSnapshot = {
 
 type RuntimeState = {
   runningJobs: Set<string>;
+  scheduledJobs: Set<string>;
   schemaReady: boolean;
 };
 
@@ -62,8 +63,11 @@ const runtimeGlobals = globalThis as typeof globalThis & {
 };
 const runtime = runtimeGlobals.__nowenSiyuanImportJobs ||= {
   runningJobs: new Set<string>(),
+  scheduledJobs: new Set<string>(),
   schemaReady: false,
 };
+runtime.scheduledJobs ||= new Set<string>();
+const STALE_RUNNING_JOB_MINUTES = 10;
 
 function ensureSchema(): void {
   if (runtime.schemaReady) return;
@@ -153,6 +157,8 @@ function safeError(error: unknown): string {
 }
 
 function queueJob(jobId: string): void {
+  if (runtime.runningJobs.has(jobId) || runtime.scheduledJobs.has(jobId)) return;
+  runtime.scheduledJobs.add(jobId);
   setImmediate(() => {
     void processJob(jobId).catch((error) => {
       console.error("[siyuan-import-jobs] unhandled worker error", {
@@ -179,23 +185,40 @@ function compactResult(result: SiyuanPackageImportResult): SiyuanImportJobResult
 }
 
 async function processJob(jobId: string): Promise<void> {
+  runtime.scheduledJobs.delete(jobId);
   if (runtime.runningJobs.has(jobId)) return;
   runtime.runningJobs.add(jobId);
   let row: SiyuanImportJobRow | undefined;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let claimedJob = false;
 
   try {
     row = readRow(jobId);
-    if (!row || row.status === "completed" || row.status === "failed") return;
-    if (!fs.existsSync(row.tmpPath)) throw new Error("思源导入包临时文件不存在，请重新上传");
+    if (!row || row.status !== "queued") return;
 
-    getDb().prepare(`
+    const claimed = getDb().prepare(`
       UPDATE siyuan_import_jobs
       SET status = 'running', phase = 'importing',
           message = '正在解析数据包并导入目录、笔记和附件',
           startedAt = COALESCE(startedAt, datetime('now')),
           updatedAt = datetime('now')
-      WHERE id = ? AND status IN ('queued', 'running')
+      WHERE id = ? AND status = 'queued'
     `).run(jobId);
+    if (claimed.changes !== 1) return;
+    claimedJob = true;
+    if (!fs.existsSync(row.tmpPath)) throw new Error("思源导入包临时文件不存在，请重新上传");
+
+    heartbeat = setInterval(() => {
+      try {
+        getDb().prepare(`
+          UPDATE siyuan_import_jobs
+          SET updatedAt = datetime('now')
+          WHERE id = ? AND status = 'running'
+        `).run(jobId);
+      } catch {
+        /* 最终状态写入仍负责记录真实成败，心跳失败不应中断导入。 */
+      }
+    }, 15_000);
 
     const { importSiyuanPackageFromZipFile } = await import("./siyuanPackageImport");
     const result = await importSiyuanPackageFromZipFile(row.tmpPath, {
@@ -244,22 +267,38 @@ async function processJob(jobId: string): Promise<void> {
       });
     }
   } finally {
-    if (row) await removeJobUpload(row);
+    if (heartbeat) clearInterval(heartbeat);
+    if (row && claimedJob) await removeJobUpload(row);
     runtime.runningJobs.delete(jobId);
   }
 }
 
-function resumeIfNeeded(row: SiyuanImportJobRow): void {
-  if ((row.status === "queued" || row.status === "running") && !runtime.runningJobs.has(row.id)) {
+function resumeIfNeeded(row: SiyuanImportJobRow): SiyuanImportJobRow {
+  if (row.status === "queued") {
     queueJob(row.id);
+    return row;
   }
+  if (
+    row.status !== "running"
+    || runtime.runningJobs.has(row.id)
+    || runtime.scheduledJobs.has(row.id)
+  ) return row;
+
+  const detail = "思源导入执行进程已中断，为避免重复写入已停止自动重跑；请重新发起导入";
+  const stopped = getDb().prepare(`
+    UPDATE siyuan_import_jobs
+    SET status = 'failed', phase = 'failed', message = ?, error = ?,
+        finishedAt = datetime('now'), updatedAt = datetime('now')
+    WHERE id = ? AND status = 'running'
+      AND updatedAt <= datetime('now', ?)
+  `).run(detail, detail, row.id, `-${STALE_RUNNING_JOB_MINUTES} minutes`);
+  return stopped.changes === 1 ? readRow(row.id) || row : row;
 }
 
 export function getSiyuanImportJob(jobId: string, userId: string): SiyuanImportJobSnapshot | null {
   const row = readOwnedRow(jobId, userId);
   if (!row) return null;
-  resumeIfNeeded(row);
-  return toSnapshot(row);
+  return toSnapshot(resumeIfNeeded(row));
 }
 
 export function getSiyuanImportJobByRequestId(
@@ -276,8 +315,7 @@ export function getSiyuanImportJobByRequestId(
     LIMIT 1
   `).get(userId, requestId) as SiyuanImportJobRow | undefined;
   if (!row) return null;
-  resumeIfNeeded(row);
-  return toSnapshot(row);
+  return toSnapshot(resumeIfNeeded(row));
 }
 
 function findRecentDuplicate(input: {

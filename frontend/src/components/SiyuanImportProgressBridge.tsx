@@ -287,12 +287,14 @@ export default function SiyuanImportProgressBridge() {
     const patchedFetch: typeof window.fetch = async (input, init) => {
       if (!isSiyuanImportRequest(input)) return originalFetch(input, init);
       const method = (init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
-      show({
-        tone: "working",
-        title: method === "POST" ? "正在创建思源导入任务" : "正在查询思源导入状态",
-        detail: method === "POST" ? "正在上传数据包，请不要关闭页面…" : "后台导入仍在继续…",
-        indeterminate: true,
-      });
+      if (method === "POST") {
+        show({
+          tone: "working",
+          title: "正在创建思源导入任务",
+          detail: "正在上传数据包，请不要关闭页面…",
+          indeterminate: true,
+        });
+      }
       const processingTimer = method === "POST" ? window.setTimeout(() => {
         show({
           tone: "working",
@@ -354,8 +356,8 @@ export default function SiyuanImportProgressBridge() {
         if (processingTimer !== null) window.clearTimeout(processingTimer);
         show({
           tone: "working",
-          title: "连接暂时中断",
-          detail: "后台任务不会因此判定失败，正在重新查询导入状态…",
+          title: "正在等待思源导入状态",
+          detail: "连接暂时中断，稍后会继续查询同一个后台任务，不会重新导入。",
           indeterminate: true,
         });
         throw error;

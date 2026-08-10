@@ -1070,7 +1070,44 @@ type SiyuanImportJob = {
   message: string;
   result: SiyuanImportResult | null;
   error: string | null;
+  updatedAt: string;
 };
+
+type SiyuanImportRecovery = {
+  requestId: string;
+  jobId: string | null;
+  baseUrl: string;
+  filename: string;
+  size: number;
+  lastModified: number;
+  workspaceId: string;
+  targetNotebookId: string;
+  contentFormat: "tiptap-json" | "markdown";
+};
+
+const SIYUAN_IMPORT_RECOVERY_KEY = "nowen-siyuan-import-recovery";
+const SIYUAN_IMPORT_CREATE_RECOVERY_MS = 2 * 60_000;
+const SIYUAN_IMPORT_STATUS_SILENCE_MS = 2 * 60_000;
+const SIYUAN_IMPORT_MAX_WAIT_MS = 2 * 60 * 60_000;
+
+function readSiyuanImportRecovery(): SiyuanImportRecovery | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SIYUAN_IMPORT_RECOVERY_KEY) || "null") as SiyuanImportRecovery | null;
+    return parsed?.requestId && parsed.baseUrl ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSiyuanImportRecovery(value: SiyuanImportRecovery): void {
+  try { localStorage.setItem(SIYUAN_IMPORT_RECOVERY_KEY, JSON.stringify(value)); } catch {}
+}
+
+function clearSiyuanImportRecovery(requestId: string): void {
+  const current = readSiyuanImportRecovery();
+  if (!current || current.requestId !== requestId) return;
+  try { localStorage.removeItem(SIYUAN_IMPORT_RECOVERY_KEY); } catch {}
+}
 
 const IMPORT_NOTES_MAX_BATCH_BODY_CHARS = 8 * 1024 * 1024;
 const IMPORT_NOTES_MAX_BATCH_COUNT = 20;
@@ -2271,13 +2308,39 @@ export const api = {
     const qs = params.toString() ? `?${params.toString()}` : "";
     const form = new FormData();
     form.append("file", file);
-    const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `siyuan-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const headers = {
+    const baseUrl = getBaseUrl();
+    const targetWorkspaceId = ws || "personal";
+    const targetNotebookId = opts?.targetNotebookId || "";
+    const contentFormat = opts?.contentFormat || "tiptap-json";
+    const storedRecovery = readSiyuanImportRecovery();
+    const canResume = !!storedRecovery
+      && storedRecovery.baseUrl === baseUrl
+      && storedRecovery.filename === file.name
+      && storedRecovery.size === file.size
+      && storedRecovery.lastModified === file.lastModified
+      && storedRecovery.workspaceId === targetWorkspaceId
+      && storedRecovery.targetNotebookId === targetNotebookId
+      && storedRecovery.contentFormat === contentFormat;
+    let recovery: SiyuanImportRecovery = canResume
+      ? storedRecovery!
+      : {
+        requestId: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `siyuan-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        jobId: null,
+        baseUrl,
+        filename: file.name,
+        size: file.size,
+        lastModified: file.lastModified,
+        workspaceId: targetWorkspaceId,
+        targetNotebookId,
+        contentFormat,
+      };
+    if (!canResume) writeSiyuanImportRecovery(recovery);
+    const requestHeaders = () => ({
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      "X-Import-Request-Id": requestId,
-    };
+      "X-Import-Request-Id": recovery.requestId,
+    });
     const wait = (ms: number) => new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms));
     const httpError = (message: string, status: number): Error & { status: number } =>
       Object.assign(new Error(message), { status });
@@ -2287,7 +2350,7 @@ export const api = {
     };
 
     const readJobResponse = async (url: string): Promise<{ job: SiyuanImportJob | null; status: number }> => {
-      const response = await fetch(url, { credentials: "include", headers });
+      const response = await fetch(url, { credentials: "include", headers: requestHeaders() });
       const data = await response.json().catch(() => ({}));
       if (response.ok) return { job: data.job as SiyuanImportJob, status: response.status };
       if (response.status === 404 || response.status >= 500) return { job: null, status: response.status };
@@ -2295,10 +2358,10 @@ export const api = {
     };
 
     const createTask = async (): Promise<SiyuanImportJob | null> => {
-      const response = await fetch(`${getBaseUrl()}/export/import/siyuan-package${qs}`, {
+      const response = await fetch(`${baseUrl}/export/import/siyuan-package${qs}`, {
         method: "POST",
         credentials: "include",
-        headers,
+        headers: requestHeaders(),
         body: form,
       });
       const data = await response.json().catch(() => ({}));
@@ -2308,49 +2371,114 @@ export const api = {
     };
 
     let job: SiyuanImportJob | null = null;
-    try {
-      job = await createTask();
-    } catch (error) {
-      if (isClientHttpError(error)) throw error;
+    let shouldCreateTask = !canResume;
+    if (canResume) {
+      try {
+        const recovered = await readJobResponse(
+          recovery.jobId
+            ? `${baseUrl}/export/import/siyuan-package/jobs/${encodeURIComponent(recovery.jobId)}`
+            : `${baseUrl}/export/import/siyuan-package/jobs/by-request/${encodeURIComponent(recovery.requestId)}`,
+        );
+        job = recovered.job;
+        if (!job && recovered.status === 404 && recovery.jobId) {
+          const byRequest = await readJobResponse(
+            `${baseUrl}/export/import/siyuan-package/jobs/by-request/${encodeURIComponent(recovery.requestId)}`,
+          );
+          job = byRequest.job;
+          if (!job && byRequest.status === 404) {
+            clearSiyuanImportRecovery(recovery.requestId);
+            shouldCreateTask = true;
+          }
+        } else if (!job && recovered.status === 404) {
+          clearSiyuanImportRecovery(recovery.requestId);
+          shouldCreateTask = true;
+        }
+      } catch (error) {
+        if (isClientHttpError(error)) throw error;
+      }
     }
 
+    if (!job && shouldCreateTask) {
+      if (canResume) {
+        recovery = {
+          ...recovery,
+          requestId: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `siyuan-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          jobId: null,
+        };
+      }
+      writeSiyuanImportRecovery(recovery);
+      try {
+        job = await createTask();
+      } catch (error) {
+        if (isClientHttpError(error)) throw error;
+      }
+    }
+
+    const recoveryStartedAt = Date.now();
     let recoveryAttempts = 0;
     while (!job) {
       try {
         const recovered = await readJobResponse(
-          `${getBaseUrl()}/export/import/siyuan-package/jobs/by-request/${encodeURIComponent(requestId)}`,
+          `${baseUrl}/export/import/siyuan-package/jobs/by-request/${encodeURIComponent(recovery.requestId)}`,
         );
         job = recovered.job;
+        if (recovered.status === 404 && Date.now() - recoveryStartedAt >= SIYUAN_IMPORT_CREATE_RECOVERY_MS) {
+          clearSiyuanImportRecovery(recovery.requestId);
+          throw httpError("思源导入任务创建失败，服务端未找到对应任务", 404);
+        }
       } catch (error) {
         if (isClientHttpError(error)) throw error;
       }
       if (job) break;
       recoveryAttempts += 1;
-      await wait(1_000);
-      if (recoveryAttempts % 10 === 0) {
-        try {
-          job = await createTask();
-        } catch (error) {
-          if (isClientHttpError(error)) throw error;
-        }
+      if (Date.now() - recoveryStartedAt >= SIYUAN_IMPORT_CREATE_RECOVERY_MS) {
+        throw new Error("思源导入任务状态查询超时，可重新查询状态");
       }
+      await wait(Math.min(10_000, 1_000 * 2 ** Math.min(Math.floor(recoveryAttempts / 5), 3)));
     }
 
+    recovery = { ...recovery, jobId: job.id };
+    writeSiyuanImportRecovery(recovery);
+
+    const pollingStartedAt = Date.now();
+    let lastSuccessfulQueryAt = Date.now();
+    let pollingDelay = 1_200;
     while (true) {
       opts?.onProgress?.(job);
-      if (job.status === "failed") throw new Error(job.error || job.message || "思源导入失败");
+      if (job.status === "failed") {
+        clearSiyuanImportRecovery(recovery.requestId);
+        throw new Error(job.error || job.message || "思源导入失败");
+      }
       if (job.status === "completed") {
         if (!job.result) throw new Error("思源导入任务已完成，但结果缺失");
+        clearSiyuanImportRecovery(recovery.requestId);
         return job.result;
       }
-      await wait(800);
+      if (Date.now() - pollingStartedAt >= SIYUAN_IMPORT_MAX_WAIT_MS) {
+        throw new Error(`思源导入任务等待超时，可重新查询状态（任务 ${job.id}）`);
+      }
+      await wait(pollingDelay);
       try {
         const current = await readJobResponse(
-          `${getBaseUrl()}/export/import/siyuan-package/jobs/${encodeURIComponent(job.id)}`,
+          `${baseUrl}/export/import/siyuan-package/jobs/${encodeURIComponent(job.id)}`,
         );
-        if (current.job) job = current.job;
+        if (current.job) {
+          job = current.job;
+          lastSuccessfulQueryAt = Date.now();
+          pollingDelay = 1_200;
+        } else if (current.status === 404) {
+          throw httpError("思源导入任务不存在，无法继续查询", 404);
+        } else {
+          pollingDelay = Math.min(15_000, pollingDelay * 2);
+        }
       } catch (error) {
         if (isClientHttpError(error)) throw error;
+        pollingDelay = Math.min(15_000, pollingDelay * 2);
+      }
+      if (Date.now() - lastSuccessfulQueryAt >= SIYUAN_IMPORT_STATUS_SILENCE_MS) {
+        throw new Error(`思源导入任务状态长时间未更新，可重新查询状态（任务 ${job.id}）`);
       }
     }
   },
