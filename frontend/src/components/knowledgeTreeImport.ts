@@ -4,7 +4,9 @@ import { knowledgeTreeApi, type KnowledgeTreeNode } from "@/lib/knowledgeTreeApi
 import {
   formatMarkdownImportFailures,
   importMarkdownFilesIntoKnowledgeTree,
+  importMarkdownZipFilesIntoKnowledgeTree,
   pickMarkdownFiles,
+  pickMarkdownZipFiles,
 } from "@/lib/knowledgeTreeMarkdownDrop";
 import { toast } from "@/lib/toast";
 
@@ -99,6 +101,38 @@ export async function importMarkdownIntoKnowledgeTree(
     );
   } else {
     toast.success(`已导入 ${result.imported.length} 个 Markdown 文件`);
+  }
+  return result.imported[0];
+}
+
+export async function importMarkdownZipIntoKnowledgeTree(
+  options: KnowledgeTreeImportOptions,
+): Promise<LoadedNote | null> {
+  const files = await pickMarkdownZipFiles();
+  if (files.length === 0) return null;
+
+  const toastId = toast.info(`正在导入 ${files.length} 个 Markdown 附件 ZIP…`, 0);
+  let result: Awaited<ReturnType<typeof importMarkdownZipFilesIntoKnowledgeTree>>;
+  try {
+    result = await importMarkdownZipFilesIntoKnowledgeTree(files, options.parent?.id ?? null);
+  } finally {
+    toast.dismiss(toastId);
+  }
+
+  if (result.imported.length === 0) {
+    throw new Error(
+      result.failures.length > 0
+        ? formatMarkdownImportFailures(result.failures)
+        : "Markdown 附件 ZIP 导入失败",
+    );
+  }
+  if (result.failures.length > 0) {
+    toast.warning(
+      `成功导入 ${result.imported.length} 篇笔记，${result.failures.length} 个失败：${formatMarkdownImportFailures(result.failures)}`,
+      8000,
+    );
+  } else {
+    toast.success(`已从 ZIP 导入 ${result.imported.length} 篇笔记`);
   }
   return result.imported[0];
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type RefObject } from "react";
 import {
   ArrowLeftRight,
   Download,
+  FileArchive,
   FileCode,
   FilePlus,
   FileText,
@@ -36,6 +37,7 @@ import ShareModal from "@/components/ShareModal";
 import { confirm } from "@/components/ui/confirm";
 import {
   importMarkdownIntoKnowledgeTree,
+  importMarkdownZipIntoKnowledgeTree,
   importWeChatArticleIntoKnowledgeTree,
   importWordIntoKnowledgeTree,
 } from "@/components/knowledgeTreeImport";
@@ -106,7 +108,8 @@ function createChildren(): ContextMenuItem[] {
 
 function importChildren(): ContextMenuItem[] {
   return [
-    { id: "import_markdown", label: "Markdown 文件", icon: <FileCode size={14} /> },
+    { id: "import_markdown", label: "Markdown", icon: <FileCode size={14} /> },
+    { id: "import_markdown_zip", label: "Markdown + 附件（ZIP）", icon: <FileArchive size={14} /> },
     { id: "import_word", label: "Word 文档", icon: <FileType2 size={14} /> },
     { id: "import_url", label: "公众号文章", icon: <Link2 size={14} /> },
   ];
@@ -336,6 +339,20 @@ export default function KnowledgeTreeNodeMenu({
     actions.refreshNotebooks();
   };
 
+  const importMarkdownZip = async () => {
+    if (!node) return;
+    const imported = await importMarkdownZipIntoKnowledgeTree({
+      parent: node,
+      nodes,
+      fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId,
+    });
+    if (!imported) return;
+    openLoadedNote(imported);
+    await onReload();
+    actions.refreshNotes();
+    actions.refreshNotebooks();
+  };
+
   const importUrl = async () => {
     if (!node) return;
     const imported = await importWeChatArticleIntoKnowledgeTree({
@@ -489,6 +506,7 @@ export default function KnowledgeTreeNodeMenu({
       "new_markdown",
       "new_folder",
       "import_markdown",
+      "import_markdown_zip",
       "import_word",
       "import_url",
       "export_folder",
@@ -507,6 +525,7 @@ export default function KnowledgeTreeNodeMenu({
         case "new_markdown": onCreate(node, "markdown"); break;
         case "new_folder": onCreate(node, "folder"); break;
         case "import_markdown": await importMarkdown(); break;
+        case "import_markdown_zip": await importMarkdownZip(); break;
         case "import_word": await importWord(); break;
         case "import_url": await importUrl(); break;
         case "toggle_pin": await patchNote({ isPinned: note?.isPinned === 1 ? 0 : 1 }); break;

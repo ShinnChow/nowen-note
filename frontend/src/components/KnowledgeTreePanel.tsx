@@ -32,6 +32,7 @@ import KnowledgeTreeNodeMenu from "@/components/KnowledgeTreeNodeMenu";
 import KnowledgeTreePermissionsDialog from "@/components/KnowledgeTreePermissionsDialog";
 import {
   importMarkdownIntoKnowledgeTree,
+  importMarkdownZipIntoKnowledgeTree,
   importWeChatArticleIntoKnowledgeTree,
   importWordIntoKnowledgeTree,
 } from "@/components/knowledgeTreeImport";
@@ -260,7 +261,7 @@ export interface KnowledgeTreeInlineCreateRequest {
 export interface KnowledgeTreeImportRequest {
   requestId: number;
   parentId: string | null;
-  kind: "markdown" | "word" | "wechat";
+  kind: "markdown" | "markdown-zip" | "word" | "wechat";
 }
 
 export function KnowledgeTreePanel({
@@ -631,9 +632,11 @@ export function KnowledgeTreePanel({
         };
         const imported = importRequest.kind === "markdown"
           ? await importMarkdownIntoKnowledgeTree(options)
-          : importRequest.kind === "word"
-            ? await importWordIntoKnowledgeTree(options)
-            : await importWeChatArticleIntoKnowledgeTree(options);
+          : importRequest.kind === "markdown-zip"
+            ? await importMarkdownZipIntoKnowledgeTree(options)
+            : importRequest.kind === "word"
+              ? await importWordIntoKnowledgeTree(options)
+              : await importWeChatArticleIntoKnowledgeTree(options);
         if (!imported) return;
         activateNote(imported, parent?.id || null);
         emitTreeChanged("node-imported-plus-menu");
