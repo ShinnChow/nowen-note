@@ -2285,7 +2285,7 @@ export default function DiaryCenter() {
   const groupedItems = groupByDate(items, t);
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-app-bg">
+    <div className="flex min-h-0 flex-1 flex-col h-full overflow-hidden bg-app-bg">
       {/* 全屏日历视图（移动端或点击日历卡片时） */}
       {calendarOpen ? (
         <SayCalendarView
@@ -2303,10 +2303,10 @@ export default function DiaryCenter() {
           }}
         />
       ) : (
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 flex justify-center overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 flex-1 justify-center overflow-hidden">
           {/* 左侧：主内容区 */}
-          <ScrollArea className="flex-1 max-w-[760px]" ref={scrollRef}>
+          <ScrollArea className="h-full min-h-0 flex-1 max-w-[760px]" ref={scrollRef}>
             <div className="px-4 lg:px-6 py-6 space-y-5">
               {/* 顶部标题 + 统计 */}
               <div className="flex items-center justify-between">
