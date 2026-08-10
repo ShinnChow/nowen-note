@@ -4,6 +4,7 @@ import { getDb } from "../db/schema";
 import { v4 as uuid } from "uuid";
 import { emitWebhook } from "../services/webhook";
 import { logAudit } from "../services/audit";
+import { logNoteWrite, normalizeNoteWriteSource } from "../services/note-write-observability";
 import {
   resolveNotePermission,
   resolveTrashedNotePermission,
@@ -14,6 +15,7 @@ import {
 } from "../middleware/acl";
 import { broadcastNoteUpdated, broadcastNoteDeleted, broadcastNotesDeleted, broadcastYjsUpdate, broadcastToUser } from "../services/realtime";
 import {
+  yAdvanceRoomBaseVersion,
   yApplySubdocumentUpdate,
   yDestroyDoc,
   yFlush,
@@ -709,6 +711,8 @@ app.put("/:id", async (c) => {
   const userId = c.req.header("X-User-Id") || "";
   const id = c.req.param("id");
   const body = await c.req.json();
+  const writeSource = normalizeNoteWriteSource(body.writeSource);
+  delete body.writeSource;
 
   // 权限校验。恢复操作发生时知识树节点已经是 tombstone，必须显式使用
   // 删除生命周期权限桥；其它编辑/软删仍保持普通严格权限。
@@ -738,7 +742,27 @@ app.put("/:id", async (c) => {
   const versionRequiredFields = ["title", "content", "contentText", "contentFormat"];
   const needsVersion = versionRequiredFields.some((f) => body[f] !== undefined);
 
+  // whole-save 校验版本前先落盘活动 Y.Doc。否则已 ACK、仍在 1.5 秒 debounce
+  // 中的 Live 修改尚未增加 notes.version，外部写入会错误地通过旧版本校验。
+  if (needsVersion) {
+    try { yFlush(id); } catch (error) {
+      console.warn("[notes.put] preflight yFlush failed:", error);
+    }
+  }
+
   if (needsVersion && body.version === undefined) {
+    const current = db.prepare("SELECT version FROM notes WHERE id = ?").get(id) as
+      | { version: number }
+      | undefined;
+    logNoteWrite({
+      noteId: id,
+      source: writeSource,
+      baseVersion: null,
+      oldVersion: current?.version ?? null,
+      newVersion: null,
+      outcome: "rejected",
+      reason: "version-required",
+    });
     return c.json(
       { error: "缺少 version 字段，无法安全保存", code: "VERSION_REQUIRED" },
       400,
@@ -749,6 +773,15 @@ app.put("/:id", async (c) => {
   if (body.version !== undefined) {
     const current = db.prepare("SELECT version FROM notes WHERE id = ?").get(id) as { version: number } | undefined;
     if (current && current.version !== body.version) {
+      logNoteWrite({
+        noteId: id,
+        source: writeSource,
+        baseVersion: body.version,
+        oldVersion: current.version,
+        newVersion: null,
+        outcome: "rejected",
+        reason: "version-conflict",
+      });
       return c.json(
         { error: "Version conflict", code: "VERSION_CONFLICT", currentVersion: current.version },
         409,
@@ -1023,6 +1056,11 @@ app.put("/:id", async (c) => {
   // 切换 favorites 属于 per-user 操作，不应该 bump notes.version（会误触发其他协作者
   // 的乐观锁刷新），也不应广播 note.updated。因此仅当确有 notes 列要改时才 UPDATE。
   const hasNoteColumnChange = fields.length > 0;
+  const oldVersion = hasNoteColumnChange
+    ? (db.prepare("SELECT version FROM notes WHERE id = ?").get(id) as
+        | { version: number }
+        | undefined)?.version ?? null
+    : null;
 
   const needsLegacyHierarchySync = body.notebookId !== undefined
     || body.sortOrder !== undefined
@@ -1138,17 +1176,38 @@ app.put("/:id", async (c) => {
     FROM notes WHERE id = ?
   `).get(userId, id);
 
-  // syncToYjs：调用方（目前是 EditorPane RTE→MD 切换）显式要求把 body.content 作为
-  // markdown 同步写入 y room 的 yText。这里必须在 REST 落库成功之后才做，因为：
+  if (hasNoteColumnChange) {
+    const newVersion = typeof (note as any)?.version === "number" ? (note as any).version : null;
+    logNoteWrite({
+      noteId: id,
+      source: writeSource,
+      baseVersion: typeof body.version === "number" ? body.version : null,
+      oldVersion,
+      newVersion,
+      outcome: "committed",
+    });
+    if (
+      typeof oldVersion === "number"
+      && typeof newVersion === "number"
+      && body.content === undefined
+      && body.contentText === undefined
+    ) {
+      yAdvanceRoomBaseVersion(id, oldVersion, newVersion);
+    }
+  }
+
+  // Markdown whole-save 必须统一同步写入 y room 的 yText。不能只依赖某个调用方
+  // 记得传 syncToYjs，否则普通 API/旧 MCP 路径仍会留下可回写旧正文的活动 Y.Doc。
+  // 这里必须在 REST 落库成功之后才做，因为：
   //   1. 权限 / 乐观锁 / 版本历史都跑完了，失败已经早返回。
   //   2. 若 REST 成功而 yjs 失败，notes.content 与 yDoc 暂不一致——但客户端下次 room
   //      空闲销毁重启时，loadDocFromDb 会从 note_yupdates 恢复，最坏情况是 MD 编辑器
   //      里短暂看到旧内容；客户端仍可从 REST 拉 notes.content 得到正确值作为后备 UX。
   //     （对"彻底解决切换看不到最新内容"的主诉求已经不致命。）
   //
-  // 只在 body.content 存在（即本次 PUT 带了新的 markdown 内容）且 syncToYjs=true 时触发。
+  // 只在本次 PUT 带了新的 markdown 内容时触发；syncToYjs 保留为旧客户端兼容字段。
   // updateBase64 拿到后调用 realtime 广播给房间内其它连接，使它们的 yDoc 一次性对齐。
-  if (body.syncToYjs === true && typeof body.content === "string") {
+  if ((note as any)?.contentFormat === "markdown" && typeof body.content === "string") {
     try {
       const result = yReplaceContentAsUpdate(id, body.content, userId || null);
       if (result) {

@@ -532,6 +532,7 @@ export default function EditorPane({
         contentFormat: note.contentFormat,
         version,
         syncToYjs: true,
+        writeSource: "manual-save",
       } as any);
 
     try {
@@ -722,6 +723,7 @@ export default function EditorPane({
         ...converted,
         version: persisted.version,
         ...(targetFormat === "markdown" ? { syncToYjs: true } : {}),
+        writeSource: "manual-save",
       } as any);
 
       activeNoteRef.current = updated;
@@ -1598,6 +1600,7 @@ export default function EditorPane({
       // P0-#2 �޸���CRDT ģʽ�� content δ�� �� ֻͬ�� meta��title����
       // ���� REST PUT ������ yjs ��д notes.content ������̬����
       const payload: any = { title: effectiveData.title, version };
+      payload.writeSource = "live-autosave";
       payload.contentFormat = currentNote.contentFormat;
       if (effectiveData.content !== undefined) payload.content = effectiveData.content;
       if (effectiveData.contentText !== undefined) payload.contentText = effectiveData.contentText;
@@ -1837,6 +1840,7 @@ export default function EditorPane({
           contentFormat: currentNote.contentFormat,
           version: persisted.version,
           syncToYjs: true,
+          writeSource: "manual-save",
         } as any);
       activeNoteRef.current = updated;
       actions.setActiveNote(updated);

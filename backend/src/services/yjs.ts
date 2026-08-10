@@ -31,6 +31,7 @@
 import * as Y from "yjs";
 import { getDb } from "../db/schema";
 import { noteYsnapshotsRepository, noteYupdatesRepository } from "../repositories";
+import { logNoteWrite } from "./note-write-observability";
 import {
   assertYjsSubdocumentGeneration,
   getYjsSubdocumentSnapshot,
@@ -73,6 +74,8 @@ interface RoomState {
   lastVersionBumpAt: number;
   /** 最近一次 snapshot 兜底检查的时间戳 */
   lastPeriodicSnapshotAt: number;
+  /** 当前 Y.Doc 所基于的 notes.version，用于阻止旧房间回写覆盖外部更新 */
+  baseVersion: number;
 }
 
 const rooms = new Map<string, RoomState>();
@@ -269,6 +272,19 @@ function persistToNotesTable(room: RoomState) {
     | undefined;
   if (!existing) return;
 
+  if (existing.version !== room.baseVersion) {
+    logNoteWrite({
+      noteId: room.noteId,
+      source: "live-autosave",
+      baseVersion: room.baseVersion,
+      oldVersion: existing.version,
+      newVersion: null,
+      outcome: "rejected",
+      reason: "stale-yjs-room",
+    });
+    return;
+  }
+
   // P2-#8：version 粒度控制——5 分钟内连续编辑合并为同一个 version，
   // 避免 CRDT 下每 1.5s 就 ++ 把版本历史稀释成噪音
   const VERSION_BUMP_INTERVAL_MS = 5 * 60 * 1000;
@@ -276,24 +292,72 @@ function persistToNotesTable(room: RoomState) {
   const shouldBump = now - room.lastVersionBumpAt >= VERSION_BUMP_INTERVAL_MS;
 
   if (shouldBump) {
-    db.prepare(
+    const oldVersion = room.baseVersion;
+    const updated = db.prepare(
       `UPDATE notes
          SET content = ?,
              contentText = ?,
              version = version + 1,
              updatedAt = datetime('now')
-       WHERE id = ?`,
-    ).run(markdown, contentText, room.noteId);
+       WHERE id = ? AND version = ?`,
+    ).run(markdown, contentText, room.noteId, oldVersion);
+    if (Number(updated.changes || 0) !== 1) {
+      const latest = db.prepare("SELECT version FROM notes WHERE id = ?").get(room.noteId) as
+        | { version: number }
+        | undefined;
+      logNoteWrite({
+        noteId: room.noteId,
+        source: "live-autosave",
+        baseVersion: oldVersion,
+        oldVersion: latest?.version ?? null,
+        newVersion: null,
+        outcome: "rejected",
+        reason: "optimistic-write-conflict",
+      });
+      return;
+    }
+    room.baseVersion = oldVersion + 1;
     room.lastVersionBumpAt = now;
+    logNoteWrite({
+      noteId: room.noteId,
+      source: "live-autosave",
+      baseVersion: oldVersion,
+      oldVersion,
+      newVersion: room.baseVersion,
+      outcome: "committed",
+    });
   } else {
     // 不动 version，仅更新 content / contentText / updatedAt
-    db.prepare(
+    const updated = db.prepare(
       `UPDATE notes
          SET content = ?,
              contentText = ?,
              updatedAt = datetime('now')
-       WHERE id = ?`,
-    ).run(markdown, contentText, room.noteId);
+       WHERE id = ? AND version = ?`,
+    ).run(markdown, contentText, room.noteId, room.baseVersion);
+    if (Number(updated.changes || 0) !== 1) {
+      const latest = db.prepare("SELECT version FROM notes WHERE id = ?").get(room.noteId) as
+        | { version: number }
+        | undefined;
+      logNoteWrite({
+        noteId: room.noteId,
+        source: "live-autosave",
+        baseVersion: room.baseVersion,
+        oldVersion: latest?.version ?? null,
+        newVersion: null,
+        outcome: "rejected",
+        reason: "optimistic-write-conflict",
+      });
+      return;
+    }
+    logNoteWrite({
+      noteId: room.noteId,
+      source: "live-autosave",
+      baseVersion: room.baseVersion,
+      oldVersion: room.baseVersion,
+      newVersion: room.baseVersion,
+      outcome: "committed",
+    });
   }
 }
 
@@ -305,6 +369,9 @@ function getOrCreateRoom(noteId: string): RoomState {
   let room = rooms.get(noteId);
   if (!room) {
     const doc = loadDocFromDb(noteId);
+    const noteVersion = getDb().prepare("SELECT version FROM notes WHERE id = ?").get(noteId) as
+      | { version: number }
+      | undefined;
     room = {
       noteId,
       doc,
@@ -315,6 +382,7 @@ function getOrCreateRoom(noteId: string): RoomState {
       lastActorUserId: null,
       lastVersionBumpAt: 0,
       lastPeriodicSnapshotAt: Date.now(),
+      baseVersion: noteVersion?.version ?? 0,
     };
     rooms.set(noteId, room);
   }
@@ -493,6 +561,20 @@ export function yFlush(noteId: string) {
   } catch {}
 }
 
+/**
+ * 标题、置顶等不修改正文的 REST 写入也会增加 notes.version。
+ * 这类写入不会改变 Y.Text，可以安全地把活动房间的乐观锁基线向前推进。
+ */
+export function yAdvanceRoomBaseVersion(
+  noteId: string,
+  previousVersion: number,
+  nextVersion: number,
+): void {
+  const room = rooms.get(noteId);
+  if (!room || room.baseVersion !== previousVersion || nextVersion < previousVersion) return;
+  room.baseVersion = nextVersion;
+}
+
 /** 进程退出时调用：把所有房间 flush 到磁盘。返回 Promise，便于 caller await。 */
 export function yFlushAll(): Promise<void> {
   const ids = Array.from(rooms.keys());
@@ -628,6 +710,9 @@ export function yReplaceContentAsUpdate(
   let createdHere = false;
   if (!room) {
     const doc = loadDocFromDb(noteId);
+    const noteVersion = getDb().prepare("SELECT version FROM notes WHERE id = ?").get(noteId) as
+      | { version: number }
+      | undefined;
     room = {
       noteId,
       doc,
@@ -638,6 +723,7 @@ export function yReplaceContentAsUpdate(
       lastActorUserId: null,
       lastVersionBumpAt: 0,
       lastPeriodicSnapshotAt: Date.now(),
+      baseVersion: noteVersion?.version ?? 0,
     };
     rooms.set(noteId, room);
     createdHere = true;
@@ -645,6 +731,15 @@ export function yReplaceContentAsUpdate(
 
   let produced: Uint8Array | null = null;
   try {
+    const noteVersion = getDb().prepare("SELECT version FROM notes WHERE id = ?").get(noteId) as
+      | { version: number }
+      | undefined;
+    if (noteVersion) room.baseVersion = noteVersion.version;
+    // 外部 whole-save 已成为新的权威基线，旧 debounce 不得在替换后继续执行。
+    if (room.persistTimer) {
+      clearTimeout(room.persistTimer);
+      room.persistTimer = null;
+    }
     const ytext = room.doc.getText("content");
     const current = ytext.toString();
     if (current === markdown) {
