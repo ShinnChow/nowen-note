@@ -403,8 +403,8 @@ If Nowen Note helps you, sponsorship supports continued maintenance and developm
     <th>Alipay</th>
   </tr>
   <tr>
-    <td align="center"><img src="./frontend/public/weixin.jpg" alt="WeChat sponsorship QR code" width="260" /></td>
-    <td align="center"><img src="./frontend/public/zhifubao.png" alt="Alipay sponsorship QR code" width="260" /></td>
+    <td align="center"><img src="./frontend/src/assets/sponsor/weixin.jpg" alt="WeChat sponsorship QR code" width="260" /></td>
+    <td align="center"><img src="./frontend/src/assets/sponsor/zhifubao.png" alt="Alipay sponsorship QR code" width="260" /></td>
   </tr>
 </table>
 
