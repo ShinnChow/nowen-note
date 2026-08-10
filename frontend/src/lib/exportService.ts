@@ -126,6 +126,7 @@ async function saveSelfContainedImageMarkdownFallback(
  * 单篇导出必须区分原生 Markdown 与富文本：
  * - 原生 Markdown 直接保留源码，只让后端 ZIP 任务处理附件 URL；
  * - Tiptap/HTML 继续复用原有 HTML → Turndown 转换链路；
+ * - forceZip 复用同一后端任务，即使没有附件也生成单篇 ZIP；
  * - 若“图片 → 后端 ZIP”链路失败（桌面端/共享权限/反代环境最容易触发），
  *   再把可访问图片内嵌成 data URI，保存为自包含 .md，避免整次导出直接失败。
  *
@@ -133,13 +134,16 @@ async function saveSelfContainedImageMarkdownFallback(
  */
 export async function exportSingleNote(
   noteId: string,
-  options?: { inlineImages?: boolean },
+  options?: { inlineImages?: boolean; forceZip?: boolean },
 ): Promise<boolean> {
   try {
     const note = await api.getNote(noteId);
     if (note.contentFormat !== "markdown") {
       const exported = await exportSingleNoteCore(noteId, options);
       if (exported) return true;
+
+      // 用户明确选择 ZIP 时不能悄悄降级成 .md；让菜单显示真实失败。
+      if (options?.forceZip) return false;
 
       // Core 会把服务器打包错误收敛为 false。只对“正文里确实有 Nowen 图片”的场景
       // 做兜底，避免把无关的格式/权限错误伪装成成功。
@@ -154,11 +158,12 @@ export async function exportSingleNote(
     }
 
     const inlineImages = options?.inlineImages === true;
+    const forceZip = options?.forceZip === true;
     const markdown = note.content || note.contentText || "";
     const safeTitle = sanitizeSingleNoteExportFilename(note.title);
     const hasServerAssets = /\/api\/attachments\//i.test(markdown);
 
-    if (!inlineImages && hasServerAssets) {
+    if (!inlineImages && (forceZip || hasServerAssets)) {
       try {
         const created = await api.createMarkdownExportJob([{
           id: note.id,
@@ -179,7 +184,7 @@ export async function exportSingleNote(
         if (job.warnings > 0) console.warn(`[exportSingleNote] ${job.message}`);
         return true;
       } catch (packageError) {
-        if (await saveSelfContainedImageMarkdownFallback(note, markdown, safeTitle, packageError)) {
+        if (!forceZip && await saveSelfContainedImageMarkdownFallback(note, markdown, safeTitle, packageError)) {
           return true;
         }
         throw packageError;

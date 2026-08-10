@@ -460,6 +460,9 @@ app.use("/api/*", async (c, next) => {
     if (sess.revokedAt) {
       return c.json({ error: "该会话已被下线", code: "SESSION_REVOKED" }, 401);
     }
+    if (sess.expiresAt && Date.parse(sess.expiresAt) <= Date.now()) {
+      return c.json({ error: "登录已超过 30 天，请重新登录", code: "SESSION_EXPIRED" }, 401);
+    }
     touchSessionLastSeen(payload.jti);
   }
 

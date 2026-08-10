@@ -23,6 +23,7 @@ import { useApp, useAppActions } from "@/store/AppContext";
 import { api, withSudo, getCurrentWorkspace, setCurrentWorkspace, getBaseUrl } from "@/lib/api";
 import { emitKnowledgeTreeRefresh } from "@/lib/workspaceRefreshBridge";
 import { toast } from "@/lib/toast";
+import { storeAuthTokens } from "@/lib/authSession";
 import { scheduleObjectUrlRevocation } from "@/lib/reliableExportDownloadBridge";
 import {
   chooseDesktopDataDir,
@@ -268,7 +269,7 @@ function DesktopDataSafetyCard() {
     const res = await resetDesktopLocalAuth();
     setResetting(false);
     if (res.ok && res.token) {
-      localStorage.setItem("nowen-token", res.token);
+      storeAuthTokens({ token: res.token, refreshToken: res.refreshToken ?? null });
       setMessage("本地自动登录已恢复，正在刷新。");
       window.setTimeout(() => window.location.reload(), 400);
     } else {
@@ -772,12 +773,24 @@ export default function DataManager() {
             targetNotebookId: safeNotebookId || undefined,
             workspaceId: effectiveWorkspaceId,
             contentFormat: siyuanImportContentFormat,
+            onProgress: (job) => setImportProgress({
+              phase: "uploading",
+              current: job.status === "completed" ? 1 : 0,
+              total: 1,
+              message: job.message,
+            }),
           });
+          const importedAssets = imported.stats?.importedAssets || 0;
+          const failedItems = imported.stats?.unresolvedAssets || 0;
           setImportProgress({
             phase: "done",
             current: imported.count,
             total: imported.count,
-            message: t("dataManager.importSuccessCount", { count: imported.count }),
+            message: t("dataManager.siyuanImportCompletedStats", {
+              count: imported.count,
+              assets: importedAssets,
+              failed: failedItems,
+            }),
           });
           const noticeMessages: string[] = [];
           if (imported.warnings?.length) {

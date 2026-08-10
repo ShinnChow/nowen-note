@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FileCode, Files, FileText, FileType2, Folder, Link2 } from "lucide-react";
+import { FileArchive, FileCode, Files, FileText, FileType2, Folder, Link2 } from "lucide-react";
 
 import KnowledgeTreePanelBase, {
   FOCUS_KNOWLEDGE_TREE_EVENT,
@@ -24,8 +24,8 @@ export type { KnowledgeTreePanelProps };
 
 const CREATE_SCOPE_ATTR = "data-nowen-create-scope";
 const ALL_NOTES_HOST_ATTR = "data-knowledge-tree-all-notes-host";
-const CREATE_MENU_WIDTH = 184;
-const CREATE_MENU_HEIGHT = 252;
+const CREATE_MENU_WIDTH = 232;
+const CREATE_MENU_HEIGHT = 284;
 
 const CREATE_ITEMS = [
   { kind: "note", label: "富文本文档", icon: FileText },
@@ -35,6 +35,7 @@ const CREATE_ITEMS = [
 
 const IMPORT_ITEMS = [
   { kind: "markdown", label: "导入 Markdown 文件", icon: FileCode },
+  { kind: "markdown-zip", label: "导入 Markdown + 附件（ZIP）", icon: FileArchive },
   { kind: "word", label: "导入 Word 文档", icon: FileType2 },
   { kind: "wechat", label: "导入公众号文章", icon: Link2 },
 ] as const;
@@ -265,16 +266,18 @@ export function KnowledgeTreeCreateDropdown({
               size={15}
               className={item.kind === "markdown"
                 ? "text-emerald-500"
-                : item.kind === "word"
-                  ? "text-violet-500"
-                  : "text-sky-500"}
+                : item.kind === "markdown-zip"
+                  ? "text-amber-500"
+                  : item.kind === "word"
+                    ? "text-violet-500"
+                    : "text-sky-500"}
             />
             <span>{item.label}</span>
           </button>
         );
       })}
       <p className="border-t border-app-border px-2.5 pb-1 pt-2 text-[10px] text-tx-tertiary">
-        也可将 .md 文件拖拽到目录树导入
+        也可将 .md 或 Markdown 附件 ZIP 拖拽到目录树导入
       </p>
     </div>,
     document.body,
