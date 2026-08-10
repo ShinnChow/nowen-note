@@ -2149,7 +2149,7 @@
     "imageTypeUnsupported": "{{name}} format not supported",
     "imageLimitReached": "Up to {{n}} images",
     "waitingUpload": "Waiting for uploads to finish",
-    "errorImagesHint": "Please remove failed images first",
+    "errorImagesHint": "Retry or remove failed media first",
     "media": {
       "image": "Image",
       "video": "Video",
@@ -2158,6 +2158,8 @@
       "more": "More",
       "uploading": "Uploading...",
       "uploadFailed": "Upload failed",
+      "retry": "Retry",
+      "pickerFailed": "Unable to open the system media picker. Check camera or media permissions.",
       "videoTooLarge": "{{name}} exceeds 100MB",
       "imageTooLarge": "{{name}} exceeds 10MB",
       "maxImages": "Up to {{n}} images",
