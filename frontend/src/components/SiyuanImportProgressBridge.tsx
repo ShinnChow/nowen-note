@@ -350,7 +350,7 @@ export default function SiyuanImportProgressBridge() {
           hideLater(5000);
         }
         return response;
-      } catch {
+      } catch (error) {
         if (processingTimer !== null) window.clearTimeout(processingTimer);
         show({
           tone: "working",
