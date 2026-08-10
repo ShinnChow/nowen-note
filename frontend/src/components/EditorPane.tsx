@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Star, Pin, Trash2, Cloud, CloudOff, RefreshCw, Check, Loader2, ChevronLeft, FolderInput, ChevronRight, ChevronDown, X, ListTree, Lock, Unlock, Tag as TagIcon, Type, MoreHorizontal, Share2, History, MessageCircle, FileCode, FileText, Eye, Pencil, CloudUpload, PanelLeft, Paperclip, Search, Sparkles, Network, Maximize2, Minimize2, Image, Link2, Printer, Scissors } from "lucide-react";
+import { Star, Pin, Trash2, Cloud, RefreshCw, Check, Loader2, ChevronLeft, FolderInput, ChevronRight, ChevronDown, X, ListTree, Lock, Unlock, Tag as TagIcon, Type, MoreHorizontal, Share2, History, MessageCircle, FileCode, FileText, Eye, Pencil, PanelLeft, Paperclip, Search, Sparkles, Network, Maximize2, Minimize2, Image, Link2, Printer, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import TiptapEditor from "@/components/TiptapEditor";
@@ -611,11 +611,6 @@ export default function EditorPane({
   // ������ P2-5: ��ǰ�༭��ģʽ ref���� handleUpdate ͬ��д�ݸ��ã� ������������������������������
   const editorModeRef = useRef<EditorMode>(editorMode);
   useEffect(() => { editorModeRef.current = editorMode; }, [editorMode]);
-
-  // ������ P1-4: ��������ʧ�ܼ��� + toast ����ʱ��� ����������������������������������������������������������������
-  // ����ɹ� / �бʼ�ʱ���㣻���� ��2 ��ʧ�� + ���ϴ� toast �� 30s �ŵ�һ��
-  const consecutiveSaveFailRef = useRef<number>(0);
-  const lastSaveFailToastAtRef = useRef<Record<string, number>>({});
 
   // ������ P1-3: ҳ�汻ж�� / ����ʱǿ�ưѵ�ǰ�༭������д�뱾�زݸ� + ���߶��� ������������
   // �����������ƶ��� webview ��ϵͳ���ա�ˢ�¡��� Tab���е���̨��ɱ��
@@ -1755,9 +1750,8 @@ export default function EditorPane({
         if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
         savedTimerRef.current = setTimeout(() => actions.setSyncStatus("idle"), 2000);
 
-        // P2-5: ����ɹ� �� ������زݸ壬����������ʧ�ܼ���
+        // P2-5: ����ɹ� �� ������زݸ�
         try { clearDraft(currentNote.id); } catch { /* ignore */ }
-        consecutiveSaveFailRef.current = 0;
       }
     } catch (err) {
       // �бʼ��жϣ�putWithReconcile �ڲ����Ϊ aborted�����������Ĵ���
@@ -1789,19 +1783,6 @@ export default function EditorPane({
       } catch (queueErr) {
         console.warn("[EditorPane] enqueue offline fallback failed:", queueErr);
       }
-
-      // P1-4: �������α���ʧ�� �� toast �����û�"����δ�������ݴ汾��"
-      // ������ͬһ�ʼ� 30s ��ֻ����һ�Σ�����ˢ��
-      try {
-        consecutiveSaveFailRef.current += 1;
-        const noteId = currentNote.id;
-        const now = Date.now();
-        const last = lastSaveFailToastAtRef.current[noteId] || 0;
-        if (consecutiveSaveFailRef.current >= 2 && now - last > 30000) {
-          lastSaveFailToastAtRef.current[noteId] = now;
-      toast.error(t("editor.saveFailedDraftKept") || "网络不稳定，已保存本地草稿版本，可稍后恢复或自动上传");
-        }
-      } catch { /* ignore */ }
 
       actions.setSyncStatus("error");
     }
@@ -4064,23 +4045,23 @@ function SyncIndicator({
   onManualSync: () => void;
 }) {
   const { t } = useTranslation();
+  // 失败、排队和离线状态继续保留在同步状态机中，但不再主动展示为失败提示。
+  // 手动同步入口仍保持可见，真正冲突继续走独立的冲突处理流程。
+  const displayStatus: SyncStatus =
+    syncStatus === "error" || syncStatus === "queued" || syncStatus === "offline"
+      ? "idle"
+      : syncStatus;
   const formatFullTime = (ts: string) => {
     try { return new Date(ts).toLocaleString(); } catch { return ts; }
   };
 
   const getTooltip = () => {
-    switch (syncStatus) {
+    switch (displayStatus) {
       case "saving": return t('editor.saving');
       case "saved":
         return lastSyncedAt
           ? `${t('editor.allSaved')}：${formatFullTime(lastSyncedAt)}`
           : t('editor.allSaved');
-      case "error":
-        return lastSyncedAt
-          ? `${t('editor.saveFailed')}，${t('editor.lastSaved')}：${formatFullTime(lastSyncedAt)}`
-          : t('editor.saveFailed');
-      case "queued": return t("editor.queued", { defaultValue: "草稿存储，等待网络恢复后自动同步" });
-      case "offline": return t("editor.offline", { defaultValue: "当前离线" });
       default:
         if (lastSyncedAt) {
           const diff = Date.now() - new Date(lastSyncedAt).getTime();
@@ -4101,7 +4082,7 @@ function SyncIndicator({
       className="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-2 py-1 rounded-md text-[11px] transition-colors hover:bg-app-hover group"
     >
       <AnimatePresence mode="wait">
-        {syncStatus === "saving" && (
+        {displayStatus === "saving" && (
           <motion.div
             key="saving"
             initial={{ opacity: 0, scale: 0.5 }}
@@ -4112,7 +4093,7 @@ function SyncIndicator({
             <RefreshCw size={13} className="text-accent-primary" />
           </motion.div>
         )}
-        {syncStatus === "saved" && (
+        {displayStatus === "saved" && (
           <motion.div
             key="saved"
             initial={{ opacity: 0, scale: 0.5 }}
@@ -4123,29 +4104,7 @@ function SyncIndicator({
             <Check size={13} className="text-green-500" />
           </motion.div>
         )}
-        {syncStatus === "error" && (
-          <motion.div
-            key="error"
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.5 }}
-            transition={{ duration: 0.15 }}
-          >
-            <CloudOff size={13} className="text-red-500" />
-          </motion.div>
-        )}
-        {(syncStatus === "queued" || syncStatus === "offline") && (
-          <motion.div
-            key="queued"
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.5 }}
-            transition={{ duration: 0.15 }}
-          >
-            <CloudUpload size={13} className="text-amber-500" />
-          </motion.div>
-        )}
-        {syncStatus === "idle" && (
+        {displayStatus === "idle" && (
           <motion.div
             key="idle"
             initial={{ opacity: 0 }}
@@ -4160,14 +4119,12 @@ function SyncIndicator({
 
       <span className={cn(
         "hidden whitespace-nowrap sm:inline transition-colors",
-        syncStatus === "saving" && "text-accent-primary",
-        syncStatus === "saved" && "text-green-500",
-        syncStatus === "error" && "text-red-500",
-        (syncStatus === "queued" || syncStatus === "offline") && "text-amber-500",
-        syncStatus === "idle" && "text-tx-tertiary group-hover:text-tx-secondary",
+        displayStatus === "saving" && "text-accent-primary",
+        displayStatus === "saved" && "text-green-500",
+        displayStatus === "idle" && "text-tx-tertiary group-hover:text-tx-secondary",
       )}>
-        {syncStatus === "saving" && t('editor.savingStatus')}
-        {syncStatus === "saved" && (
+        {displayStatus === "saving" && t('editor.savingStatus')}
+        {displayStatus === "saved" && (
           <>
             {t('editor.savedStatus')}
             {lastSyncedAt && (
@@ -4177,10 +4134,7 @@ function SyncIndicator({
             )}
           </>
         )}
-        {syncStatus === "error" && t('editor.saveFailedStatus')}
-        {syncStatus === "queued" && t("editor.queuedStatus", { defaultValue: "草稿存储" })}
-        {syncStatus === "offline" && t("editor.offlineStatus", { defaultValue: "离线" })}
-        {syncStatus === "idle" && (
+        {displayStatus === "idle" && (
           lastSyncedAt
             ? <>{t('editor.synced')}<span className="ml-1 opacity-70">· {new Date(lastSyncedAt).toLocaleTimeString()}</span></>
             : t('editor.sync')
