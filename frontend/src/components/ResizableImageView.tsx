@@ -222,7 +222,6 @@ export function ResizableImageView(props: NodeViewProps) {
             resolvedSrc,
             error: err,
           });
-          if (!cancelled) setImgError(true);
         });
       return () => {
         cancelled = true;
@@ -235,6 +234,10 @@ export function ResizableImageView(props: NodeViewProps) {
   }, [blobSrc]);
 
   const finalSrc = blobSrc || resolvedSrc;
+  useEffect(() => {
+    // 当前渲染地址变化时，上一地址的失败状态不能污染新的加载结果。
+    setImgError(false);
+  }, [finalSrc]);
   const displayWidth = draftWidth ?? (typeof initialWidth === "number" ? initialWidth : null);
   const placeholderWidth = Math.max(120, Math.min(displayWidth || 320, 640));
   const placeholderHeight = Math.max(96, Math.min(Math.round(placeholderWidth * 0.56), 360));
@@ -300,6 +303,10 @@ export function ResizableImageView(props: NodeViewProps) {
             outlineOffset: 0,
           }}
           draggable={false}
+          onLoad={() => {
+            // 只有最终交给 img 的地址成功加载，才确认清除失败状态。
+            setImgError(false);
+          }}
           onError={() => {
             console.error("[ResizableImageView] img load failed:", {
               originalSrc: src,
