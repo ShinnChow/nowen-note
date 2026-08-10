@@ -47,7 +47,7 @@ function midpoint(a: Point, b: Point): Point {
 }
 
 /**
- * Shared full-screen image viewer for Android and mobile web.
+ * Web、Electron 与 Android 共用的全屏图片查看器。
  *
  * The gesture stage, close button and bottom controls are siblings. This keeps transformed
  * image hit testing and pointer capture from covering or stealing the close button.
