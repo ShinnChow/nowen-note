@@ -291,7 +291,7 @@ export function KnowledgeTreePanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sharedLoadError, setSharedLoadError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => state.viewMode === "search" ? state.searchQuery : "");
   const [draft, setDraft] = useState<KnowledgeTreeInlineDraft | null>(null);
   const [permissionsNode, setPermissionsNode] = useState<KnowledgeTreeNode | null>(null);
   const [movingNode, setMovingNode] = useState<KnowledgeTreeNode | null>(null);
@@ -1093,6 +1093,22 @@ export function KnowledgeTreePanel({
     actions.setViewMode(state.selectedNotebookId ? "notebook" : "all");
   }, [actions, openFullTextSearch, state.selectedNotebookId]);
 
+  const searchScope = state.viewMode === "search" ? "content" : "tree";
+
+  useEffect(() => {
+    if (!surfaceActive || searchScope !== "content") return;
+    if (searchRef.current && document.activeElement === searchRef.current) return;
+    setQuery((current) => current === state.searchQuery ? current : state.searchQuery);
+  }, [searchScope, state.searchQuery, surfaceActive]);
+
+  useEffect(() => {
+    if (!surfaceActive || searchScope !== "content") return;
+    const keyword = query.trim();
+    if (keyword === state.searchQuery) return;
+    const timer = window.setTimeout(() => actions.setSearchQuery(keyword), 180);
+    return () => window.clearTimeout(timer);
+  }, [actions, query, searchScope, state.searchQuery, surfaceActive]);
+
   const compactActionButtons = (
     <>
       <button
@@ -1155,7 +1171,7 @@ export function KnowledgeTreePanel({
           )}>
             {!compactToolbar && (
               <KnowledgeSearchScopeSwitch
-                scope={state.viewMode === "search" ? "content" : "tree"}
+                scope={searchScope}
                 compact
                 onChange={changeSearchScope}
               />
@@ -1165,15 +1181,19 @@ export function KnowledgeTreePanel({
               ref={searchRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={variant === "mobile" ? "搜索…" : compactToolbar ? "筛选…" : "筛选目录与文档…"}
+              placeholder={searchScope === "content"
+                ? "搜索笔记标题与正文…"
+                : variant === "mobile" ? "搜索…" : compactToolbar ? "筛选…" : "筛选目录与文档…"}
+              aria-label={searchScope === "content" ? "搜索笔记标题与正文" : "筛选当前目录中的文件夹与文档"}
+              title={searchScope === "content" ? "搜索笔记标题与正文" : "仅筛选当前内容树，不搜索笔记正文"}
               className="min-w-0 flex-1 bg-transparent text-xs text-tx-primary outline-none placeholder:text-tx-tertiary"
               data-knowledge-tree-search=""
-              data-search-scope="tree"
+              data-search-scope={searchScope}
             />
             {query && <button type="button" onClick={() => setQuery("")} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-tx-tertiary hover:bg-app-hover hover:text-tx-primary" aria-label="清空筛选"><X size={variant === "mobile" ? 15 : 12} /></button>}
             {compactToolbar && (
               <KnowledgeSearchScopeMenuButton
-                scope={state.viewMode === "search" ? "content" : "tree"}
+                scope={searchScope}
                 onChange={changeSearchScope}
               />
             )}

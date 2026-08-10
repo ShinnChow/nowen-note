@@ -242,7 +242,7 @@ export default function MobileKnowledgeTreePanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sharedLoadError, setSharedLoadError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => state.viewMode === "search" ? state.searchQuery : "");
   const [view, setView] = useState<MobileView>("browse");
   const [parentId, setParentId] = useState<string | null>(null);
   const [allExpanded, setAllExpanded] = useState(false);
@@ -385,6 +385,22 @@ export default function MobileKnowledgeTreePanel({
     actions.setSearchQuery("");
     actions.setViewMode(state.selectedNotebookId ? "notebook" : "all");
   }, [actions, openFullTextSearch, state.selectedNotebookId]);
+
+  const searchScope = state.viewMode === "search" ? "content" : "tree";
+
+  useEffect(() => {
+    if (searchScope !== "content") return;
+    if (searchRef.current && document.activeElement === searchRef.current) return;
+    setQuery((current) => current === state.searchQuery ? current : state.searchQuery);
+  }, [searchScope, state.searchQuery]);
+
+  useEffect(() => {
+    if (searchScope !== "content") return;
+    const keyword = query.trim();
+    if (keyword === state.searchQuery) return;
+    const timer = window.setTimeout(() => actions.setSearchQuery(keyword), 180);
+    return () => window.clearTimeout(timer);
+  }, [actions, query, searchScope, state.searchQuery]);
 
   const visibleNodes = useMemo(
     () => hideLockedFolderDescendants(nodes, unlockedFolderIds),
@@ -1028,7 +1044,7 @@ export default function MobileKnowledgeTreePanel({
           )}>
             {!compactToolbar && (
               <KnowledgeSearchScopeSwitch
-                scope={state.viewMode === "search" ? "content" : "tree"}
+                scope={searchScope}
                 compact
                 onChange={changeSearchScope}
               />
@@ -1038,10 +1054,14 @@ export default function MobileKnowledgeTreePanel({
               ref={searchRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={compactToolbar ? "搜索…" : "搜索目录与文档"}
+              placeholder={searchScope === "content"
+                ? "搜索笔记标题与正文…"
+                : compactToolbar ? "搜索…" : "搜索目录与文档"}
+              aria-label={searchScope === "content" ? "搜索笔记标题与正文" : "筛选当前目录中的文件夹与文档"}
+              title={searchScope === "content" ? "搜索笔记标题与正文" : "仅筛选当前内容树，不搜索笔记正文"}
               className="min-w-0 flex-1 bg-transparent text-xs text-tx-primary outline-none placeholder:text-tx-tertiary"
               data-mobile-knowledge-tree-search=""
-              data-search-scope="tree"
+              data-search-scope={searchScope}
             />
             {variant === "desktop" && !compactToolbar && (
               !query ? (
@@ -1065,7 +1085,7 @@ export default function MobileKnowledgeTreePanel({
             )}
             {compactToolbar && (
               <KnowledgeSearchScopeMenuButton
-                scope={state.viewMode === "search" ? "content" : "tree"}
+                scope={searchScope}
                 onChange={changeSearchScope}
               />
             )}
