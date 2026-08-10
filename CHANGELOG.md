@@ -12,6 +12,25 @@
 
 <!-- ADD_NEW_HERE -->
 
+## v1.4.7 - 2026-08-10
+
+### 🐛 修复
+
+- **permissions**: preserve recycle-bin lifecycle access (abde307)
+- **permissions**: expose tombstone access resolver (21a0b1e)
+- **permissions**: resolve recycle-bin tombstones safely (951ec41)
+- **ios**: align Xcode deployment target with Capacitor 8 (ec61f08)
+- **ios**: raise minimum deployment target to iOS 15 (7362c87)
+
+### 📝 文档
+
+- update English README for v1.4.6 (fed251d)
+- update README for v1.4.6 (acbed9e)
+
+### ✅ 测试
+
+- **permissions**: cover recycle-bin tombstone lifecycle (5119ddc)
+
 ## v1.4.6 - 2026-08-07
 
 ### ✨ 新增
