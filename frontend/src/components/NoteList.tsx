@@ -2498,6 +2498,7 @@ export default function NoteList() {
               icon: <Download size={14} />,
               children: [
                 { id: "export_md", label: t("noteList.exportAsMarkdown") || "Markdown", icon: <Download size={14} /> },
+                { id: "export_md_zip", label: t("noteList.exportAsMarkdownZip") || "Markdown + 附件（ZIP）", icon: <Download size={14} /> },
                 { id: "export_pdf", label: t("noteList.exportAsPDF") || "PDF", icon: <Printer size={14} /> },
                 { id: "export_png", label: t("note.exportAsPng") || "图片 PNG", icon: <ImageIcon size={14} /> },
                 { id: "export_jpg", label: t("note.exportAsJpg") || "图片 JPG", icon: <ImageIcon size={14} /> },
@@ -2554,13 +2555,16 @@ export default function NoteList() {
         }
         break;
       }
-      case "export_md": {
+      case "export_md":
+      case "export_md_zip": {
         // 单笔记导出：锁定态允许（只读操作，不涉及修改）。
-        // exportSingleNote 内部会按是否含图决定下 .md 还是 .zip。
+        // 显式 ZIP 入口即使没有附件也保持 .zip；原 Markdown 行为继续兼容自动打包。
         haptic.light();
         const toastId = toast.info(t('export.exportingNote', { name: targetNote.title }), 0);
         try {
-          const ok = await exportSingleNote(targetId);
+          const ok = await exportSingleNote(targetId, {
+            forceZip: actionId === "export_md_zip",
+          });
           toast.dismiss(toastId);
           if (ok) {
             toast.success(t('export.exportComplete'));

@@ -88,6 +88,7 @@ function separator(id: string): ContextMenuItem {
 function exportChildren(): ContextMenuItem[] {
   return [
     { id: "export_note_md", label: "Markdown", icon: <Download size={14} /> },
+    { id: "export_note_md_zip", label: "Markdown + 附件（ZIP）", icon: <Download size={14} /> },
     { id: "export_note_pdf", label: "PDF", icon: <Printer size={14} /> },
     { id: "export_note_png", label: "PNG", icon: <ImageIcon size={14} /> },
     { id: "export_note_jpg", label: "JPG", icon: <ImageIcon size={14} /> },
@@ -443,8 +444,10 @@ export default function KnowledgeTreeNodeMenu({
     const noteId = node.resourceId;
     const toastId = toast.info(`正在导出“${node.title}”…`, 0);
     try {
-      if (actionId === "export_note_md") {
-        const ok = await exportSingleNote(noteId);
+      if (actionId === "export_note_md" || actionId === "export_note_md_zip") {
+        const ok = await exportSingleNote(noteId, {
+          forceZip: actionId === "export_note_md_zip",
+        });
         if (!ok) throw new Error("导出失败");
       } else if (actionId === "export_note_pdf") {
         const result = await exportSingleNoteAsPDF(noteId);
