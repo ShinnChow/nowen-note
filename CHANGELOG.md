@@ -12,6 +12,93 @@
 
 <!-- ADD_NEW_HERE -->
 
+## v1.4.8 - 2026-08-10
+
+### ✨ 新增
+
+- **目录树**: 支持多选批量移动和删除 (795ef2a)
+- **导入**: 支持 Markdown 附件 ZIP 导入 (c6f32ca)
+- **导出**: 增加单篇 Markdown 附件 ZIP 入口 (4e5663e)
+
+### 🐛 修复
+
+- **Docker**: 复制同步提示校验脚本 (7019fa4)
+- **导入**: 修正思源进度桥接异常变量 (797f573)
+- **图片**: 统一 Electron 图片预览和加载状态 (d76ba65)
+- **同步**: 防止 MCP 与 Live 自动保存陈旧覆盖 (6982bee)
+- **同步**: 移除全局失败提示并阻止旧产物打包 (13ca303)
+- **搜索**: 修复首次输入未触发全文搜索 (e0df8c7)
+- **说说**: 修复移动端媒体入口与上传重试 (095cfc5)
+- **editor**: 清理图片地址切换后的错误状态 (1919c71)
+- **import**: 将思源导入改为后台任务避免 504 误报 (45050d1)
+- **ios**: restore CocoaPods script input output paths (1c7c3a7)
+- **ios**: allow self-hosted local networking under ATS (0bbf13c)
+- **ios**: declare UIScene configuration (72e9a89)
+- **ios**: adopt UIScene lifecycle for iOS 27 (a0dd6e8)
+- **notes**: protect every cache-first editor from attachment access race (d5c453f)
+- **attachments**: keep cached note priming offline-safe (669da65)
+- **editor**: prime cached note attachment access before mount (292d260)
+- **notes**: prepare attachment access before cached note render (95fb33f)
+- **attachments**: add cached-note access priming helper (20ce6d8)
+- **sync**: reconcile knowledge-tree deletions immediately (767e111)
+- **ui**: add knowledge delete reconciliation helper (5992293)
+- **permissions**: bridge trashed note lifecycle ACL (f34a2a7)
+- **knowledge**: enforce tombstone ACL on restore (a807dbb)
+- **knowledge**: make includeDeleted tree views effective (261f906)
+- **permissions**: preserve recycle-bin lifecycle access (61ffe9b)
+- **permissions**: expose tombstone access resolver (4290028)
+- **permissions**: resolve recycle-bin tombstones safely (902a153)
+
+### ♻️ 重构
+
+- **notes**: keep attachment priming in shared cache-first loader (dad6117)
+
+### ✅ 测试
+
+- **notes**: cover default attachment priming for split editor (f0824b6)
+- **attachments**: type fetch mocks for tsc (656947c)
+- **editor**: cover image autosave race with latest snapshot (7c7da4b)
+- **editor**: cover image save flush on note switch (20726df)
+- **notes**: cover cached image note access before reopen (c0e2f2c)
+- **attachments**: cover cached note image access priming (2a20a17)
+- **ui**: keep delete reconciliation fixtures type-safe (d65fc89)
+- **ui**: cover deleted knowledge note reconciliation (d1fc820)
+- **permissions**: cover deleted tree visibility and restore ACL (73444e6)
+- **permissions**: cover recycle-bin tombstone lifecycle (96e2edb)
+
+### 🤖 CI
+
+- **editor**: distinguish changed-file lint from repository lint (f58a151)
+- **attachments**: validate signed access and reference regressions (85fbf3f)
+- **editor**: validate lint and build for image persistence fixes (c5a7297)
+- **editor**: run note image persistence regressions (06189cb)
+- **knowledge**: keep delete reconciliation under regression guard (2c7ef6c)
+- retry verified delete reconciliation patch (fc0eb90)
+- verify v1.4.7 delete state reconciliation (aa6629d)
+- retry v1.4.7 recycle lifecycle bridge (e2a1f6b)
+- apply v1.4.7 recycle lifecycle bridge (7c8b42f)
+- **knowledge**: guard recycle-bin tombstone lifecycle (7bd7bb3)
+
+### 🔧 其他
+
+- **clipper**: bump extension version to 0.3.0 (209be0b)
+- **ci**: remove v1.4.7 delete patch workflow (88a11c3)
+- **ci**: remove v1.4.7 temporary patch workflow (14ebf35)
+
+### 📌 杂项
+
+- 提交当前版本全部代码改动 (2f4ace5)
+- 修复 AI 写作助手泄露内部块 ID (c0cd345)
+- 修复：手动排序仅调整同级节点顺序 (30a1dc0)
+- 功能：支持批量导入 Markdown 文件 (1592123)
+- 修复：三栏布局展示根目录文档 (9652761)
+- 修复：持久化笔记树展开收起状态 (14bd1d9)
+- 调整：移除未同步修改的全局提示 (2d654e9)
+- 修复：全文搜索支持正文和中文关键词 (70cb16e)
+- 修复：恢复重新打开笔记后的附件图片 (c59ccc0)
+- 修复：允许取消浏览器插件 AI 优化选项 (71bd25f)
+- 修复：支持中文中括号唤起双链 (985fee0)
+
 ## v1.4.7 - 2026-08-10
 
 ### 🐛 修复
