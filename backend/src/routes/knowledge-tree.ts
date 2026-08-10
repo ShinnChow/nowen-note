@@ -18,11 +18,13 @@ import {
 import {
   createKnowledgeChild,
   deleteKnowledgeNode,
+  deleteKnowledgeNodesBatch,
   KnowledgeTreeError,
   listKnowledgeTree,
   listSharedKnowledgeTree,
   listKnowledgeTreeHistory,
   moveKnowledgeNode,
+  moveKnowledgeNodesBatch,
   reorderKnowledgeNodes,
   restoreKnowledgeNode,
 } from "../services/knowledgeTree.js";
@@ -47,6 +49,39 @@ function mapError(c: any, error: unknown): Response {
   }
   console.error("[knowledge-tree] request failed:", error);
   return c.json({ error: "知识树操作失败", code: "KNOWLEDGE_TREE_FAILED" }, 500);
+}
+
+function broadcastDeletedKnowledgeNotes(affectedNodeIds: string[], actorUserId: string): void {
+  if (affectedNodeIds.length === 0) return;
+  try {
+    const db = getDb();
+    const affectedNotes: Array<{ resourceId: string; workspaceId: string | null }> = [];
+    for (let offset = 0; offset < affectedNodeIds.length; offset += 500) {
+      const chunk = affectedNodeIds.slice(offset, offset + 500);
+      const placeholders = chunk.map(() => "?").join(",");
+      affectedNotes.push(...db.prepare(`
+        SELECT resourceId, workspaceId FROM knowledge_tree_nodes
+        WHERE resourceType = 'note' AND id IN (${placeholders})
+      `).all(...chunk) as Array<{ resourceId: string; workspaceId: string | null }>);
+    }
+
+    const notesByWorkspace = new Map<string | null, string[]>();
+    for (const note of affectedNotes) {
+      const noteIds = notesByWorkspace.get(note.workspaceId) || [];
+      noteIds.push(note.resourceId);
+      notesByWorkspace.set(note.workspaceId, noteIds);
+    }
+    for (const [workspaceId, noteIds] of notesByWorkspace) {
+      broadcastNotesDeleted(Array.from(new Set(noteIds.filter(Boolean))), {
+        actorUserId,
+        ...(workspaceId ? { workspaceId } : {}),
+        trashed: true,
+      });
+    }
+  } catch (error) {
+    // 删除事务已经提交，实时通知失败只能记录，不能把成功删除误报成请求失败。
+    console.error("[knowledge-tree] deleted-note broadcast failed:", error);
+  }
 }
 
 app.get("/roles", (c) => c.json({
@@ -166,6 +201,23 @@ app.put("/nodes/:nodeId/move", async (c) => {
   }
 });
 
+app.put("/batch/move", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    if (body.parentId !== null && (typeof body.parentId !== "string" || !body.parentId.trim())) {
+      return c.json({ error: "parentId 必须是非空字符串或 null", code: "KNOWLEDGE_BATCH_PARENT_INVALID" }, 400);
+    }
+    const parentId = body.parentId === null ? null : body.parentId.trim();
+    return c.json(moveKnowledgeNodesBatch({
+      actorUserId: userIdOf(c),
+      nodeIds: body.nodeIds,
+      parentId,
+    }));
+  } catch (error) {
+    return mapError(c, error);
+  }
+});
+
 app.put("/reorder", async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
@@ -182,8 +234,6 @@ app.delete("/nodes/:nodeId", (c) => {
     const actorUserId = userIdOf(c);
     const nodeId = c.req.param("nodeId");
     const db = getDb();
-    const scope = db.prepare("SELECT workspaceId FROM knowledge_tree_nodes WHERE id = ?")
-      .get(nodeId) as { workspaceId: string | null } | undefined;
     const result = deleteKnowledgeNode({
       actorUserId,
       nodeId,
@@ -196,21 +246,22 @@ app.delete("/nodes/:nodeId", (c) => {
     // remain as tombstones) and reuse the existing privacy-safe batch
     // realtime event: the actor receives exact ids, workspace peers only
     // receive a generic invalidation signal.
-    if (result.affectedNodeIds.length > 0) {
-      const placeholders = result.affectedNodeIds.map(() => "?").join(",");
-      const affectedNotes = db.prepare(`
-        SELECT resourceId FROM knowledge_tree_nodes
-        WHERE resourceType = 'note' AND id IN (${placeholders})
-      `).all(...result.affectedNodeIds) as Array<{ resourceId: string }>;
-      broadcastNotesDeleted(
-        Array.from(new Set(affectedNotes.map((row) => row.resourceId).filter(Boolean))),
-        {
-          actorUserId,
-          ...(scope?.workspaceId ? { workspaceId: scope.workspaceId } : {}),
-          trashed: true,
-        },
-      );
-    }
+    broadcastDeletedKnowledgeNotes(result.affectedNodeIds, actorUserId);
+
+    return c.json(result);
+  } catch (error) {
+    return mapError(c, error);
+  }
+});
+
+app.post("/batch/delete", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const actorUserId = userIdOf(c);
+    const db = getDb();
+    const result = deleteKnowledgeNodesBatch({ actorUserId, nodeIds: body.nodeIds, db });
+
+    broadcastDeletedKnowledgeNotes(result.affectedNodeIds, actorUserId);
 
     return c.json(result);
   } catch (error) {

@@ -25,6 +25,10 @@ import {
 } from "lucide-react";
 
 import FolderPasswordDialog from "@/components/FolderPasswordDialog";
+import {
+  KnowledgeTreeBatchMovePanel,
+  KnowledgeTreeBatchToolbar,
+} from "@/components/KnowledgeTreeBatchActions";
 import KnowledgeTreeDropdownMenu from "@/components/KnowledgeTreeDropdownMenu";
 import KnowledgeSearchScopeMenuButton from "@/components/KnowledgeSearchScopeMenuButton";
 import KnowledgeSearchScopeSwitch from "@/components/KnowledgeSearchScopeSwitch";
@@ -40,6 +44,10 @@ import { choose, confirm, prompt } from "@/components/ui/confirm";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { api } from "@/lib/api";
 import { affectedKnowledgeNoteIds } from "@/lib/knowledgeTreeDeleteReconcile";
+import {
+  knowledgeTreeRangeSelection,
+  topLevelSelectedKnowledgeNodes,
+} from "@/lib/knowledgeTreeMultiSelect";
 import {
   defaultInlineCreateTitle,
   normalizeInlineCreateTitle,
@@ -295,6 +303,9 @@ export function KnowledgeTreePanel({
   const [draft, setDraft] = useState<KnowledgeTreeInlineDraft | null>(null);
   const [permissionsNode, setPermissionsNode] = useState<KnowledgeTreeNode | null>(null);
   const [movingNode, setMovingNode] = useState<KnowledgeTreeNode | null>(null);
+  const [batchMoving, setBatchMoving] = useState(false);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [unlockedFolderIds, setUnlockedFolderIds] = useState<Set<string>>(() => loadUnlockedFolderIds());
   const [passwordDialog, setPasswordDialog] = useState<{ node: KnowledgeTreeNode; mode: "unlock" | "manage" } | null>(null);
   const [pendingFolderAction, setPendingFolderAction] = useState<{
@@ -308,6 +319,7 @@ export function KnowledgeTreePanel({
     placement: KnowledgeTreeSiblingDropPlacement;
   } | null>(null);
   const draggedTreeNodeIdRef = useRef<string | null>(null);
+  const selectionAnchorRef = useRef<string | null>(null);
   const { menu, menuRef, openMenu, openMenuAt, closeMenu } = useContextMenu();
   const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const menuNode = menu.targetId ? nodes.find((candidate) => candidate.id === menu.targetId) || null : null;
@@ -429,6 +441,20 @@ export function KnowledgeTreePanel({
     [nodes, unlockedFolderIds],
   );
   const allChildren = useMemo(() => buildChildren(nodes), [nodes]);
+  const selectedNodes = useMemo(
+    () => visibleNodes.filter((node) => selectedNodeIds.has(node.id)),
+    [selectedNodeIds, visibleNodes],
+  );
+  const topLevelSelectedNodes = useMemo(
+    () => topLevelSelectedKnowledgeNodes(nodes, selectedNodeIds),
+    [nodes, selectedNodeIds],
+  );
+  const canBatchMove = selectedNodes.length > 0 && selectedNodes.every((node) => (
+    node.access.capabilities.canMove
+    && !isSharedRoot(node)
+    && node.scopeKey === selectedNodes[0].scopeKey
+    && (node.sharedRootId || null) === (selectedNodes[0].sharedRootId || null)
+  ));
   const firstLevelNoteCounts = useMemo(() => buildFirstLevelNoteCounts(visibleNodes), [visibleNodes]);
   const filteredNodes = useMemo(() => filterKnowledgeTreeNodes(visibleNodes, query), [visibleNodes, query]);
   const children = useMemo(() => buildChildren(filteredNodes), [filteredNodes]);
@@ -439,6 +465,30 @@ export function KnowledgeTreePanel({
   )).map((node) => node.id);
   const hasExpandedFolders = !query.trim() && expandableFolderIds.some((id) => expanded.has(id));
   const toggleAllLabel = hasExpandedFolders ? "全部收起" : "全部展开";
+
+  const clearSelection = useCallback(() => {
+    selectionAnchorRef.current = null;
+    setBatchMoving(false);
+    setSelectedNodeIds(new Set());
+    setMultiSelectMode(false);
+  }, []);
+
+  useEffect(() => {
+    const availableIds = new Set(visibleNodes.map((node) => node.id));
+    setSelectedNodeIds((current) => {
+      const next = new Set([...current].filter((nodeId) => availableIds.has(nodeId)));
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleNodes]);
+
+  useEffect(() => {
+    if (!surfaceActive || (selectedNodeIds.size === 0 && !multiSelectMode)) return;
+    const exitSelection = (event: KeyboardEvent) => {
+      if (event.key === "Escape") clearSelection();
+    };
+    window.addEventListener("keydown", exitSelection);
+    return () => window.removeEventListener("keydown", exitSelection);
+  }, [clearSelection, multiSelectMode, selectedNodeIds.size, surfaceActive]);
 
   // Selecting or restoring an active note must not override the user's folder disclosure choices.
   const activateNote = useCallback((
@@ -500,6 +550,10 @@ export function KnowledgeTreePanel({
       toggleAll();
     } else if (value === "refresh") {
       void reload();
+    } else if (value === "multi-select") {
+      setMultiSelectMode(true);
+      setSelectedNodeIds(new Set());
+      selectionAnchorRef.current = null;
     }
   }, [reload, toggleAll]);
 
@@ -536,6 +590,60 @@ export function KnowledgeTreePanel({
       activateNote(await api.getNote(node.resourceId), node.parentId);
     } catch (requestError: any) {
       toast.error(requestError?.message || "打开文档失败");
+    }
+  };
+
+  const handleNodeSelection = (event: React.MouseEvent, node: KnowledgeTreeNode) => {
+    if (multiSelectMode || event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      setSelectedNodeIds((current) => {
+        const next = new Set(current);
+        if (next.has(node.id)) next.delete(node.id); else next.add(node.id);
+        return next;
+      });
+      selectionAnchorRef.current = node.id;
+      return;
+    }
+    if (event.shiftKey) {
+      event.preventDefault();
+      const renderedIds = Array.from(
+        rootRef.current?.querySelectorAll<HTMLElement>("[data-knowledge-tree-select-id]") || [],
+      ).map((element) => element.dataset.knowledgeTreeSelectId || "").filter(Boolean);
+      setSelectedNodeIds(knowledgeTreeRangeSelection(renderedIds, selectionAnchorRef.current, node.id));
+      if (!selectionAnchorRef.current) selectionAnchorRef.current = node.id;
+      return;
+    }
+    setSelectedNodeIds(new Set([node.id]));
+    selectionAnchorRef.current = node.id;
+    void openDocument(node);
+  };
+
+  const removeSelected = async () => {
+    if (topLevelSelectedNodes.length === 0) return;
+    const selectedCount = selectedNodeIds.size;
+    const includesFolder = topLevelSelectedNodes.some((node) => node.nodeType === "folder");
+    const accepted = await confirm({
+      title: `确定将选中的 ${selectedNodeIds.size} 项移到回收站吗？`,
+      description: includesFolder ? "所选文件夹中的子内容也会一起移入回收站。" : "可以稍后从回收站恢复。",
+      danger: true,
+      confirmText: "删除",
+    });
+    if (!accepted) return;
+    try {
+      const result = await knowledgeTreeApi.batchRemove(topLevelSelectedNodes.map((node) => node.id));
+      const deletedNoteIds = affectedKnowledgeNoteIds(nodes, result.affectedNodeIds);
+      for (const noteId of deletedNoteIds) {
+        actions.removeNoteFromList(noteId);
+        actions.removeNoteTab(noteId);
+      }
+      if (state.activeNote && deletedNoteIds.includes(state.activeNote.id)) actions.setActiveNote(null);
+      clearSelection();
+      emitTreeChanged("nodes-batch-deleted");
+      actions.refreshNotebooks();
+      actions.refreshNotes();
+      toast.success(`已将 ${selectedCount} 项移入回收站`);
+    } catch (requestError: any) {
+      toast.error(requestError?.message || "批量删除失败");
     }
   };
 
@@ -906,7 +1014,8 @@ export function KnowledgeTreePanel({
         && state.selectedNotebookId === node.resourceId
       )
     );
-    const actionVisibility = variant === "mobile" ? "flex" : "hidden group-hover:flex";
+    const selected = selectedNodeIds.has(node.id);
+    const actionVisibility = multiSelectMode ? "hidden" : variant === "mobile" ? "flex" : "hidden group-hover:flex";
     const firstLevelNoteCount = depth === 0 && node.nodeType === "folder" && !node.sharedRootId && isFolderUnlocked(node, unlockedFolderIds)
       ? firstLevelNoteCounts.get(node.id) ?? 0
       : null;
@@ -917,6 +1026,7 @@ export function KnowledgeTreePanel({
             "group relative flex min-w-0 items-center text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
             variant === "mobile" ? "rounded-sm" : "rounded-md",
             active && "bg-app-active text-tx-primary",
+            selected && "bg-accent-primary/10 text-tx-primary ring-1 ring-inset ring-accent-primary/25",
             treeDropTarget?.nodeId === node.id && treeDropTarget.placement === "before"
               && "before:absolute before:inset-x-0 before:top-0 before:z-10 before:h-0.5 before:bg-accent-primary",
             treeDropTarget?.nodeId === node.id && treeDropTarget.placement === "after"
@@ -969,6 +1079,8 @@ export function KnowledgeTreePanel({
           onTouchEnd={cancelLongPress}
           onTouchCancel={cancelLongPress}
           data-knowledge-tree-node-id={node.id}
+          data-knowledge-tree-select-id={node.id}
+          aria-selected={selected}
         >
           <button
             type="button"
@@ -983,16 +1095,21 @@ export function KnowledgeTreePanel({
           </button>
           <button
             type="button"
-            onClick={(event) => {
-              if ((event.ctrlKey || event.metaKey) && node.resourceType === "note") openSplit(node, "right");
-              else void openDocument(node);
-            }}
+            onClick={(event) => handleNodeSelection(event, node)}
             className={cn(
               "flex min-w-0 flex-1 items-center text-left",
               variant === "mobile" ? "gap-1 py-0.5 text-[11px] leading-4" : "gap-1.5 py-1.5 text-xs",
             )}
             title={node.title}
           >
+            {multiSelectMode && (
+              <span className={cn(
+                "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                selected ? "border-accent-primary bg-accent-primary text-white" : "border-app-border bg-app-bg",
+              )}>
+                {selected && <Check size={11} />}
+              </span>
+            )}
             {nodeIcon(node)}
             <span className="min-w-0 flex-1 truncate">{node.title}</span>
             {node.nodeType === "folder" && node.isPasswordProtected === 1 && (
@@ -1265,13 +1382,32 @@ export function KnowledgeTreePanel({
               separatorBefore: true,
             },
             { value: "refresh", label: "刷新目录" },
+            ...(variant === "mobile" ? [{ value: "multi-select", label: "多选", separatorBefore: true }] : []),
           ]}
           onSelect={runMobileTreeAction}
           onClose={() => setMobileActionsOpen(false)}
         />
       )}
 
-      <div className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1 pb-3" data-swipe-blocker="knowledge-tree-scroll">
+      {(selectedNodeIds.size > 1 || multiSelectMode) && (
+        <KnowledgeTreeBatchToolbar
+          count={selectedNodeIds.size}
+          canMove={canBatchMove}
+          canDelete={selectedNodes.length > 0 && selectedNodes.every((node) => node.access.capabilities.canDelete)}
+          onMove={() => setBatchMoving(true)}
+          onDelete={() => void removeSelected()}
+          onClear={clearSelection}
+        />
+      )}
+
+      <div
+        className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-1 pb-3"
+        data-swipe-blocker="knowledge-tree-scroll"
+        onClick={(event) => {
+          const target = event.target as HTMLElement;
+          if (!target.closest("[data-knowledge-tree-select-id]")) clearSelection();
+        }}
+      >
         {loading && nodes.length === 0 ? (
           <div className="flex justify-center py-14"><Loader2 size={20} className="animate-spin text-tx-tertiary" /></div>
         ) : error ? (
@@ -1382,6 +1518,18 @@ export function KnowledgeTreePanel({
           />
         )}
         {movingNode && <MovePanel node={movingNode} nodes={visibleNodes.filter((node) => isFolderUnlocked(node, unlockedFolderIds))} children={allChildren} onMoved={() => void reload()} onClose={() => setMovingNode(null)} />}
+        {batchMoving && (
+          <KnowledgeTreeBatchMovePanel
+            selectedNodes={selectedNodes}
+            nodes={visibleNodes}
+            targetNodes={visibleNodes.filter((node) => isFolderUnlocked(node, unlockedFolderIds))}
+            onMoved={() => {
+              clearSelection();
+              emitTreeChanged("nodes-batch-moved");
+            }}
+            onClose={() => setBatchMoving(false)}
+          />
+        )}
       </div>
       <KnowledgeTreeNodeMenu
         menu={menu}
