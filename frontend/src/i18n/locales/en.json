@@ -2289,7 +2289,10 @@
     "authorStoryDesc": "The story behind the project · A NAS hobbyist's self-rescue",
     "authorStoryAction": "Read note",
     "authorStoryLoadFailed": "Failed to load the author's note",
-    "authorStoryViewOnGithub": "Read on GitHub"
+    "authorStoryViewOnGithub": "Read on GitHub",
+    "feedback": "Feedback & Bug Reports",
+    "feedbackDesc": "Found an issue or have a feature request? Contact us by email.",
+    "feedbackAction": "Send email"
   },
   "whatsNew": {
     "title": "What's New",

@@ -2452,7 +2452,10 @@
     "authorStoryDesc": "项目背后的故事 · 一个 NAS 玩家的自救之路",
     "authorStoryAction": "阅读感言",
     "authorStoryLoadFailed": "作者感言加载失败",
-    "authorStoryViewOnGithub": "在 GitHub 阅读"
+    "authorStoryViewOnGithub": "在 GitHub 阅读",
+    "feedback": "意见与 Bug 反馈",
+    "feedbackDesc": "遇到问题或有功能建议，欢迎通过邮件联系我们。",
+    "feedbackAction": "发送邮件"
   },
   "whatsNew": {
     "title": "更新日志",

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Palette, Shield, Database, X, Settings, Camera, Save, Loader2, Trash2, Upload, Type, Check, ChevronDown, Globe, Bot, Users, Info, ExternalLink, Heart, Sparkles, RefreshCw, ZoomIn, Key, Keyboard, Building2, BookOpen, ToggleLeft, Download, FolderSync, CloudDownload } from "lucide-react";
+import { Palette, Shield, Database, X, Settings, Camera, Save, Loader2, Trash2, Upload, Type, Check, ChevronDown, Globe, Bot, Users, Info, ExternalLink, Heart, Sparkles, RefreshCw, ZoomIn, Key, Keyboard, Building2, BookOpen, ToggleLeft, Download, FolderSync, CloudDownload, Mail } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import wechatSponsorQr from "@/assets/sponsor/weixin.jpg";
 import alipaySponsorQr from "@/assets/sponsor/zhifubao.png";
@@ -396,6 +396,8 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt?: string; onClo
 
 function AboutPanel() {
   const { t } = useTranslation();
+  const feedbackEmail = "nowenlab@qq.com";
+  const feedbackMailto = `mailto:${feedbackEmail}?subject=${encodeURIComponent("[Nowen Note 反馈]")}`;
   const [showSponsor, setShowSponsor] = useState(false);
   const [sponsorMethod, setSponsorMethod] = useState<"wechat" | "alipay">("wechat");
   const [showWhatsNew, setShowWhatsNew] = useState(false);
@@ -509,6 +511,34 @@ function AboutPanel() {
           {t('about.authorStoryAction')}
         </span>
       </button>
+
+      {/* 意见与 Bug 反馈 */}
+      <a
+        href={feedbackMailto}
+        className="w-full flex items-center justify-between p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-sky-500/10 text-sky-500 shrink-0">
+            <Mail size={16} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              {t('about.feedback')}
+            </div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              {t('about.feedbackDesc')}
+            </div>
+          </div>
+        </div>
+        <div className="ml-4 text-right shrink-0">
+          <div className="text-xs text-zinc-500 dark:text-zinc-400">
+            {t('about.feedbackAction')}
+          </div>
+          <div className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">
+            {feedbackEmail}
+          </div>
+        </div>
+      </a>
 
       {/* 支持作者 / 打赏 */}
       <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 overflow-hidden">

@@ -275,6 +275,23 @@ export interface DesktopAccountHistoryAPI {
   remove(id: string): Promise<{ ok: boolean; error?: string }>;
 }
 
+export interface DesktopHttpAPI {
+  requestJson(payload: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body?: string;
+  }): Promise<{
+    ok: boolean;
+    status?: number;
+    statusText?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    url?: string;
+    error?: string;
+  }>;
+}
+
 interface NowenDesktopAPI {
   on: (channel: string, listener: (payload: unknown) => void) => () => void;
   checkForUpdates: () => Promise<{ ok: boolean; reason?: string; version?: string }>;
@@ -326,6 +343,8 @@ interface NowenDesktopAPI {
   folderSync?: FolderSyncAPI;
   /** 桌面端多账号登录历史；令牌由主进程 safeStorage 加密。 */
   accountHistory?: DesktopAccountHistoryAPI;
+  /** 桌面端 JSON API 原生请求通道；避免 file:// renderer 依赖 CORS 预检。 */
+  http?: DesktopHttpAPI;
 }
 
 function getBridge(): NowenDesktopAPI | null {

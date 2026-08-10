@@ -1555,6 +1555,73 @@ async function changeRemoteServer() {
 
 // ---------- IPC：app 信息 ----------
 function registerAppIpc() {
+  ipcMain.removeHandler("client:http-json");
+  ipcMain.handle("client:http-json", async (event, payload = {}) => {
+    const reject = assertMainWindowSender(event);
+    if (reject) return reject;
+
+    const rawUrl = typeof payload.url === "string" ? payload.url.slice(0, 4096) : "";
+    let target;
+    try {
+      target = new URL(rawUrl);
+    } catch {
+      return { ok: false, error: "INVALID_URL" };
+    }
+    if (!/^https?:$/.test(target.protocol) || !/(?:^|\/)api(?:\/|$)/.test(target.pathname)) {
+      return { ok: false, error: "INVALID_API_URL" };
+    }
+
+    const method = typeof payload.method === "string" ? payload.method.toUpperCase() : "GET";
+    if (!["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+      return { ok: false, error: "INVALID_METHOD" };
+    }
+
+    const headers = {};
+    if (payload.headers && typeof payload.headers === "object" && !Array.isArray(payload.headers)) {
+      for (const [rawName, rawValue] of Object.entries(payload.headers)) {
+        const name = String(rawName).toLowerCase();
+        if (!/^[a-z0-9!#$%&'*+.^_`|~-]+$/.test(name)) continue;
+        if (["host", "origin", "cookie", "content-length", "connection"].includes(name) || name.startsWith("sec-")) continue;
+        if (typeof rawValue !== "string") continue;
+        headers[name] = rawValue.slice(0, 16_384);
+      }
+    }
+
+    const body = typeof payload.body === "string" ? payload.body : undefined;
+    if (body && Buffer.byteLength(body, "utf8") > 32 * 1024 * 1024) {
+      return { ok: false, error: "REQUEST_TOO_LARGE" };
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const response = await (currentRendererSession || session.defaultSession).fetch(target.toString(), {
+        method,
+        headers,
+        body: method === "GET" || method === "HEAD" ? undefined : body,
+        credentials: "include",
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      const responseHeaders = {};
+      response.headers.forEach((value, name) => {
+        if (name.toLowerCase() !== "set-cookie") responseHeaders[name] = value;
+      });
+      return {
+        ok: true,
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        body: method === "HEAD" ? "" : await response.text(),
+        url: response.url || target.toString(),
+      };
+    } catch (error) {
+      return { ok: false, error: error?.message || "NETWORK_ERROR" };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  });
+
   ipcMain.removeHandler("app:open-ugreen-remote-workspace");
   ipcMain.handle("app:open-ugreen-remote-workspace", async (event, payload = {}) => {
     const reject = assertMainWindowSender(event);
