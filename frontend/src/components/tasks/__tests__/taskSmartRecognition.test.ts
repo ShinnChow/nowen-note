@@ -389,8 +389,8 @@ describe("taskSmartRecognition - reminders and cleanup", () => {
 
         const dateOnlyWithReminder = parseTaskQuickAdd("明天 提醒我 提交报告", now);
         expect(dateOnlyWithReminder.taskPatch.dueDate).toBe("2026-07-09");
-        expect(dateOnlyWithReminder.taskPatch.dueAt).toBe("2026-07-09T08:30");
-        expect(dateOnlyWithReminder.reminderOffsets).toEqual([0]);
+        expect(dateOnlyWithReminder.taskPatch.dueAt).toBeUndefined();
+        expect(dateOnlyWithReminder.reminderOffsets).toEqual([930]);
 
         const dateAndTime = parseTaskQuickAdd("明天下午3点 开会", now);
         expect(dateAndTime.taskPatch.dueAt).toBe("2026-07-09T15:00");
