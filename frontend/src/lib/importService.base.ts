@@ -151,6 +151,8 @@ export interface ImportOptions {
    * to the rich-text TipTap JSON format. Non-Markdown sources ignore this.
    */
   targetContentFormat?: ImportTargetContentFormat;
+  /** Round-trip 数据包预检时展示的目标目录名称。 */
+  targetLabel?: string;
 }
 
 export type ImportProgress = {

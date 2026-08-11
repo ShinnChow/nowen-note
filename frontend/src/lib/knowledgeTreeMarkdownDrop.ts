@@ -1,5 +1,11 @@
 import { api } from "@/lib/api";
 import {
+  createRoundTripPackageImportFile,
+  importNotes,
+  parseRoundTripPackageManifest,
+  type PackageManifestPreview,
+} from "@/lib/importService";
+import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
@@ -32,6 +38,12 @@ export interface MarkdownBatchImportFailure {
 export interface MarkdownBatchImportResult {
   imported: ImportedMarkdownNote[];
   failures: MarkdownBatchImportFailure[];
+  importedCount?: number;
+  cancelled?: boolean;
+}
+
+export function markdownBatchImportedCount(result: MarkdownBatchImportResult): number {
+  return result.importedCount ?? result.imported.length;
 }
 
 let installed = false;
@@ -254,8 +266,23 @@ interface MarkdownZipEntry {
 }
 
 interface MarkdownZipArchive {
+  kind: "markdown";
   entries: Map<string, MarkdownZipEntry>;
   documents: MarkdownZipDocument[];
+}
+
+interface NowenPackageZipArchive {
+  kind: "nowen-package";
+  manifest: PackageManifestPreview;
+}
+
+type InspectedMarkdownZipArchive = MarkdownZipArchive | NowenPackageZipArchive;
+
+export interface MarkdownZipImportTarget {
+  parentId: string | null;
+  targetNotebookId?: string;
+  workspaceId?: string;
+  targetLabel?: string;
 }
 
 interface MarkdownLinkDestination {
@@ -413,12 +440,20 @@ function mimeTypeForZipAsset(fileName: string): string {
   return byExtension[extension] || "application/octet-stream";
 }
 
-async function readMarkdownZip(file: File): Promise<MarkdownZipArchive> {
+async function readMarkdownZip(file: File): Promise<InspectedMarkdownZipArchive> {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(file);
+  const manifestEntry = zip.file("manifest.json");
+  if (manifestEntry) {
+    const manifest = parseRoundTripPackageManifest(await manifestEntry.async("string"));
+    // Markdown round-trip 包同时包含给用户阅读的 Markdown 与 notes/* 私有正文。
+    // 必须在枚举 Markdown 前整体分流，避免重复导入并保留服务端附件 ID 重映射契约。
+    if (manifest) return { kind: "nowen-package", manifest };
+  }
+
   if (file.size > MAX_MARKDOWN_ZIP_FILE_SIZE) {
     throw new Error(`ZIP 超过 ${formatBytes(MAX_MARKDOWN_ZIP_FILE_SIZE)} 限制`);
   }
-  const JSZip = (await import("jszip")).default;
-  const zip = await JSZip.loadAsync(file);
   const zipEntries = Object.values(zip.files);
   if (zipEntries.length > MAX_MARKDOWN_ZIP_ENTRIES) {
     throw new Error(`ZIP 条目超过 ${MAX_MARKDOWN_ZIP_ENTRIES} 个限制`);
@@ -454,7 +489,49 @@ async function readMarkdownZip(file: File): Promise<MarkdownZipArchive> {
       assetPaths: references.assetPaths,
     });
   }
-  return { entries, documents };
+  return { kind: "markdown", entries, documents };
+}
+
+function normalizeMarkdownZipImportTarget(
+  target: string | null | MarkdownZipImportTarget,
+): MarkdownZipImportTarget {
+  return typeof target === "object" && target !== null
+    ? target
+    : { parentId: target };
+}
+
+async function importNowenPackageZip(
+  file: File,
+  manifest: PackageManifestPreview,
+  target: MarkdownZipImportTarget,
+): Promise<MarkdownBatchImportResult> {
+  if (target.parentId && !target.targetNotebookId) {
+    throw new Error("Nowen 数据包只能导入到目录节点，不能导入到文档节点");
+  }
+
+  let progressMessage = "Nowen 数据包导入失败";
+  const packageEntry = createRoundTripPackageImportFile(file, manifest);
+  const result = await importNotes(
+    [packageEntry],
+    target.targetNotebookId,
+    (progress) => { progressMessage = progress.message; },
+    {
+      workspaceId: target.workspaceId,
+      targetLabel: target.targetLabel,
+    },
+  );
+  if (!result.success) {
+    if (progressMessage.startsWith("已取消导入")) {
+      return { imported: [], failures: [], importedCount: 0, cancelled: true };
+    }
+    throw new Error(progressMessage.replace(/^导入失败：/, "") || "Nowen 数据包导入失败");
+  }
+  if (result.count <= 0) throw new Error("Nowen 数据包未创建任何笔记");
+
+  window.dispatchEvent(new CustomEvent(TREE_CHANGED_EVENT, {
+    detail: { reason: "roundtrip-markdown-package-imported", imported: result.count },
+  }));
+  return { imported: [], failures: [], importedCount: result.count };
 }
 
 async function importMarkdownZipDocument(
@@ -518,39 +595,52 @@ async function importMarkdownZipDocument(
 
 export async function importMarkdownZipFileIntoKnowledgeTree(
   file: File,
-  parentId: string | null,
+  targetInput: string | null | MarkdownZipImportTarget,
 ): Promise<MarkdownBatchImportResult> {
   const archive = await readMarkdownZip(file);
+  const target = normalizeMarkdownZipImportTarget(targetInput);
+  if (archive.kind === "nowen-package") {
+    return importNowenPackageZip(file, archive.manifest, target);
+  }
   const imported: ImportedMarkdownNote[] = [];
   const failures: MarkdownBatchImportFailure[] = [];
   const extractedBytes = { value: 0 };
 
   for (const document of archive.documents) {
     try {
-      imported.push(await importMarkdownZipDocument(document, archive, parentId, extractedBytes));
+      imported.push(await importMarkdownZipDocument(document, archive, target.parentId, extractedBytes));
     } catch (error) {
       failures.push({ name: document.path, reason: errorMessage(error) });
     }
   }
-  return { imported, failures };
+  return { imported, failures, importedCount: imported.length };
 }
 
 export async function importMarkdownZipFilesIntoKnowledgeTree(
   files: Iterable<File>,
-  parentId: string | null,
+  target: string | null | MarkdownZipImportTarget,
 ): Promise<MarkdownBatchImportResult> {
   const imported: ImportedMarkdownNote[] = [];
   const failures: MarkdownBatchImportFailure[] = [];
+  let importedCount = 0;
+  let cancelled = false;
   for (const file of Array.from(files).filter(isMarkdownZipDropFile)) {
     try {
-      const result = await importMarkdownZipFileIntoKnowledgeTree(file, parentId);
+      const result = await importMarkdownZipFileIntoKnowledgeTree(file, target);
       imported.push(...result.imported);
+      importedCount += markdownBatchImportedCount(result);
       failures.push(...result.failures);
+      cancelled ||= result.cancelled === true;
     } catch (error) {
       failures.push({ name: file.name, reason: errorMessage(error) });
     }
   }
-  return { imported, failures };
+  return {
+    imported,
+    failures,
+    importedCount,
+    cancelled: cancelled && importedCount === 0 && failures.length === 0,
+  };
 }
 
 export async function importMarkdownFileIntoKnowledgeTree(
@@ -729,9 +819,18 @@ async function handleKnowledgeTreeFileDrop(row: HTMLElement, dataTransfer: DataT
     successCount += markdownResult.imported.length;
     failures.push(...markdownResult.failures);
 
-    const markdownZipResult = await importMarkdownZipFilesIntoKnowledgeTree(markdownZipFiles, target.id);
-    successCount += markdownZipResult.imported.length;
+    const markdownZipResult = await importMarkdownZipFilesIntoKnowledgeTree(markdownZipFiles, {
+      parentId: target.id,
+      targetNotebookId: target.resourceType === "notebook" ? target.resourceId : undefined,
+      workspaceId: target.workspaceId || "personal",
+      targetLabel: target.title,
+    });
+    successCount += markdownBatchImportedCount(markdownZipResult);
     failures.push(...markdownZipResult.failures);
+    if (markdownZipResult.cancelled && successCount === 0 && failures.length === 0) {
+      toast.info("已取消导入，未写入任何数据");
+      return;
+    }
 
     for (const file of wordFiles) {
       try {

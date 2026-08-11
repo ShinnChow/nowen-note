@@ -1,10 +1,11 @@
 import { prompt as appPrompt } from "@/components/ui/confirm";
-import { api } from "@/lib/api";
+import { api, getCurrentWorkspace } from "@/lib/api";
 import { knowledgeTreeApi, type KnowledgeTreeNode } from "@/lib/knowledgeTreeApi";
 import {
   formatMarkdownImportFailures,
   importMarkdownFilesIntoKnowledgeTree,
   importMarkdownZipFilesIntoKnowledgeTree,
+  markdownBatchImportedCount,
   pickMarkdownFiles,
   pickMarkdownZipFiles,
 } from "@/lib/knowledgeTreeMarkdownDrop";
@@ -114,12 +115,23 @@ export async function importMarkdownZipIntoKnowledgeTree(
   const toastId = toast.info(`正在导入 ${files.length} 个 Markdown 附件 ZIP…`, 0);
   let result: Awaited<ReturnType<typeof importMarkdownZipFilesIntoKnowledgeTree>>;
   try {
-    result = await importMarkdownZipFilesIntoKnowledgeTree(files, options.parent?.id ?? null);
+    result = await importMarkdownZipFilesIntoKnowledgeTree(files, {
+      parentId: options.parent?.id ?? null,
+      targetNotebookId: options.parent?.resourceType === "notebook"
+        ? options.parent.resourceId
+        : undefined,
+      workspaceId: options.parent
+        ? options.parent.workspaceId || "personal"
+        : getCurrentWorkspace(),
+      targetLabel: options.parent?.title || "当前空间根目录",
+    });
   } finally {
     toast.dismiss(toastId);
   }
 
-  if (result.imported.length === 0) {
+  if (result.cancelled) return null;
+  const importedCount = markdownBatchImportedCount(result);
+  if (importedCount === 0) {
     throw new Error(
       result.failures.length > 0
         ? formatMarkdownImportFailures(result.failures)
@@ -128,11 +140,11 @@ export async function importMarkdownZipIntoKnowledgeTree(
   }
   if (result.failures.length > 0) {
     toast.warning(
-      `成功导入 ${result.imported.length} 篇笔记，${result.failures.length} 个失败：${formatMarkdownImportFailures(result.failures)}`,
+      `成功导入 ${importedCount} 篇笔记，${result.failures.length} 个失败：${formatMarkdownImportFailures(result.failures)}`,
       8000,
     );
   } else {
-    toast.success(`已从 ZIP 导入 ${result.imported.length} 篇笔记`);
+    toast.success(`已从 ZIP 导入 ${importedCount} 篇笔记`);
   }
   return result.imported[0];
 }
