@@ -25,7 +25,6 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { UserPreferencesProvider, useUserPreferences } from "@/hooks/useUserPreferences";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ConfirmProvider } from "@/components/ui/confirm";
 import Toaster from "@/components/Toaster";
 import { User } from "@/types";
 import { getServerUrl, setServerUrl, clearServerUrl, broadcastLogout, initializeServerUrlFromRuntime } from "@/lib/api";
@@ -1377,10 +1376,8 @@ function App() {
   if (shareMatch) {
     return (
       <ThemeProvider>
-        <ConfirmProvider>
-          <SharedNoteView shareToken={shareMatch[1]} />
-          <Toaster />
-        </ConfirmProvider>
+        <SharedNoteView shareToken={shareMatch[1]} />
+        <Toaster />
       </ThemeProvider>
     );
   }
@@ -1389,10 +1386,8 @@ function App() {
   if (notebookShareMatch) {
     return (
       <ThemeProvider>
-        <ConfirmProvider>
-          <NotebookShareJoinView token={notebookShareMatch[1]} />
-          <Toaster />
-        </ConfirmProvider>
+        <NotebookShareJoinView token={notebookShareMatch[1]} />
+        <Toaster />
       </ThemeProvider>
     );
   }
@@ -1400,10 +1395,8 @@ function App() {
   return (
     <ThemeProvider>
       <UserPreferencesProvider>
-        <ConfirmProvider>
-          <AuthGate />
-          <Toaster />
-        </ConfirmProvider>
+        <AuthGate />
+        <Toaster />
       </UserPreferencesProvider>
     </ThemeProvider>
   );

@@ -9,6 +9,7 @@ import "./i18n";
 import "./lib/imageNodeTransformBootstrap";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { SiteSettingsProvider } from "./hooks/useSiteSettings";
+import { ConfirmProvider } from "./components/ui/confirm";
 import Toaster from "./components/Toaster";
 import NoteIconBridge from "./components/NoteIconBridge";
 import EmbedPasswordBridge from "./components/EmbedPasswordBridge";
@@ -146,34 +147,36 @@ const publicRoute = resolvePublicNotebookRoute();
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <SiteSettingsProvider>
-      <BootSplashReadinessObserver />
-      {publicRoute.matched ? (
-        <ThemeProvider>
-          <React.Suspense fallback={<MainRouteFallback />}>
-            <PublicNotebookView token={publicRoute.token} />
-          </React.Suspense>
-          <Toaster />
-        </ThemeProvider>
-      ) : (
-        <>
-          <NoteIconBridge />
-          <EmbedPasswordBridge />
-          <ImageExperienceBridge />
-          <MobileImageViewerBridge />
-          <MediaExperienceBridge />
-          <EditorImageTransformBridge />
-          <DesktopUpdateCenter />
-          <DockerUpdateCenter />
-          <TwoFactorLoginChallengeCenter />
-          <AndroidShareImportCenter />
-          <DeferredGlobalFeatureCentersMount />
-          <SiyuanRichTextCalloutBridge />
-          <InlineCommentBridge />
-          <React.Suspense fallback={<MainRouteFallback />}>
-            <App />
-          </React.Suspense>
-        </>
-      )}
+      <ConfirmProvider>
+        <BootSplashReadinessObserver />
+        {publicRoute.matched ? (
+          <ThemeProvider>
+            <React.Suspense fallback={<MainRouteFallback />}>
+              <PublicNotebookView token={publicRoute.token} />
+            </React.Suspense>
+            <Toaster />
+          </ThemeProvider>
+        ) : (
+          <>
+            <NoteIconBridge />
+            <EmbedPasswordBridge />
+            <ImageExperienceBridge />
+            <MobileImageViewerBridge />
+            <MediaExperienceBridge />
+            <EditorImageTransformBridge />
+            <DesktopUpdateCenter />
+            <DockerUpdateCenter />
+            <TwoFactorLoginChallengeCenter />
+            <AndroidShareImportCenter />
+            <DeferredGlobalFeatureCentersMount />
+            <SiyuanRichTextCalloutBridge />
+            <InlineCommentBridge />
+            <React.Suspense fallback={<MainRouteFallback />}>
+              <App />
+            </React.Suspense>
+          </>
+        )}
+      </ConfirmProvider>
     </SiteSettingsProvider>
   </React.StrictMode>,
 );
