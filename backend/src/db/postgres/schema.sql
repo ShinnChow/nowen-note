@@ -14,6 +14,7 @@ $$;
 \ir schema.base.sql
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS "estimatedMinutes" INTEGER;
+ALTER TABLE task_reminders ADD COLUMN IF NOT EXISTS "timezoneOffsetMinutes" INTEGER;
 
 CREATE TABLE IF NOT EXISTS task_activity_events (
   id TEXT PRIMARY KEY,
