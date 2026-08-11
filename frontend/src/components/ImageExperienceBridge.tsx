@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import {
@@ -27,6 +26,7 @@ import {
   type MobileImageSheetControls,
   type SharedLightboxContext,
 } from "@/lib/imageExperience";
+import { registerMobileBackHandler } from "@/lib/mobileBackNavigation";
 
 const compactSheetOriginalDisplay = new WeakMap<HTMLElement, string>();
 
@@ -216,23 +216,17 @@ export default function ImageExperienceBridge() {
     };
     window.addEventListener("keydown", onKeyDown, true);
 
-    let disposed = false;
-    let removeBackButton: (() => void) | null = null;
-    if (Capacitor.isNativePlatform()) {
-      void CapacitorApp.addListener("backButton", () => closeMobileSheet())
-        .then((handle) => {
-          if (disposed) void handle.remove();
-          else removeBackButton = () => void handle.remove();
-        })
-        .catch(() => {});
-    }
+    const unregisterBackHandler = registerMobileBackHandler("sheet", () => {
+      if (!mobileSheetRef.current) return false;
+      closeMobileSheet();
+      return true;
+    });
 
     return () => {
-      disposed = true;
       timers.forEach((timer) => window.clearTimeout(timer));
       window.removeEventListener("focus", keepKeyboardHidden);
       window.removeEventListener("keydown", onKeyDown, true);
-      removeBackButton?.();
+      unregisterBackHandler();
       if (editor) {
         if (previousInputMode === null) editor.removeAttribute("inputmode");
         else editor.setAttribute("inputmode", previousInputMode);

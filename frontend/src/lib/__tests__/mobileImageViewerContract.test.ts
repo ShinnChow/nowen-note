@@ -6,13 +6,14 @@ function source(relativeUrl: string) {
 }
 
 describe("mobile image viewer contract", () => {
-  it("keeps close controls outside the gesture stage and handles Android back", () => {
+  it("keeps close controls outside the gesture stage and joins the shared Android back stack", () => {
     const viewer = source("../../components/MobileImageViewer.tsx");
 
     expect(viewer).toContain('data-nowen-mobile-image-viewer=""');
     expect(viewer).toContain('style={{ touchAction: "none" }}');
     expect(viewer).toContain("onPointerDown={handleClosePointerDown}");
-    expect(viewer).toContain('CapacitorApp.addListener("backButton"');
+    expect(viewer).toContain('registerMobileBackHandler("image-viewer"');
+    expect(viewer).not.toContain('addListener("backButton"');
     expect(viewer).toContain("const MIN_SCALE = 1");
     expect(viewer).toContain("const MAX_SCALE = 5");
     expect(viewer).toContain("setPointerCapture");

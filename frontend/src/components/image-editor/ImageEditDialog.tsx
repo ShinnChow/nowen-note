@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/lib/toast";
+import { registerMobileBackHandler } from "@/lib/mobileBackNavigation";
 import {
   exportCanvasToBlob,
   loadImageAsBitmap,
@@ -301,6 +302,15 @@ export default function ImageEditDialog({ open, src, onClose, onSave }: ImageEdi
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [cancelTransientEdit, cropRect, draftActive, handleRedo, handleUndo, open, textDraft]);
+
+  useEffect(() => {
+    if (!open) return;
+    return registerMobileBackHandler("modal", () => {
+      if (textDraft || cropRect || draftActive) cancelTransientEdit();
+      else if (!saving) onClose();
+      return true;
+    });
+  }, [cancelTransientEdit, cropRect, draftActive, onClose, open, saving, textDraft]);
 
   const selectTool = useCallback((tool: ImageEditorTool) => {
     cancelTransientEdit();

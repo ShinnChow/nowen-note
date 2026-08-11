@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { App as CapacitorApp } from "@capacitor/app";
-import { Capacitor } from "@capacitor/core";
 import { RotateCcw, X, ZoomIn, ZoomOut } from "lucide-react";
+import { registerMobileBackHandler } from "@/lib/mobileBackNavigation";
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 5;
@@ -124,16 +123,11 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
     };
     window.addEventListener("keydown", onKeyDown);
 
-    let disposed = false;
-    let removeBackButton: (() => void) | null = null;
-    if (Capacitor.isNativePlatform()) {
-      void CapacitorApp.addListener("backButton", () => closeViewer())
-        .then((handle) => {
-          if (disposed) void handle.remove();
-          else removeBackButton = () => void handle.remove();
-        })
-        .catch(() => {});
-    }
+    const unregisterBackHandler = registerMobileBackHandler("image-viewer", () => {
+      if (!document.querySelector("[data-nowen-mobile-image-viewer]")) return false;
+      closeViewer();
+      return true;
+    });
 
     const handleResize = () => {
       commitTransform(scaleRef.current, positionRef.current);
@@ -141,11 +135,10 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
     window.addEventListener("resize", handleResize);
 
     return () => {
-      disposed = true;
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", handleResize);
-      removeBackButton?.();
+      unregisterBackHandler();
     };
   }, [open, closeViewer, commitTransform, resetTransform]);
 

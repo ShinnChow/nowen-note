@@ -506,13 +506,15 @@ function AppLayout() {
   const handleBackToList = useCallback(() => {
     actions.setMobileView("list");
   }, [actions]);
-  const ignoreSidebarBack = useCallback(() => {}, []);
+  const handleCloseSidebar = useCallback(() => {
+    actions.setMobileSidebar(false);
+  }, [actions]);
 
   useBackButton({
     mobileView: state.mobileView,
-    mobileSidebarOpen: false,
+    mobileSidebarOpen: state.mobileSidebarOpen,
     onBackToList: handleBackToList,
-    onCloseSidebar: ignoreSidebarBack,
+    onCloseSidebar: handleCloseSidebar,
   });
 
   // P2: 状态栏与主题同步
