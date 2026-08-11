@@ -207,6 +207,7 @@ function requiredScope(pathname: string, method: string): string | null {
   if (pathname === "/api/me") return null;
   if (pathname.startsWith("/api/tokens")) return "__login_only__";
   if (pathname.startsWith("/api/notebooks")) return write ? "notebooks:write" : "notebooks:read";
+  if (pathname.startsWith("/api/note-templates")) return write ? "notes:write" : "notes:read";
   if (pathname.startsWith("/api/notes")) return write ? "notes:write" : "notes:read";
   if (pathname.startsWith("/api/blocks")) return write ? "notes:write" : "notes:read";
   if (pathname.startsWith("/api/search")) return "notes:read";
@@ -472,6 +473,9 @@ export async function enforceApiTokenAccess(c: Context, next: Next): Promise<Res
     }
 
     c.req.raw.headers.set("X-Api-Allowed-Notebook-Ids", Array.from(ctx.notebooks.keys()).join(","));
+    if (c.req.path.startsWith("/api/note-templates")) {
+      throw new ApiTokenAccessError("restricted Token 不允许访问工作区级笔记模板");
+    }
     if (c.req.path.startsWith("/api/notebooks")) await handleNotebooks(c, next, ctx);
     else if (c.req.path.startsWith("/api/notes")) await handleNotes(c, next, ctx);
     else if (c.req.path.startsWith("/api/search")) await handleSearch(c, next, ctx);

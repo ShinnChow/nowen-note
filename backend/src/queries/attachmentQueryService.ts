@@ -41,7 +41,7 @@ export const attachmentQueryService = {
   /**
    * 获取所有已注册附件的唯一路径列表（含引用计数）。
    *
-   * 跨 attachments / diary_attachments / task_attachments 三表 UNION ALL。
+   * 跨普通附件、日记附件、任务附件和模板附件四表 UNION ALL。
    * 用于存储管理页面展示磁盘占用。
    *
    * @param limit 返回条数上限
@@ -57,6 +57,8 @@ export const attachmentQueryService = {
            SELECT path, size FROM diary_attachments
            UNION ALL
            SELECT path, size FROM task_attachments
+           UNION ALL
+           SELECT path, size FROM note_template_attachments
          )
          SELECT path, MAX(size) AS size, COUNT(*) AS refs
          FROM all_paths
@@ -71,7 +73,7 @@ export const attachmentQueryService = {
   /**
    * 统计所有已注册附件的唯一路径数量。
    *
-   * 跨 attachments / diary_attachments / task_attachments 三表 UNION ALL。
+   * 跨普通附件、日记附件、任务附件和模板附件四表 UNION ALL。
    * 用于存储管理页面展示总数。
    *
    * @returns 唯一路径数量
@@ -86,6 +88,8 @@ export const attachmentQueryService = {
            SELECT path FROM diary_attachments
            UNION ALL
            SELECT path FROM task_attachments
+           UNION ALL
+           SELECT path FROM note_template_attachments
          )
          SELECT COUNT(DISTINCT path) AS count
          FROM all_paths

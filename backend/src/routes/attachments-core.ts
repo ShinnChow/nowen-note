@@ -1060,7 +1060,13 @@ export function scanOrphanAttachments(graceHours = 24): OrphanScanResult {
   const dbRows = db
     .prepare("SELECT id, noteId, path, size, createdAt FROM attachments")
     .all() as { id: string; noteId: string; path: string; size: number; createdAt: string }[];
-  const dbFilenames = new Set(dbRows.map((r) => r.path));
+  const templatePaths = db
+    .prepare("SELECT path FROM note_template_attachments")
+    .all() as Array<{ path: string }>;
+  const dbFilenames = new Set([
+    ...dbRows.map((r) => r.path),
+    ...templatePaths.map((r) => r.path),
+  ]);
 
   // 3) DB 孤儿：磁盘有 + DB 无
   const dbOrphans: { filename: string; bytes: number }[] = [];
@@ -1375,7 +1381,9 @@ function requireAdminSudoOrDeny(c: Context): Response | null {
   return null;
 }
 
-function getAttachmentTableStats(table: "attachments" | "diary_attachments" | "task_attachments") {
+function getAttachmentTableStats(
+  table: "attachments" | "diary_attachments" | "task_attachments" | "note_template_attachments",
+) {
   try {
     return getDb()
       .prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(size), 0) AS bytes FROM ${table}`)
@@ -1421,16 +1429,18 @@ app.get("/_storage/status", (c) => {
   const notes = getAttachmentTableStats("attachments");
   const diary = getAttachmentTableStats("diary_attachments");
   const tasks = getAttachmentTableStats("task_attachments");
+  const templates = getAttachmentTableStats("note_template_attachments");
   const local = getLocalAttachmentFileStats(ATTACHMENTS_DIR);
 
   return c.json({
     storage,
     db: {
-      rows: notes.count + diary.count + tasks.count,
-      bytes: notes.bytes + diary.bytes + tasks.bytes,
+      rows: notes.count + diary.count + tasks.count + templates.count,
+      bytes: notes.bytes + diary.bytes + tasks.bytes + templates.bytes,
       attachments: notes,
       diaryAttachments: diary,
       taskAttachments: tasks,
+      noteTemplateAttachments: templates,
     },
     local: {
       dir: ATTACHMENTS_DIR,

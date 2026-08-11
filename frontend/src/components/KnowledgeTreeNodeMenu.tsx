@@ -11,6 +11,7 @@ import {
   FolderPlus,
   Image as ImageIcon,
   Link2,
+  LayoutTemplate,
   Lock,
   LockKeyhole,
   MoreHorizontal,
@@ -34,7 +35,7 @@ import ContextMenu, { type ContextMenuItem } from "@/components/ContextMenu";
 import EmojiIconPicker from "@/components/EmojiPicker";
 import NotebookShareDialog from "@/components/NotebookShareDialog";
 import ShareModal from "@/components/ShareModal";
-import { confirm } from "@/components/ui/confirm";
+import { confirm, prompt } from "@/components/ui/confirm";
 import {
   importMarkdownIntoKnowledgeTree,
   importMarkdownZipIntoKnowledgeTree,
@@ -56,6 +57,7 @@ import {
   getNoteFormatConversionTarget,
   requestActiveNoteFormatConversion,
 } from "@/lib/noteFormatConversion";
+import { noteTemplatesApi } from "@/lib/noteTemplatesApi";
 import { toast } from "@/lib/toast";
 import { useApp, useAppActions } from "@/store/AppContext";
 import type { Notebook } from "@/types";
@@ -170,6 +172,18 @@ export function buildKnowledgeTreeNodeMenuItems(
         disabled: !note || note.isLocked === 1,
       },
     );
+  }
+
+  if (isDocument && capabilities.canEdit) {
+    if (!isOwned) items.push(separator("sep-note-template"));
+    items.push({
+      id: "save_as_template",
+      label: "保存为模板",
+      icon: <LayoutTemplate size={14} />,
+      disabled: !note
+        || note.isLocked === 1
+        || (note.contentFormat !== "markdown" && note.contentFormat !== "tiptap-json"),
+    });
   }
 
   const management: ContextMenuItem[] = [];
@@ -437,6 +451,25 @@ export default function KnowledgeTreeNodeMenu({
     toast.success(`已转换为${targetLabel}`);
   };
 
+  const saveAsTemplate = async () => {
+    if (!node || node.resourceType !== "note") return;
+    const current = note || await api.getNote(node.resourceId);
+    const name = await prompt({
+      title: "保存为模板",
+      description: "模板会保存当前笔记内容和本地附件的独立快照。",
+      defaultValue: current.title || node.title,
+      confirmText: "保存",
+      validate: (value) => {
+        const length = value.trim().length;
+        if (length === 0) return "模板名称不能为空";
+        return length > 200 ? "模板名称不能超过 200 个字符" : null;
+      },
+    });
+    if (name == null) return;
+    await noteTemplatesApi.createFromNote(current.id, name.trim());
+    toast.success("已保存为模板");
+  };
+
   const exportFolder = async () => {
     if (!node || node.resourceType !== "notebook") return;
     const { ids, names } = descendantNotebookResources(node, nodes);
@@ -532,6 +565,7 @@ export default function KnowledgeTreeNodeMenu({
         case "toggle_favorite": await patchNote({ isFavorite: note?.isFavorite === 1 ? 0 : 1 }); break;
         case "toggle_lock": await patchNote({ isLocked: note?.isLocked === 1 ? 0 : 1 }); break;
         case "convert_format": await convertFormat(); break;
+        case "save_as_template": await saveAsTemplate(); break;
         case "rename": await onRename(node); break;
         case "move": onMove(node); break;
         case "permissions": onPermissions(node); break;

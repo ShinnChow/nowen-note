@@ -63,6 +63,7 @@ import {
   knowledgeTreeApi,
   type KnowledgeTreeNode,
 } from "@/lib/knowledgeTreeApi";
+import { noteTemplatesApi } from "@/lib/noteTemplatesApi";
 import {
   getKnowledgeTreeExpansionScope,
   getKnowledgeTreeExpansionSnapshot,
@@ -256,6 +257,7 @@ export interface KnowledgeTreePanelProps {
   className?: string;
   createRequest?: KnowledgeTreeInlineCreateRequest;
   importRequest?: KnowledgeTreeImportRequest;
+  templateCreateRequest?: KnowledgeTreeTemplateCreateRequest;
   showAllNotesToolbar?: boolean;
   layoutMode?: NoteWorkspaceLayoutMode;
 }
@@ -272,11 +274,20 @@ export interface KnowledgeTreeImportRequest {
   kind: "markdown" | "markdown-zip" | "word" | "wechat";
 }
 
+export interface KnowledgeTreeTemplateCreateRequest {
+  requestId: number;
+  parentId: string | null;
+  templateId: string;
+  onCompleted: () => void;
+  onFailed: (error: Error) => void;
+}
+
 export function KnowledgeTreePanel({
   variant = "desktop",
   className,
   createRequest,
   importRequest,
+  templateCreateRequest,
   showAllNotesToolbar = true,
   layoutMode = "standard",
 }: KnowledgeTreePanelProps) {
@@ -294,6 +305,7 @@ export function KnowledgeTreePanel({
   const draftInputRef = useRef<HTMLInputElement>(null);
   const handledCreateRequestRef = useRef<number | null>(null);
   const handledImportRequestRef = useRef<number | null>(null);
+  const handledTemplateCreateRequestRef = useRef<number | null>(null);
   const mobileActionsButtonRef = useRef<HTMLButtonElement>(null);
   const [nodes, setNodes] = useState<KnowledgeTreeNode[]>([]);
   const [loading, setLoading] = useState(false);
@@ -756,6 +768,68 @@ export function KnowledgeTreePanel({
     };
     void runImport();
   }, [actions, activateNote, importRequest, nodes, state.activeNote?.notebookId, state.notebooks, state.selectedNotebookId, unlockedFolderIds]);
+
+  useEffect(() => {
+    if (!templateCreateRequest
+      || handledTemplateCreateRequestRef.current === templateCreateRequest.requestId) return;
+    const parent = templateCreateRequest.parentId
+      ? nodes.find((node) => node.id === templateCreateRequest.parentId) || null
+      : null;
+    handledTemplateCreateRequestRef.current = templateCreateRequest.requestId;
+    if (templateCreateRequest.parentId && !parent) {
+      templateCreateRequest.onFailed(new Error("目标目录不存在或已被删除"));
+      return;
+    }
+    if (parent && !parent.access.capabilities.canCreate) {
+      templateCreateRequest.onFailed(new Error("没有在此处新建内容的权限"));
+      return;
+    }
+    if (parent && !isFolderUnlocked(parent, unlockedFolderIds)) {
+      setPendingFolderAction(null);
+      setPasswordDialog({ node: parent, mode: "unlock" });
+      templateCreateRequest.onFailed(new Error("请先解锁目录后重试"));
+      return;
+    }
+
+    const runCreate = async () => {
+      try {
+        const result = await noteTemplatesApi.createNote(
+          templateCreateRequest.templateId,
+          templateCreateRequest.parentId,
+        );
+        if (templateCreateRequest.parentId) {
+          setNodeExpanded(templateCreateRequest.parentId, true);
+          if (!parent?.sharedRootId) {
+            void knowledgeTreeApi.update(templateCreateRequest.parentId, { isExpanded: true }).catch(() => {});
+          }
+        }
+        emitTreeChanged("node-created-from-template");
+        await reload();
+        actions.refreshNotebooks();
+        actions.refreshNotes();
+        try {
+          activateNote(await api.getNote(result.noteId), templateCreateRequest.parentId);
+        } catch (openError: any) {
+          toast.error(openError?.message || "文档已创建，但自动打开失败");
+        }
+        toast.success("已从模板创建笔记");
+        templateCreateRequest.onCompleted();
+      } catch (requestError: any) {
+        templateCreateRequest.onFailed(
+          requestError instanceof Error ? requestError : new Error("从模板创建失败，请重试"),
+        );
+      }
+    };
+    void runCreate();
+  }, [
+    actions,
+    activateNote,
+    nodes,
+    reload,
+    setNodeExpanded,
+    templateCreateRequest,
+    unlockedFolderIds,
+  ]);
 
   const commitDraft = async () => {
     if (!draft || draft.saving) return;
