@@ -8,6 +8,7 @@ import {
   Download,
   ExternalLink,
   MoreHorizontal,
+  Palette,
   RotateCw,
   Scan,
   X,
@@ -58,6 +59,8 @@ export interface FullscreenImageViewerProps {
   onIndexChange?: (index: number) => void;
   onDownload?: (item: FullscreenImageItem, index: number) => void | Promise<void>;
   onCopy?: (item: FullscreenImageItem, index: number) => void | Promise<void>;
+  canEdit?: boolean;
+  onEdit?: (item: FullscreenImageItem, index: number) => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -100,6 +103,8 @@ export default function FullscreenImageViewer({
   onIndexChange,
   onDownload,
   onCopy,
+  canEdit = false,
+  onEdit,
 }: FullscreenImageViewerProps) {
   const gallery = useMemo<FullscreenImageItem[]>(() => {
     const valid = images?.filter((item) => !!item.src) || [];
@@ -486,6 +491,14 @@ export default function FullscreenImageViewer({
     setMoreOpen(false);
   }, [currentItem.src]);
 
+  const handleEdit = useCallback(() => {
+    if (!canEdit || !onEdit) return;
+    const item = currentItem;
+    const index = currentIndex;
+    closeViewer();
+    onEdit(item, index);
+  }, [canEdit, closeViewer, currentIndex, currentItem, onEdit]);
+
   const toggleScaleMode = useCallback(() => {
     const oneToOneScale = clamp(1 / fitRatioRef.current, MIN_SCALE, maxScaleRef.current);
     if (scaleRef.current > MIN_SCALE + 0.01) {
@@ -610,14 +623,14 @@ export default function FullscreenImageViewer({
       </button>
 
       <div
-        className={`fixed left-1/2 z-[1010] flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-white/10 bg-black/65 px-1.5 py-1.5 text-white shadow-2xl backdrop-blur-md transition-all duration-150 sm:gap-1 sm:px-2 ${controlsVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0"}`}
+        className={`fixed left-1/2 z-[1010] flex max-w-[calc(100vw-12px)] -translate-x-1/2 items-center gap-0.5 rounded-full border border-white/10 bg-black/65 px-1 py-1.5 text-white shadow-2xl backdrop-blur-md transition-all duration-150 sm:gap-1 sm:px-2 ${controlsVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0"}`}
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 14px)", touchAction: "manipulation" }}
         onPointerDown={(event) => event.stopPropagation()}
       >
         <button
           type="button"
           aria-label="缩小图片"
-          className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 active:bg-white/15 disabled:opacity-35 sm:h-11 sm:w-11"
+          className="flex h-10 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 active:bg-white/15 disabled:opacity-35 sm:h-11 sm:w-11"
           disabled={scale <= MIN_SCALE}
           onClick={() => zoomAroundPoint(scaleRef.current - 0.25)}
         >
@@ -628,14 +641,14 @@ export default function FullscreenImageViewer({
           aria-label="在适应窗口和原始比例之间切换"
           title="适应窗口 / 1:1"
           onClick={toggleScaleMode}
-          className="min-w-[48px] select-none rounded-full px-1.5 py-2 text-center font-mono text-xs tabular-nums text-white/90 transition-colors hover:bg-white/10 sm:min-w-[56px] sm:text-sm"
+          className="min-w-[44px] select-none rounded-full px-1 py-2 text-center font-mono text-xs tabular-nums text-white/90 transition-colors hover:bg-white/10 sm:min-w-[56px] sm:px-1.5 sm:text-sm"
         >
           {displayPercent}%
         </button>
         <button
           type="button"
           aria-label="放大图片"
-          className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 active:bg-white/15 disabled:opacity-35 sm:h-11 sm:w-11"
+          className="flex h-10 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 active:bg-white/15 disabled:opacity-35 sm:h-11 sm:w-11"
           disabled={scale >= maxScaleRef.current - 0.01}
           onClick={() => zoomAroundPoint(scaleRef.current + 0.25)}
         >
@@ -645,7 +658,7 @@ export default function FullscreenImageViewer({
           type="button"
           aria-label="顺时针旋转图片"
           title="顺时针旋转 90°"
-          className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 active:bg-white/15 sm:h-11 sm:w-11"
+          className="flex h-10 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 active:bg-white/15 sm:h-11 sm:w-11"
           onClick={rotateClockwise}
         >
           <RotateCw size={20} />
@@ -655,11 +668,22 @@ export default function FullscreenImageViewer({
           aria-label="复原图片预览"
           title="复原缩放、旋转和位置"
           disabled={!hasTransform}
-          className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/10 active:bg-white/15 disabled:opacity-35 sm:h-11 sm:w-11"
+          className="flex h-10 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 active:bg-white/15 disabled:opacity-35 sm:h-11 sm:w-11"
           onClick={resetTransform}
         >
           <Scan size={20} />
         </button>
+        {canEdit && onEdit && (
+          <button
+            type="button"
+            aria-label="编辑图片"
+            title="编辑图片"
+            className="flex h-10 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/10 active:bg-white/15 sm:h-11 sm:w-11"
+            onClick={handleEdit}
+          >
+            <Palette size={19} />
+          </button>
+        )}
         <button
           type="button"
           aria-label="下载图片"
@@ -676,7 +700,7 @@ export default function FullscreenImageViewer({
             title="更多"
             aria-expanded={moreOpen}
             onClick={() => setMoreOpen((value) => !value)}
-            className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors active:bg-white/15 sm:h-11 sm:w-11 ${moreOpen ? "bg-white/15" : "hover:bg-white/10"}`}
+            className={`flex h-10 w-9 items-center justify-center rounded-full transition-colors active:bg-white/15 sm:h-11 sm:w-11 ${moreOpen ? "bg-white/15" : "hover:bg-white/10"}`}
           >
             <MoreHorizontal size={20} />
           </button>

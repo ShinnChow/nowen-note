@@ -66,6 +66,7 @@ import {
   isInlineVideoAttachment,
 } from "@/lib/existingAttachmentInsert";
 import {
+  buildEditedImageAttrs,
   buildReplacedImageAttrs,
   getImageCopySource,
   getImageDownloadFilename,
@@ -111,7 +112,7 @@ import { openTaskQuickCapture } from "@/lib/taskInboxApi";
 import { saveAs } from "file-saver";
 import { findTextAction, type TextAction } from "@/lib/textActions";
 import { choose as chooseDialog, prompt as promptDialog } from "@/components/ui/confirm";
-import { normalizeImageFlipX, normalizeImageRotation } from "@/lib/imageNodeTransformBootstrap";
+import { normalizeImageFlipX, normalizeImageRotation, type ImageRotation } from "@/lib/imageNodeTransformBootstrap";
 import { registerMobileBackHandler } from "@/lib/mobileBackNavigation";
 import { Note, Tag, type FileDetail, type FileItem } from "@/types";
 import TagInput from "@/components/TagInput";
@@ -1501,6 +1502,39 @@ type TiptapEditorProps = NoteEditorProps & {
   useParentScrollContainer?: boolean;
 };
 
+type EditorImageTarget = {
+  imagePos: number;
+  originalSrc: string;
+  filename: string;
+  rotation: ImageRotation;
+  flipX: boolean;
+};
+
+type ImageViewerState = {
+  images: FullscreenImageItem[];
+  targets: Array<EditorImageTarget | null>;
+  initialIndex: number;
+};
+
+function resolveEditorImageTargetPosition(
+  editor: Editor,
+  target: Pick<EditorImageTarget, "imagePos" | "originalSrc">,
+): number | null {
+  const preferred = editor.state.doc.nodeAt(target.imagePos);
+  if (
+    isImageReplaceTargetNode(preferred)
+    && String(preferred.attrs.src || "") === target.originalSrc
+  ) return target.imagePos;
+
+  const matches: number[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "image" && String(node.attrs.src || "") === target.originalSrc) {
+      matches.push(pos);
+    }
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
 function extractHeadings(editor: any): NoteEditorHeading[] {
   const headings: NoteEditorHeading[] = [];
   const doc = editor.state.doc;
@@ -1597,10 +1631,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   >(null);
   const [attachmentLibraryOpen, setAttachmentLibraryOpen] = useState(false);
   const attachmentLibraryAnchorRef = useRef<AsyncInsertAnchor | null>(null);
-  const [imageViewer, setImageViewer] = useState<{
-    images: FullscreenImageItem[];
-    initialIndex: number;
-  } | null>(null);
+  const [imageViewer, setImageViewer] = useState<ImageViewerState | null>(null);
   // 编辑器是否聚焦 —— 用来控制移动端浮动工具栏是否显示
   // （未聚焦时键盘其实已经收起，这里是双重保险：避免聚焦到标题栏时误显示）
 
@@ -1624,8 +1655,11 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   const [imageEditDialog, setImageEditDialog] = useState<{
     open: boolean;
     src: string;
+    originalSrc: string;
     filename: string;
     imagePos: number;
+    initialRotation: ImageRotation;
+    initialFlipX: boolean;
   } | null>(null);
   // 光标在表格内时的表格操作气泡（合并/拆分/增删行列等）
   // 与文本/图片气泡互斥：选中图片或选中非空文本时不显示表格气泡
@@ -3439,24 +3473,35 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   const openImageViewer = useCallback((targetSrc: string, targetAlt = "", targetPos?: number) => {
     if (!editor || !targetSrc) return;
     const images: FullscreenImageItem[] = [];
-    const positions: number[] = [];
+    const targets: EditorImageTarget[] = [];
     editor.state.doc.descendants((node, pos) => {
       if (node.type.name !== "image") return;
       const imageSrc = typeof node.attrs.src === "string" ? node.attrs.src : "";
       if (!imageSrc) return;
+      const attrs = node.attrs as ImageNodeAttrs;
+      const filename = getImageDownloadFilename(attrs);
       images.push({
         src: resolveAttachmentUrl(imageSrc),
         alt: typeof node.attrs.alt === "string" ? node.attrs.alt : "",
-        filename: getImageDownloadFilename(node.attrs as ImageNodeAttrs),
+        filename,
       });
-      positions.push(pos);
+      targets.push({
+        imagePos: pos,
+        originalSrc: imageSrc,
+        filename,
+        rotation: normalizeImageRotation(attrs.rotation),
+        flipX: normalizeImageFlipX(attrs.flipX),
+      });
     });
     const resolvedTarget = resolveAttachmentUrl(targetSrc);
-    const positionIndex = typeof targetPos === "number" ? positions.indexOf(targetPos) : -1;
+    const positionIndex = typeof targetPos === "number"
+      ? targets.findIndex((target) => target.imagePos === targetPos)
+      : -1;
     const sourceIndex = images.findIndex((item) => item.src === targetSrc || item.src === resolvedTarget);
     const initialIndex = Math.max(0, positionIndex >= 0 ? positionIndex : sourceIndex);
     setImageViewer({
       images: images.length ? images : [{ src: resolvedTarget, alt: targetAlt }],
+      targets: images.length ? targets : [null],
       initialIndex,
     });
   }, [editor]);
@@ -3670,28 +3715,53 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     setImageBubble((b) => (b.open ? { ...b, open: false } : b));
   }, [editor]);
 
-  const handleEditSelectedImage = useCallback(() => {
-    if (!editor) return;
+  const openImageEditorTarget = useCallback((target: EditorImageTarget) => {
+    if (!editor || !editable) return;
     const currentNote = noteRef.current;
     if (!currentNote?.id) {
       toast.error(t("tiptap.imageEditOpenFailed", { defaultValue: "无法编辑图片" }));
       return;
     }
-    const attrs = getSelectedImageAttrs();
-    const src = typeof attrs?.src === "string" ? attrs.src : "";
-    if (!src) return;
-    if (isSvgImageSource(src)) {
+    const imagePos = resolveEditorImageTargetPosition(editor, target);
+    const node = imagePos == null ? null : editor.state.doc.nodeAt(imagePos);
+    if (!isImageReplaceTargetNode(node)) {
+      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后编辑" }));
+      return;
+    }
+    const attrs = node.attrs as ImageNodeAttrs;
+    const originalSrc = String(attrs.src || "");
+    if (!originalSrc) return;
+    if (isSvgImageSource(originalSrc)) {
       toast.info(t("tiptap.imageEditSvgUnsupported", { defaultValue: "SVG 暂不支持编辑" }));
       return;
     }
     setImageEditDialog({
       open: true,
-      src: resolveAttachmentUrl(src),
-      filename: getImageDownloadFilename(attrs ?? {}),
-      imagePos: editor.state.selection.from,
+      src: resolveAttachmentUrl(originalSrc),
+      originalSrc,
+      filename: getImageDownloadFilename(attrs),
+      imagePos,
+      initialRotation: normalizeImageRotation(attrs.rotation),
+      initialFlipX: normalizeImageFlipX(attrs.flipX),
     });
     setImageBubble((b) => (b.open ? { ...b, open: false } : b));
-  }, [editor, getSelectedImageAttrs, t]);
+  }, [editable, editor, t]);
+
+  const handleEditSelectedImage = useCallback(() => {
+    if (!editor) return;
+    const selection = editor.state.selection;
+    if (!(selection instanceof NodeSelection) || selection.node.type.name !== "image") return;
+    const attrs = selection.node.attrs as ImageNodeAttrs;
+    const originalSrc = String(attrs.src || "");
+    if (!originalSrc) return;
+    openImageEditorTarget({
+      imagePos: selection.from,
+      originalSrc,
+      filename: getImageDownloadFilename(attrs),
+      rotation: normalizeImageRotation(attrs.rotation),
+      flipX: normalizeImageFlipX(attrs.flipX),
+    });
+  }, [editor, openImageEditorTarget]);
 
   const handleRotateSelectedImage = useCallback((delta: -90 | 90) => {
     if (!editor) return;
@@ -3715,11 +3785,19 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   }, [editor]);
 
   const handleSaveEditedImage = useCallback(async (blob: Blob) => {
-    if (!editor || !imageEditDialog) return;
+    if (!editor || !imageEditDialog) return false;
     const currentNote = noteRef.current;
     if (!currentNote?.id) {
       toast.error(t("tiptap.imageEditSaveFailed", { defaultValue: "图片保存失败" }));
       throw new Error("missing note id");
+    }
+    const targetIdentity = {
+      imagePos: imageEditDialog.imagePos,
+      originalSrc: imageEditDialog.originalSrc,
+    };
+    if (resolveEditorImageTargetPosition(editor, targetIdentity) == null) {
+      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后编辑" }));
+      return false;
     }
     toast.info(t("tiptap.imageEditUploading", { defaultValue: "正在保存编辑后的图片..." }));
     const file = editedImageBlobToFile(blob, imageEditDialog.filename);
@@ -3727,18 +3805,22 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     if (res.category !== "image") {
       throw new Error("uploaded file is not an image");
     }
-    const targetNode = editor.state.doc.nodeAt(imageEditDialog.imagePos);
+    if (editor.isDestroyed) return false;
+    const targetPos = resolveEditorImageTargetPosition(editor, targetIdentity);
+    const targetNode = targetPos == null ? null : editor.state.doc.nodeAt(targetPos);
     if (!isImageReplaceTargetNode(targetNode)) {
       toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后替换" }));
-      return;
+      return false;
     }
-    editor
-      .chain()
-      .focus()
-      .setNodeSelection(imageEditDialog.imagePos)
-      .updateAttributes("image", buildReplacedImageAttrs(targetNode.attrs as ImageNodeAttrs, res.url))
-      .run();
+    let transaction = editor.state.tr.setNodeMarkup(
+      targetPos,
+      undefined,
+      buildEditedImageAttrs(targetNode.attrs as ImageNodeAttrs, res.url),
+    );
+    try { transaction = transaction.setSelection(NodeSelection.create(transaction.doc, targetPos)); } catch {}
+    editor.view.dispatch(transaction.scrollIntoView());
     toast.success(t("tiptap.imageEditSaveSuccess", { defaultValue: "图片已保存" }));
+    return true;
   }, [editor, imageEditDialog, t]);
 
   const handleSetSelectedImageSize = useCallback((ratio: number | null) => {
@@ -6429,6 +6511,8 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           open={imageEditDialog.open}
           src={imageEditDialog.src}
           filename={imageEditDialog.filename}
+          initialRotation={imageEditDialog.initialRotation}
+          initialFlipX={imageEditDialog.initialFlipX}
           onClose={() => setImageEditDialog(null)}
           onSave={handleSaveEditedImage}
         />
@@ -6438,6 +6522,11 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
         open={!!imageViewer}
         images={imageViewer?.images}
         initialIndex={imageViewer?.initialIndex || 0}
+        canEdit={editable}
+        onEdit={(_, index) => {
+          const target = imageViewer?.targets[index];
+          if (target) openImageEditorTarget(target);
+        }}
         onDownload={handleViewerDownload}
         onClose={() => setImageViewer(null)}
       />

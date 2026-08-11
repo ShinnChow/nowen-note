@@ -21,6 +21,9 @@ describe("mobile image viewer contract", () => {
     expect(viewer).toContain("navigateGallery");
     expect(viewer).toContain("rotateClockwise");
     expect(viewer).toContain("复原缩放、旋转和位置");
+    expect(viewer).toContain("canEdit?: boolean");
+    expect(viewer).toContain("onEdit?:");
+    expect(viewer).toContain('aria-label="编辑图片"');
   });
 
   it("uses explicit React viewer entry points instead of a DOM observer bridge", () => {
