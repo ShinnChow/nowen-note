@@ -20,6 +20,7 @@ export interface TaskReminderRecord {
   taskId: string;
   userId: string;
   offsetMinutes: number;
+  timezoneOffsetMinutes: number | null;
   enabled: number;
   snoozedUntil: string | null;
   lastNotifiedAt: string | null;
@@ -28,13 +29,6 @@ export interface TaskReminderRecord {
 }
 
 export const taskRemindersRepository = {
-  /**
-   * 获取任务的提醒列表。
-   *
-   * @param taskId 任务 ID
-   * @param userId 用户 ID
-   * @returns 提醒列表
-   */
   listByTaskId(taskId: string, userId: string): TaskReminderRecord[] {
     const db = getDb();
     return db
@@ -42,12 +36,6 @@ export const taskRemindersRepository = {
       .all(taskId, userId) as TaskReminderRecord[];
   },
 
-  /**
-   * 获取提醒详情。
-   *
-   * @param reminderId 提醒 ID
-   * @returns 提醒记录，或 undefined
-   */
   getById(reminderId: string): TaskReminderRecord | undefined {
     const db = getDb();
     return db
@@ -55,29 +43,19 @@ export const taskRemindersRepository = {
       .get(reminderId) as TaskReminderRecord | undefined;
   },
 
-  /**
-   * 创建提醒。
-   *
-   * @param input 提醒数据
-   */
   create(input: {
     id: string;
     taskId: string;
     userId: string;
     offsetMinutes: number;
+    timezoneOffsetMinutes?: number | null;
   }): void {
     const db = getDb();
     db.prepare(
-      "INSERT INTO task_reminders (id, taskId, userId, offsetMinutes, enabled) VALUES (?, ?, ?, ?, 1)"
-    ).run(input.id, input.taskId, input.userId, input.offsetMinutes);
+      "INSERT INTO task_reminders (id, taskId, userId, offsetMinutes, timezoneOffsetMinutes, enabled) VALUES (?, ?, ?, ?, ?, 1)"
+    ).run(input.id, input.taskId, input.userId, input.offsetMinutes, input.timezoneOffsetMinutes ?? null);
   },
 
-  /**
-   * 更新提醒。
-   *
-   * @param reminderId 提醒 ID
-   * @param input 更新数据
-   */
   update(reminderId: string, input: {
     offsetMinutes: number;
     enabled: boolean;
@@ -89,23 +67,11 @@ export const taskRemindersRepository = {
     ).run(input.offsetMinutes, input.enabled ? 1 : 0, input.snoozedUntil, reminderId);
   },
 
-  /**
-   * 删除提醒。
-   *
-   * @param reminderId 提醒 ID
-   */
   delete(reminderId: string): void {
     const db = getDb();
     db.prepare("DELETE FROM task_reminders WHERE id = ?").run(reminderId);
   },
 
-  /**
-   * 获取用户的活跃提醒列表（带任务信息）。
-   *
-   * @param userId 用户 ID
-   * @param workspaceId 工作区 ID（null = 个人空间）
-   * @returns 提醒列表（含任务信息）
-   */
   listActiveByUser(userId: string, workspaceId: string | null): Array<TaskReminderRecord & {
     title: string;
     isCompleted: number;
@@ -121,22 +87,16 @@ export const taskRemindersRepository = {
         WHERE r.userId = ? AND t.workspaceId = ?
         ORDER BY r.createdAt DESC
       `).all(userId, workspaceId) as any[];
-    } else {
-      return db.prepare(`
-        SELECT r.*, t.title, t.isCompleted, t.dueDate, t.dueAt
-        FROM task_reminders r
-        JOIN tasks t ON t.id = r.taskId
-        WHERE r.userId = ? AND t.workspaceId IS NULL
-        ORDER BY r.createdAt DESC
-      `).all(userId) as any[];
     }
+    return db.prepare(`
+      SELECT r.*, t.title, t.isCompleted, t.dueDate, t.dueAt
+      FROM task_reminders r
+      JOIN tasks t ON t.id = r.taskId
+      WHERE r.userId = ? AND t.workspaceId IS NULL
+      ORDER BY r.createdAt DESC
+    `).all(userId) as any[];
   },
 
-  /**
-   * 获取待触发的提醒列表（用于通知）。
-   *
-   * @returns 待触发提醒列表
-   */
   listPendingNotifications(): Array<TaskReminderRecord & {
     title: string;
     isCompleted: number;
@@ -154,11 +114,6 @@ export const taskRemindersRepository = {
     `).all() as any[];
   },
 
-  /**
-   * 更新提醒的通知状态。
-   *
-   * @param reminderId 提醒 ID
-   */
   markNotified(reminderId: string): void {
     const db = getDb();
     db.prepare(
@@ -166,12 +121,6 @@ export const taskRemindersRepository = {
     ).run(reminderId);
   },
 
-  /**
-   * 获取任务的提醒（用于复制任务时）。
-   *
-   * @param taskId 任务 ID
-   * @returns 提醒列表
-   */
   listByTaskIdForCopy(taskId: string): TaskReminderRecord[] {
     const db = getDb();
     return db
@@ -179,19 +128,20 @@ export const taskRemindersRepository = {
       .all(taskId) as TaskReminderRecord[];
   },
 
-  /**
-   * 复制提醒到新任务。
-   *
-   * @param sourceReminder 源提醒
-   * @param newTaskId 新任务 ID
-   */
   copyReminder(sourceReminder: TaskReminderRecord, newTaskId: string): void {
     const db = getDb();
     const crypto = require("crypto");
     const rId = crypto.randomUUID();
     db.prepare(
-      "INSERT INTO task_reminders (id, taskId, userId, offsetMinutes, enabled, lastNotifiedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))"
-    ).run(rId, newTaskId, sourceReminder.userId, sourceReminder.offsetMinutes, sourceReminder.enabled);
+      "INSERT INTO task_reminders (id, taskId, userId, offsetMinutes, timezoneOffsetMinutes, enabled, lastNotifiedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))"
+    ).run(
+      rId,
+      newTaskId,
+      sourceReminder.userId,
+      sourceReminder.offsetMinutes,
+      sourceReminder.timezoneOffsetMinutes ?? null,
+      sourceReminder.enabled,
+    );
   },
 
   async listByTaskIdAsync(taskId: string, userId: string): Promise<TaskReminderRecord[]> {
@@ -213,10 +163,11 @@ export const taskRemindersRepository = {
     taskId: string;
     userId: string;
     offsetMinutes: number;
+    timezoneOffsetMinutes?: number | null;
   }): Promise<void> {
     await getAdapter().execute(
-      "INSERT INTO task_reminders (id, taskId, userId, offsetMinutes, enabled) VALUES (?, ?, ?, ?, 1)",
-      [input.id, input.taskId, input.userId, input.offsetMinutes],
+      "INSERT INTO task_reminders (id, taskId, userId, offsetMinutes, timezoneOffsetMinutes, enabled) VALUES (?, ?, ?, ?, ?, 1)",
+      [input.id, input.taskId, input.userId, input.offsetMinutes, input.timezoneOffsetMinutes ?? null],
     );
   },
 
@@ -250,16 +201,15 @@ export const taskRemindersRepository = {
          ORDER BY r.createdAt DESC`,
         [userId, workspaceId],
       );
-    } else {
-      return getAdapter().queryMany<any>(
-        `SELECT r.*, t.title, t.isCompleted, t.dueDate, t.dueAt
-         FROM task_reminders r
-         JOIN tasks t ON t.id = r.taskId
-         WHERE r.userId = ? AND t.workspaceId IS NULL
-         ORDER BY r.createdAt DESC`,
-        [userId],
-      );
     }
+    return getAdapter().queryMany<any>(
+      `SELECT r.*, t.title, t.isCompleted, t.dueDate, t.dueAt
+       FROM task_reminders r
+       JOIN tasks t ON t.id = r.taskId
+       WHERE r.userId = ? AND t.workspaceId IS NULL
+       ORDER BY r.createdAt DESC`,
+      [userId],
+    );
   },
 
   async listPendingNotificationsAsync(): Promise<Array<TaskReminderRecord & {
@@ -296,8 +246,15 @@ export const taskRemindersRepository = {
     const crypto = require("crypto");
     const rId = crypto.randomUUID();
     await getAdapter().execute(
-      "INSERT INTO task_reminders (id, taskId, userId, offsetMinutes, enabled, lastNotifiedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))",
-      [rId, newTaskId, sourceReminder.userId, sourceReminder.offsetMinutes, sourceReminder.enabled],
+      "INSERT INTO task_reminders (id, taskId, userId, offsetMinutes, timezoneOffsetMinutes, enabled, lastNotifiedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, NULL, datetime('now'), datetime('now'))",
+      [
+        rId,
+        newTaskId,
+        sourceReminder.userId,
+        sourceReminder.offsetMinutes,
+        sourceReminder.timezoneOffsetMinutes ?? null,
+        sourceReminder.enabled,
+      ],
     );
   },
 };
