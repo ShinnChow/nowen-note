@@ -5,6 +5,8 @@ import { invalidateNotebooks } from "./notebookInvalidation";
 import { registerAttachmentAccessUrls } from "./noteAttachmentAccessBridge";
 import { getProgressiveSearchExtraDelayMs } from "./searchRequestPolicy";
 import { installTaskOfflineApi } from "./taskOfflineApi";
+import { emitTaskReminderScheduleChanged } from "./taskNotificationSchedule";
+import { toast } from "./toast";
 import {
   fetchJsonWithUploadDeadline,
   isElectronFullLocalRuntime,
@@ -128,6 +130,7 @@ let activeSearchController: AbortController | null = null;
 let activeSearchDelayTimer: ReturnType<typeof setTimeout> | null = null;
 let rejectActiveDelayedSearch: ((reason: unknown) => void) | null = null;
 let activeSearchSequence = 0;
+let lastReminderFailureToastAt = 0;
 
 function createSearchAbortError(): Error {
   if (typeof DOMException !== "undefined") {
@@ -173,9 +176,6 @@ function executeSearch(
     signal: controller.signal,
   }).catch((error) => {
     if ((error as { name?: string })?.name === "AbortError") throw error;
-    // Keep Android/native compatibility: api.impl's request wrapper can fall back to
-    // CapacitorHttp when WebView fetch is unavailable. This path is only used after the
-    // cancellable fetch itself has failed, never for an intentionally aborted stale request.
     return baseApi.search(normalized);
   }).finally(() => {
     options.signal?.removeEventListener("abort", abortFromCaller);
@@ -185,15 +185,6 @@ function executeSearch(
   });
 }
 
-/**
- * SearchCenter already debounces input by 180 ms, but requests that crossed that boundary used
- * to continue after the next keystroke. With synchronous better-sqlite3, obsolete M/MT literal
- * scans could therefore make the final MTU query wait several seconds on a low-power NAS.
- *
- * Latest-query-wins cancellation handles requests already in flight. One/two-character Latin
- * fragments receive an additional 420 ms grace period, so ordinary progressive typing never
- * sends them; when the user intentionally pauses on C or AI, the short query still executes.
- */
 api.search = ((q: string, options: SearchRequestOptions = {}) => {
   const normalized = q.trim();
   const sequence = ++activeSearchSequence;
@@ -239,9 +230,6 @@ api.search = ((q: string, options: SearchRequestOptions = {}) => {
   });
 }) as EnhancedApi["search"];
 
-// Multipart attachment uploads intentionally bypass api.impl's JSON request() wrapper. Give the
-// Nowen attachment target a hard deadline and a real AbortController so an unreachable NAS can no
-// longer leave the editor lifecycle stuck in "uploading" indefinitely.
 api.attachments.upload = (async (noteId: string, file: File) => {
   if (isExplicitlyOffline() && !isDesktopFullLocalUploadRuntime()) {
     throw offlineUploadError("当前处于离线状态，图片尚未上传；请恢复网络后重试");
@@ -332,7 +320,6 @@ api.updateNoteConfirmed = async (id: string, data: Partial<Note>) => {
   return updated;
 };
 
-// Preserve real completion time when a caller (notably task backup import) supplies it.
 const nativeCreateTask = baseApi.createTask.bind(baseApi);
 api.createTask = (async (data: Partial<Task>) => {
   const created = await nativeCreateTask(data);
@@ -351,8 +338,6 @@ api.createTask = (async (data: Partial<Task>) => {
   }
 }) as typeof baseApi.createTask;
 
-// Statistics only render the current year. Bound the collection request when callers
-// omit a range so long-lived workspaces do not download their entire check-in history.
 const nativeGetHabitCheckinLog = baseApi.getHabitCheckinLog.bind(baseApi);
 api.getHabitCheckinLog = ((params?: {
   from?: string;
@@ -371,5 +356,40 @@ installTaskOfflineApi(api, {
   getServerUrl,
   getWorkspaceId: getCurrentWorkspace,
 });
+
+api.createTaskReminder = (async (taskId: string, offsetMinutes: number) => {
+  let lastError: unknown;
+  const timezoneOffsetMinutes = new Date().getTimezoneOffset();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const reminder = await authenticatedJson<Awaited<ReturnType<typeof baseApi.createTaskReminder>>>(
+        `/task-reminders/${encodeURIComponent(taskId)}`,
+        {
+          method: "POST",
+          body: JSON.stringify({ offsetMinutes, timezoneOffsetMinutes }),
+        },
+      );
+      emitTaskReminderScheduleChanged();
+      return reminder;
+    } catch (error) {
+      lastError = error;
+      const status = (error as { status?: number })?.status;
+      const retryable = status === undefined || status >= 500;
+      if (attempt === 0 && retryable) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        continue;
+      }
+      break;
+    }
+  }
+
+  const now = Date.now();
+  if (now - lastReminderFailureToastAt > 2_000) {
+    lastReminderFailureToastAt = now;
+    toast.error("任务已创建，但提醒创建失败，请在提醒中心检查");
+  }
+  if (lastError instanceof Error) throw lastError;
+  throw new Error("Task reminder creation failed");
+}) as typeof baseApi.createTaskReminder;
 
 export { api };
