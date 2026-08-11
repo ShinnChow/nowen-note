@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import FolderPasswordDialog from "@/components/FolderPasswordDialog";
+import NoteTemplatePickerDialog from "@/components/NoteTemplatePickerDialog";
 import {
   KnowledgeTreeBatchMovePanel,
   KnowledgeTreeBatchToolbar,
@@ -46,6 +47,7 @@ import {
 import { choose, confirm, prompt } from "@/components/ui/confirm";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { api } from "@/lib/api";
+import { noteTemplatesApi } from "@/lib/noteTemplatesApi";
 import { affectedKnowledgeNoteIds } from "@/lib/knowledgeTreeDeleteReconcile";
 import {
   knowledgeTreeRangeSelection,
@@ -266,6 +268,7 @@ export default function MobileKnowledgeTreePanel({
   const [pendingFolderOpenId, setPendingFolderOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState<KnowledgeTreeInlineDraft | null>(null);
   const [createMenu, setCreateMenu] = useState<KnowledgeTreeCreateMenuState | null>(null);
+  const [templatePicker, setTemplatePicker] = useState<{ parentId: string | null } | null>(null);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [compactDesktopToolbar, setCompactDesktopToolbar] = useState(false);
   const selectionAnchorRef = useRef<string | null>(null);
@@ -686,6 +689,30 @@ export default function MobileKnowledgeTreePanel({
       toast.error(requestError?.message || "导入失败，请重试");
     }
   }, [actions, activateNote, nodes, state.activeNote?.notebookId, state.notebooks, state.selectedNotebookId, unlockedFolderIds]);
+
+  const createFromTemplate = useCallback(async (templateId: string) => {
+    const targetParentId = templatePicker?.parentId ?? null;
+    const parent = targetParentId ? nodes.find((node) => node.id === targetParentId) || null : null;
+    if (targetParentId && !parent) throw new Error("目标目录不存在");
+    if (parent && !parent.access.capabilities.canCreate) throw new Error("没有在此处新建内容的权限");
+    if (parent && !isFolderUnlocked(parent, unlockedFolderIds)) {
+      setPendingFolderOpenId(null);
+      setPasswordDialog({ node: parent, mode: "unlock" });
+      throw new Error("请先解锁目录后重试");
+    }
+    const result = await noteTemplatesApi.createNote(templateId, targetParentId);
+    emitTreeChanged("node-created-from-template-quick-browse");
+    await reload();
+    actions.refreshNotebooks();
+    actions.refreshNotes();
+    rememberOpened(result.node.id);
+    try {
+      activateNote(await api.getNote(result.noteId), targetParentId);
+    } catch (openError: any) {
+      toast.error(openError?.message || "文档已创建，但自动打开失败");
+    }
+    toast.success("已从模板创建笔记");
+  }, [actions, activateNote, nodes, reload, rememberOpened, templatePicker?.parentId, unlockedFolderIds]);
 
   const rename = async (node: KnowledgeTreeNode) => {
     closeMenu();
@@ -1502,7 +1529,16 @@ export default function MobileKnowledgeTreePanel({
           if (targetParentId && !parent) return;
           startInlineCreate(parent, kind);
         }}
+        onCreateFromTemplate={(targetParentId) => {
+          setCreateMenu(null);
+          setTemplatePicker({ parentId: targetParentId });
+        }}
         onImport={(targetParentId, kind) => { void importIntoTree(targetParentId, kind); }}
+      />
+      <NoteTemplatePickerDialog
+        open={Boolean(templatePicker)}
+        onClose={() => setTemplatePicker(null)}
+        onCreate={createFromTemplate}
       />
     </section>
   );
