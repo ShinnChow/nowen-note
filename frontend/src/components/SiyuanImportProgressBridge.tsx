@@ -311,8 +311,25 @@ export default function SiyuanImportProgressBridge() {
           status?: "queued" | "running" | "completed" | "failed";
           message?: string;
           error?: string | null;
+          result?: {
+            success?: boolean;
+            count?: number;
+            stats?: {
+              syFiles?: number;
+              parsedNotes?: number;
+              createdNotes?: number;
+              failedNotes?: number;
+            };
+          } | null;
         } | undefined;
-        if (response.ok && job?.status === "completed") {
+        const parsedNotes = job?.result?.stats?.parsedNotes ?? job?.result?.stats?.syFiles ?? 0;
+        const createdNotes = job?.result?.stats?.createdNotes ?? job?.result?.count ?? 0;
+        const failedNotes = job?.result?.stats?.failedNotes ?? Math.max(0, parsedNotes - createdNotes);
+        const validCompletedResult = job?.result?.success === true
+          && createdNotes > 0
+          && createdNotes === job.result.count
+          && failedNotes === 0;
+        if (response.ok && job?.status === "completed" && validCompletedResult) {
           show({
             tone: "success",
             title: "思源笔记导入完成",
@@ -320,6 +337,14 @@ export default function SiyuanImportProgressBridge() {
             percent: 100,
           });
           hideLater(2200);
+        } else if (response.ok && job?.status === "completed") {
+          show({
+            tone: "error",
+            title: "思源笔记写入失败",
+            detail: `已成功解析 ${parsedNotes} 篇思源文档，但 ${createdNotes} 篇写入成功，${failedNotes} 篇失败。`,
+            percent: 100,
+          });
+          hideLater(5000);
         } else if (response.ok && job?.status === "failed") {
           show({
             tone: "error",

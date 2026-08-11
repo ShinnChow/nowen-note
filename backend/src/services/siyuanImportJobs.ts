@@ -227,6 +227,12 @@ async function processJob(jobId: string): Promise<void> {
       targetNotebookId: row.targetNotebookId || undefined,
       contentFormat: row.contentFormat,
     });
+    const parsedNotes = result.stats.parsedNotes ?? result.stats.syFiles;
+    const createdNotes = result.stats.createdNotes ?? result.count;
+    const failedNotes = result.stats.failedNotes ?? Math.max(0, parsedNotes - createdNotes);
+    if (!result.success || createdNotes <= 0 || createdNotes !== result.count || failedNotes > 0) {
+      throw new Error(`已成功解析 ${parsedNotes} 篇思源文档，但 ${createdNotes} 篇写入成功，${failedNotes} 篇失败`);
+    }
     const compact = compactResult(result);
 
     getDb().prepare(`
@@ -236,7 +242,7 @@ async function processJob(jobId: string): Promise<void> {
           finishedAt = datetime('now'), updatedAt = datetime('now')
       WHERE id = ?
     `).run(
-      `导入成功 ${result.count} 篇，附件 ${result.stats.importedAssets} 个，失败 ${result.stats.unresolvedAssets} 个`,
+      `已解析 ${parsedNotes} 篇，成功写入 ${createdNotes} 篇，创建目录 ${result.stats.createdFolders} 个，附件 ${result.stats.createdAttachments} 个`,
       JSON.stringify(compact),
       jobId,
     );
@@ -318,7 +324,7 @@ export function getSiyuanImportJobByRequestId(
   return toSnapshot(resumeIfNeeded(row));
 }
 
-function findRecentDuplicate(input: {
+function findActiveDuplicate(input: {
   userId: string;
   workspaceId: string | null;
   targetNotebookId?: string;
@@ -336,7 +342,7 @@ function findRecentDuplicate(input: {
       AND targetNotebookId IS ?
       AND contentFormat = ?
       AND fingerprint = ?
-      AND status IN ('queued', 'running', 'completed')
+      AND status IN ('queued', 'running')
       AND createdAt >= datetime('now', '-1 day')
     ORDER BY createdAt DESC
     LIMIT 1
@@ -369,7 +375,9 @@ export async function createSiyuanImportJob(input: {
     return { job: requestMatch, reused: true };
   }
 
-  const duplicate = findRecentDuplicate(input);
+  // requestId 负责同一次请求重试的幂等；文件指纹只合并仍在执行的任务。
+  // 已完成的导入可能已被用户删除或移动，再次主动导入必须创建新任务。
+  const duplicate = findActiveDuplicate(input);
   if (duplicate) {
     await removeJobUpload(input);
     resumeIfNeeded(duplicate);

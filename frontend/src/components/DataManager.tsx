@@ -780,16 +780,26 @@ export default function DataManager() {
               message: job.message,
             }),
           });
-          const importedAssets = imported.stats?.importedAssets || 0;
-          const failedItems = imported.stats?.unresolvedAssets || 0;
+          const parsedNotes = imported.stats?.parsedNotes ?? imported.stats?.syFiles ?? 0;
+          const createdNotes = imported.stats?.createdNotes ?? imported.count ?? 0;
+          const createdFolders = imported.stats?.createdFolders ?? imported.createdFolderIds?.length ?? 0;
+          const importedAssets = imported.stats?.createdAttachments ?? imported.stats?.importedAssets ?? 0;
+          const failedNotes = imported.stats?.failedNotes ?? Math.max(0, parsedNotes - createdNotes);
+          if (!imported.success || createdNotes <= 0 || createdNotes !== imported.count || failedNotes > 0) {
+            throw new Error(
+              `已成功解析 ${parsedNotes} 篇思源文档，但 ${createdNotes} 篇写入成功，${failedNotes} 篇失败`,
+            );
+          }
           setImportProgress({
             phase: "done",
-            current: imported.count,
-            total: imported.count,
+            current: createdNotes,
+            total: parsedNotes,
             message: t("dataManager.siyuanImportCompletedStats", {
-              count: imported.count,
+              parsed: parsedNotes,
+              created: createdNotes,
+              folders: createdFolders,
               assets: importedAssets,
-              failed: failedItems,
+              failed: failedNotes,
             }),
           });
           const noticeMessages: string[] = [];
@@ -804,7 +814,7 @@ export default function DataManager() {
           if (noticeMessages.length) {
             setNotesImportNotice({ kind: "siyuan", messages: noticeMessages });
           }
-          return { success: true, count: imported.count };
+          return { success: imported.success, count: createdNotes };
         })()
         : await importNotes(
           importFiles,
@@ -846,20 +856,16 @@ export default function DataManager() {
         workspaceName: targetName,
         count: result.count,
       });
-      // 仅当目标 scope 与全局一致时，才需要刷新侧边栏的笔记本列表（否则
-      // refresh 拿到的还是侧边栏 ws 的，不会看到导入的笔记本）。
-      if (scopeMatchesGlobal) {
-        api.getNotebooks().then(actions.setNotebooks).catch(console.error);
-        // 同步触发 NoteList 重拉当前视图笔记。
-        // 后端虽然会通过 WebSocket 广播 "notes:imported" 触发刷新，但
-        // 1) 用户处于离线/弱网恢复期时 ws 可能尚未重连；
-        // 2) 浏览器在背景标签页限频时 ws 消息可能延迟数秒到达；
-        // 此时用户回到主界面会看到"导入成功 toast 已弹，但笔记列表是旧的"
-        // 的错觉。这里在 HTTP 调用的 happy path 里补一次显式 refresh，把
-        // ws 当作"加固通道"而不是"唯一通道"。
-        actions.refreshNotes();
-        emitKnowledgeTreeRefresh("notes-imported-http");
+      // 成功态对应的是目标空间中的真实持久化结果，因此完成后直接切到目标空间展示。
+      if (!scopeMatchesGlobal) {
+        setCurrentWorkspace(effectiveWorkspaceId);
+        window.dispatchEvent(new CustomEvent("nowen:workspace-changed", {
+          detail: { workspaceId: effectiveWorkspaceId },
+        }));
       }
+      api.getNotebooks().then(actions.setNotebooks).catch(console.error);
+      actions.refreshNotes();
+      emitKnowledgeTreeRefresh("notes-imported-http");
       setTimeout(() => {
         setImportFiles([]);
         setImportProgress(null);
@@ -1653,13 +1659,22 @@ export default function DataManager() {
                               disabled={!scopeMatchesGlobal}
                               className="w-full text-sm rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-3 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
-                              <option value="">{t('dataManager.autoCreateNotebook')}</option>
+                              <option value="">
+                                {serverSiyuanFile
+                                  ? t('dataManager.siyuanAutoRestoreStructure')
+                                  : t('dataManager.autoCreateNotebook')}
+                              </option>
                               {scopeMatchesGlobal && state.notebooks.map((nb) => (
                                 <option key={nb.id} value={nb.id}>
                                   {nb.icon} {nb.name}
                                 </option>
                               ))}
                             </select>
+                            {serverSiyuanFile && (!scopeMatchesGlobal || !selectedNotebookId) && (
+                              <p className="text-[11px] mt-1.5 leading-relaxed text-zinc-400 dark:text-zinc-500">
+                                {t('dataManager.siyuanAutoRestoreStructureHint')}
+                              </p>
+                            )}
                             {hasZip && zipMetaHint && (
                               <p className="text-[11px] mt-1.5 leading-relaxed">
                                 {zipMetaHint.kind === "matched" ? (

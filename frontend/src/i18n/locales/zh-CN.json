@@ -1080,6 +1080,8 @@
     "selectedCount": "已选择 {{selected}} / {{total}} 个文件",
     "importToNotebook": "导入到笔记本：",
     "autoCreateNotebook": "自动创建「导入的笔记」",
+    "siyuanAutoRestoreStructure": "自动恢复思源目录结构",
+    "siyuanAutoRestoreStructureHint": "根据思源原笔记本和文档层级自动创建目录",
     "perFileNotebook": "按文件名创建笔记本",
     "perFileNotebookHint": "为每个文件自动创建一个以文件名命名的笔记本，并将该文件放入其中。",
     "duplicateMerge": "同名文件合并到同一笔记本",
@@ -1111,7 +1113,7 @@
     "noFilesSelected": "没有选择要导入的文件",
     "uploadingProgress": "正在上传...",
     "importSuccessCount": "成功导入 {{count}} 篇笔记",
-    "siyuanImportCompletedStats": "导入成功 {{count}} 篇，附件 {{assets}} 个，失败/未解析 {{failed}} 个",
+    "siyuanImportCompletedStats": "已解析 {{parsed}} 篇，成功写入 {{created}} 篇，创建目录 {{folders}} 个，附件 {{assets}} 个，失败 {{failed}} 篇",
     "importFailed": "导入失败: {{error}}",
     "dataFile": {
       "title": "数据库文件 (.data)",

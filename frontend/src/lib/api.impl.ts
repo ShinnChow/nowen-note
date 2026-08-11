@@ -1051,6 +1051,8 @@ type ImportNotesResponse = {
 };
 
 type SiyuanImportResult = ImportNotesResponse & {
+  createdNoteIds?: string[];
+  createdFolderIds?: string[];
   warnings?: string[];
   stats?: {
     syFiles: number;
@@ -1059,6 +1061,11 @@ type SiyuanImportResult = ImportNotesResponse & {
     importedAssets: number;
     unresolvedAssets: number;
     unsupportedNodes?: Record<string, number>;
+    parsedNotes?: number;
+    createdNotes?: number;
+    createdFolders?: number;
+    createdAttachments?: number;
+    failedNotes?: number;
   };
 };
 
@@ -2453,6 +2460,13 @@ export const api = {
       }
       if (job.status === "completed") {
         if (!job.result) throw new Error("思源导入任务已完成，但结果缺失");
+        const parsedNotes = job.result.stats?.parsedNotes ?? job.result.stats?.syFiles ?? 0;
+        const createdNotes = job.result.stats?.createdNotes ?? job.result.count ?? 0;
+        const failedNotes = job.result.stats?.failedNotes ?? Math.max(0, parsedNotes - createdNotes);
+        if (!job.result.success || createdNotes <= 0 || createdNotes !== job.result.count || failedNotes > 0) {
+          clearSiyuanImportRecovery(recovery.requestId);
+          throw new Error(`已成功解析 ${parsedNotes} 篇思源文档，但 ${createdNotes} 篇写入成功，${failedNotes} 篇失败`);
+        }
         clearSiyuanImportRecovery(recovery.requestId);
         return job.result;
       }

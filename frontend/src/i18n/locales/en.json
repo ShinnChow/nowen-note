@@ -1063,6 +1063,8 @@
     "selectedCount": "Selected {{selected}} / {{total}} files",
     "importToNotebook": "Import to notebook:",
     "autoCreateNotebook": "Auto-create \"Imported Notes\"",
+    "siyuanAutoRestoreStructure": "Restore the Siyuan folder structure",
+    "siyuanAutoRestoreStructureHint": "Create folders from the original Siyuan notebooks and document hierarchy",
     "perFileNotebook": "Create a notebook per file",
     "perFileNotebookHint": "Create a notebook named after each file and place the file inside it.",
     "duplicateMerge": "Merge files with the same name into one notebook",
@@ -1094,7 +1096,7 @@
     "noFilesSelected": "No files selected for import",
     "uploadingProgress": "Uploading...",
     "importSuccessCount": "Successfully imported {{count}} notes",
-    "siyuanImportCompletedStats": "Imported {{count}} notes, {{assets}} attachments, {{failed}} failed/unresolved",
+    "siyuanImportCompletedStats": "Parsed {{parsed}}, persisted {{created}}, created {{folders}} folders and {{assets}} attachments, {{failed}} failed",
     "importFailed": "Import failed: {{error}}",
     "dataFile": {
       "title": "Database File (.data)",
