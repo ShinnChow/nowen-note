@@ -80,9 +80,7 @@ import { extractRtfImagesAsync } from "@/lib/rtfImageWorkerClient";
 import { replaceDataUrlImagesWithAttachments } from "@/lib/rtfImageUploader";
 import { shouldLocalizeUrl } from "@/lib/remoteImageLocalizer";
 import {
-  analyzeRiskyForegroundColors,
   normalizeLegacyFontColors,
-  stripExplicitForegroundColors,
 } from "@/lib/pasteForegroundColor";
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -111,7 +109,7 @@ import { copyText } from "@/lib/clipboard";
 import { openTaskQuickCapture } from "@/lib/taskInboxApi";
 import { saveAs } from "file-saver";
 import { findTextAction, type TextAction } from "@/lib/textActions";
-import { choose as chooseDialog, prompt as promptDialog } from "@/components/ui/confirm";
+import { prompt as promptDialog } from "@/components/ui/confirm";
 import { normalizeImageFlipX, normalizeImageRotation, type ImageRotation } from "@/lib/imageNodeTransformBootstrap";
 import { registerMobileBackHandler } from "@/lib/mobileBackNavigation";
 import { Note, Tag, type FileDetail, type FileItem } from "@/types";
@@ -2291,8 +2289,8 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           }
 
           const text = event.clipboardData?.getData("text/plain") || "";
-          // 先把旧式 <font color> 转为 span style，再进入统一 XSS 清洗。
-          // 这样既能检测固定前景色，也能在用户选择“保留原颜色”时继续由 TextStyleKit 承载。
+          // 先把旧式 <font color> 转为 span style，再进入统一 XSS 清洗，
+          // 保留原始视觉颜色并由 TextStyleKit 承载。
           const rawHtml = event.clipboardData?.getData("text/html") || "";
           const html = sanitizeForPaste(normalizeLegacyFontColors(rawHtml));
 
@@ -2627,43 +2625,6 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
                 showPasteToast("error", t(msgKey, { count: normalized.imageStats.failed }), 6000);
               }
             };
-
-            const colorRisk = analyzeRiskyForegroundColors(htmlForParse);
-            if (colorRisk.total > 0) {
-              const pasteAnchor = captureAsyncInsertAnchor(view);
-              asyncInsertAnchorsRef.current.add(pasteAnchor);
-              void chooseDialog({
-                title: t("tiptap.pasteColorRiskTitle", { defaultValue: "检测到可能影响主题阅读的文字颜色" }),
-                description: t("tiptap.pasteColorRiskDescription", {
-                  defaultValue: "粘贴内容中有 {{count}} 处固定文字颜色（偏黑 {{dark}} 处、偏白 {{light}} 处）。切换深色或浅色主题后，这些文字可能与背景融为一体。",
-                  count: colorRisk.total,
-                  dark: colorRisk.dark,
-                  light: colorRisk.light,
-                }),
-                cancelText: t("common.cancel"),
-                choices: [
-                  {
-                    value: "keep",
-                    label: t("tiptap.pasteColorKeepAndPaste", { defaultValue: "保留原颜色并粘贴" }),
-                    variant: "outline",
-                  },
-                  {
-                    value: "strip",
-                    label: t("tiptap.pasteColorRemoveAndPaste", { defaultValue: "移除文字颜色并粘贴" }),
-                    variant: "default",
-                  },
-                ],
-              }).then((choice) => {
-                if (!choice || view.isDestroyed) return;
-                if (!restoreAsyncInsertAnchor(view, pasteAnchor)) return;
-                insertPreparedHtml(choice === "strip"
-                  ? stripExplicitForegroundColors(htmlForParse)
-                  : htmlForParse);
-              }).finally(() => {
-                releaseAsyncInsertAnchor(asyncInsertAnchorsRef.current, pasteAnchor);
-              });
-              return true;
-            }
 
             insertPreparedHtml(htmlForParse);
             return true;
