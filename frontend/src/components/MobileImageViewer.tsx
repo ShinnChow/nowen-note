@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { RotateCcw, X, ZoomIn, ZoomOut } from "lucide-react";
+import { RotateCw, Scan, X, ZoomIn, ZoomOut } from "lucide-react";
 import { registerMobileBackHandler } from "@/lib/mobileBackNavigation";
 
 const MIN_SCALE = 1;
@@ -59,11 +59,13 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
   const pinchGestureRef = useRef<PinchGesture | null>(null);
   const scaleRef = useRef(MIN_SCALE);
   const positionRef = useRef<Point>({ x: 0, y: 0 });
+  const rotationRef = useRef(0);
   const lastTapRef = useRef<{ at: number; point: Point } | null>(null);
   const onCloseRef = useRef(onClose);
 
   const [scale, setScale] = useState(MIN_SCALE);
   const [position, setPosition] = useState<Point>({ x: 0, y: 0 });
+  const [rotation, setRotation] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [interacting, setInteracting] = useState(false);
 
@@ -76,8 +78,11 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
     const image = imageRef.current;
     if (!stage || !image || nextScale <= MIN_SCALE) return { x: 0, y: 0 };
 
-    const maxX = Math.max(0, (image.offsetWidth * nextScale - stage.clientWidth) / 2);
-    const maxY = Math.max(0, (image.offsetHeight * nextScale - stage.clientHeight) / 2);
+    const sideways = rotationRef.current % 180 !== 0;
+    const transformedWidth = (sideways ? image.offsetHeight : image.offsetWidth) * nextScale;
+    const transformedHeight = (sideways ? image.offsetWidth : image.offsetHeight) * nextScale;
+    const maxX = Math.max(0, (transformedWidth - stage.clientWidth) / 2);
+    const maxY = Math.max(0, (transformedHeight - stage.clientHeight) / 2);
     return {
       x: clamp(next.x, -maxX, maxX),
       y: clamp(next.y, -maxY, maxY),
@@ -94,8 +99,22 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
   }, [clampPosition]);
 
   const resetTransform = useCallback(() => {
+    rotationRef.current = 0;
+    setRotation(0);
     commitTransform(MIN_SCALE, { x: 0, y: 0 });
   }, [commitTransform]);
+
+  const rotateClockwise = useCallback(() => {
+    const nextRotation = (rotationRef.current + 90) % 360;
+    rotationRef.current = nextRotation;
+    setRotation(nextRotation);
+    setInteracting(false);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    commitTransform(scaleRef.current, positionRef.current);
+  }, [open, rotation, commitTransform]);
 
   const closeViewer = useCallback(() => {
     pointersRef.current.clear();
@@ -140,7 +159,7 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
       window.removeEventListener("resize", handleResize);
       unregisterBackHandler();
     };
-  }, [open, closeViewer, commitTransform, resetTransform]);
+  }, [open, src, closeViewer, commitTransform, resetTransform]);
 
   const zoomAroundPoint = useCallback((nextScale: number, clientPoint?: Point) => {
     const stage = stageRef.current;
@@ -350,7 +369,9 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
           data-nowen-image-viewer-image=""
           className="max-h-[calc(100dvh-32px)] max-w-[calc(100vw-24px)] select-none object-contain will-change-transform"
           style={{
-            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale})`,
+            maxWidth: rotation % 180 !== 0 ? "calc(100dvh - 32px)" : "calc(100vw - 24px)",
+            maxHeight: rotation % 180 !== 0 ? "calc(100vw - 24px)" : "calc(100dvh - 32px)",
+            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)`,
             transformOrigin: "center center",
             transition: interacting ? "none" : "transform 140ms ease-out",
           }}
@@ -390,11 +411,21 @@ export default function MobileImageViewer({ open, src, alt = "", onClose }: Mobi
         </button>
         <button
           type="button"
-          aria-label="重置图片缩放"
+          aria-label="顺时针旋转图片"
+          title="顺时针旋转 90°"
+          className="flex h-12 w-12 items-center justify-center rounded-full transition-colors active:bg-white/15"
+          onClick={rotateClockwise}
+        >
+          <RotateCw size={21} />
+        </button>
+        <button
+          type="button"
+          aria-label="复原图片预览"
+          title="复原缩放、旋转和位置"
           className="flex h-12 w-12 items-center justify-center rounded-full transition-colors active:bg-white/15"
           onClick={resetTransform}
         >
-          <RotateCcw size={20} />
+          <Scan size={20} />
         </button>
         <span className="min-w-[58px] select-none text-center font-mono text-sm tabular-nums text-white/90">
           {Math.round(scale * 100)}%
