@@ -4148,7 +4148,8 @@ export const api = {
      * BackupManager.readEffectiveAutoConfig 读取并按需启动。
      *
      * 旧签名 setAuto(enabled, intervalHours, sudoToken) 仍可用——
-     * 新增的 mode/dailyAt/keepCount/email* 缺省时由后端走默认值。
+     * 新增的 mode/dailyAt/keepCount/email* 缺省时由后端走默认值；
+     * keepCount 只约束 db-only，full 仅支持用户主动删除。
      */
     setAuto: (
       enabled: boolean,

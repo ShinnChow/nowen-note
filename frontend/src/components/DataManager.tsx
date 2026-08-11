@@ -3995,7 +3995,7 @@ function BackupSection() {
               </div>
             )}
 
-            {/* 保留数量：从写死 10 → 可配置，默认 15。手动+自动两条路径都会触发清理 */}
+            {/* 保留数量只约束 db-only；任意备份创建完成后都会顺带执行同一清理规则 */}
             <div className="flex items-center gap-3">
               <label className="text-xs text-zinc-600 dark:text-zinc-400 whitespace-nowrap">
                 {t("dataManager.backup.keepCountLabel")}
@@ -4010,7 +4010,6 @@ function BackupSection() {
                   if (Number.isFinite(n)) setAutoKeepCount(Math.max(1, Math.min(100, Math.round(n))));
                 }}
                 className="w-20 px-2 py-1 text-xs text-right rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
-                disabled={!autoEnabled}
               />
               <span className="text-[11px] text-zinc-400">
                 {t("dataManager.backup.keepCountHint")}
