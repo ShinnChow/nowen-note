@@ -995,9 +995,10 @@ interface ToolbarButtonProps {
   children: React.ReactNode;
   title?: string;
   compact?: boolean;
+  className?: string;
 }
 
-function ToolbarButton({ onClick, isActive, disabled, children, title, compact }: ToolbarButtonProps) {
+function ToolbarButton({ onClick, isActive, disabled, children, title, compact, className }: ToolbarButtonProps) {
   return (
     <button
       type="button"
@@ -1010,7 +1011,8 @@ function ToolbarButton({ onClick, isActive, disabled, children, title, compact }
         isActive
           ? "bg-accent-primary/20 text-accent-primary"
           : "text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
-        disabled && "opacity-30 cursor-not-allowed"
+        disabled && "opacity-30 cursor-not-allowed",
+        className,
       )}
     >
       {children}
@@ -4998,7 +5000,13 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           <ToolbarButton compact onClick={() => toggleBulletListSmart(editor)} isActive={activeListType === "bulletList"} title={t('tiptap.bulletList')}>
             <List size={16} />
           </ToolbarButton>
-          <ToolbarButton compact onClick={() => setMobileToolbarExpanded((value) => !value)} isActive={mobileToolbarExpanded} title={t('common.more')}>
+          <ToolbarButton compact onClick={handleImageUpload} title={t('tiptap.insertImage')}>
+            <ImagePlus size={16} />
+          </ToolbarButton>
+          <ToolbarButton compact onClick={handleVideoUpload} title={t('tiptap.uploadLocalVideo')}>
+            <Film size={16} />
+          </ToolbarButton>
+          <ToolbarButton compact className="ml-auto" onClick={() => setMobileToolbarExpanded((value) => !value)} isActive={mobileToolbarExpanded} title={t('common.more')}>
             <ChevronDown size={16} className={cn("transition-transform", mobileToolbarExpanded && "rotate-180")} />
           </ToolbarButton>
         </div>

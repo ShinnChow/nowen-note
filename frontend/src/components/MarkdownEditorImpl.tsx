@@ -206,9 +206,10 @@ interface ToolbarButtonProps {
   disabled?: boolean;
   children: React.ReactNode;
   title?: string;
+  className?: string;
 }
 
-function ToolbarButton({ onClick, disabled, children, title }: ToolbarButtonProps) {
+function ToolbarButton({ onClick, disabled, children, title, className }: ToolbarButtonProps) {
   return (
     <button
       type="button"
@@ -220,6 +221,7 @@ function ToolbarButton({ onClick, disabled, children, title }: ToolbarButtonProp
         "p-1.5 rounded-md transition-colors",
         "text-tx-secondary hover:bg-app-hover hover:text-tx-primary",
         disabled && "opacity-30 cursor-not-allowed",
+        className,
       )}
     >
       {children}
@@ -1684,7 +1686,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
         <>
           <div
             data-markdown-mobile-toolbar="compact"
-            className="sticky top-0 z-20 flex items-center gap-0.5 overflow-x-auto border-b border-app-border bg-app-surface/95 px-2 py-1.5 backdrop-blur md:hidden"
+            className="sticky top-0 z-20 flex min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto touch-pan-x border-b border-app-border bg-app-surface/95 px-2 py-1.5 backdrop-blur md:hidden [&>button]:shrink-0 [&>button]:p-1"
           >
             <ToolbarButton onClick={() => withView((view) => undo(view))} title={tr("tiptap.undo") || "撤销"}>
               <Undo size={16} />
@@ -1693,14 +1695,11 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
               <Redo size={16} />
             </ToolbarButton>
             <ToolbarDivider />
-            <ToolbarButton onClick={() => setMarkdownViewMode("source")} title={tr("markdown.view.source") || "源码"}>
-              <FileCode size={16} />
-            </ToolbarButton>
-            <ToolbarButton onClick={() => setMarkdownViewMode("preview")} title={tr("markdown.view.preview") || "预览"}>
-              <Eye size={16} />
-            </ToolbarButton>
             <ToolbarButton onClick={() => withView((view) => toggleHeading(view, 1))} title={tr("tiptap.heading1") || "一级标题"}>
               <Heading1 size={16} />
+            </ToolbarButton>
+            <ToolbarButton onClick={() => withView((view) => toggleHeading(view, 2))} title={tr("tiptap.heading2") || "二级标题"}>
+              <Heading2 size={16} />
             </ToolbarButton>
             <ToolbarButton onClick={() => withView((view) => toggleWrap(view, "**"))} title={tr("tiptap.bold") || "加粗"}>
               <Bold size={16} />
@@ -1708,7 +1707,13 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
             <ToolbarButton onClick={() => withView((view) => toggleBulletList(view))} title={tr("tiptap.bulletList") || "无序列表"}>
               <List size={16} />
             </ToolbarButton>
-            <ToolbarButton onClick={() => setMobileToolbarExpanded((value) => !value)} title={tr("common.more") || "更多"}>
+            <ToolbarButton onClick={triggerImagePicker} title={tr("tiptap.insertImage") || "插入图片"}>
+              <ImagePlus size={16} />
+            </ToolbarButton>
+            <ToolbarButton onClick={triggerVideoPicker} title={tr("tiptap.uploadLocalVideo") || "插入本地视频"}>
+              <Film size={16} />
+            </ToolbarButton>
+            <ToolbarButton className="ml-auto" onClick={() => setMobileToolbarExpanded((value) => !value)} title={tr("common.more") || "更多"}>
               <ChevronDown size={16} className={cn("transition-transform", mobileToolbarExpanded && "rotate-180")} />
             </ToolbarButton>
           </div>
