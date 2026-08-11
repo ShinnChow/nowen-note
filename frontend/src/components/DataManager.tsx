@@ -114,6 +114,11 @@ function isMarkdownImportSource(source?: string): boolean {
   return !value || value === "md" || value === "markdown" || value === "siyuan";
 }
 
+function isSiyuanNativePackageFilename(filename: string): boolean {
+  // 浏览器重复下载通常会把 foo.sy.zip 重命名为 foo.sy (1).zip。
+  return /\.sy(?:\s*\(\d+\))?\.zip$/i.test(filename);
+}
+
 /** 各 scope 下允许的二级 Tab 集合（顺序即展示顺序） */
 const SUBTABS_BY_SCOPE: Record<Scope, ReadonlyArray<SubTab>> = {
   personal: ["export", "import"],
@@ -550,13 +555,13 @@ export default function DataManager() {
     setIsDragOver(false);
   }, []);
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
     const files = e.dataTransfer.files;
     await processFiles(files);
-  }, []);
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -634,12 +639,11 @@ export default function DataManager() {
     setServerSiyuanFile(null);
     let result: ImportFileInfo[] = [];
     const fileArray = Array.from(files);
-    const zipFile = fileArray.find((f) => f.name.endsWith(".zip"));
+    const zipFile = fileArray.find((f) => f.name.toLowerCase().endsWith(".zip"));
 
     try {
       if (zipFile) {
-        const lowerZipName = zipFile.name.toLowerCase();
-        const isSiyuanSyZip = lowerZipName.endsWith(".sy.zip");
+        const isSiyuanSyZip = isSiyuanNativePackageFilename(zipFile.name);
         if (activeImportMethod === "siyuan" && isSiyuanSyZip) {
           // .sy 是结构化块数据，富文本能保留更多结构，按来源切换推荐默认值。
           recommendSiyuanImportContentFormat("tiptap-json");
@@ -702,6 +706,13 @@ export default function DataManager() {
         setNotesImportNotice(null);
         // 散文件默认开启 per-file：以文件名作为笔记本名，而非统一落到「导入的笔记」
         setPerFileNotebook(true);
+      }
+      if (result.length === 0) {
+        throw new Error(
+          activeImportMethod === "siyuan"
+            ? t("dataManager.siyuanImportNoSupportedNotes")
+            : t("dataManager.importNoSupportedNotes"),
+        );
       }
     } catch (err: any) {
       // PDF 专用错误标志：超大 / 无文本层 / 其他解析失败
