@@ -33,6 +33,11 @@ import { getDb } from "../db/schema";
 import { noteYsnapshotsRepository, noteYupdatesRepository } from "../repositories";
 import { logNoteWrite } from "./note-write-observability";
 import {
+  reportTransientPersistedImageSource,
+  stabilizePersistedNoteContent,
+  TransientPersistedImageSourceError,
+} from "../lib/noteContentAttachmentIdentity";
+import {
   assertYjsSubdocumentGeneration,
   getYjsSubdocumentSnapshot,
   applyYjsSubdocumentUpdate,
@@ -257,7 +262,17 @@ function schedulePersistToNotesTable(room: RoomState) {
 function persistToNotesTable(room: RoomState) {
   const db = getDb();
   const ytext = room.doc.getText("content");
-  const markdown = ytext.toString();
+  let markdown: string;
+  try {
+    markdown = stabilizePersistedNoteContent(ytext.toString(), "markdown");
+  } catch (error) {
+    if (!(error instanceof TransientPersistedImageSourceError)) throw error;
+    reportTransientPersistedImageSource(error, {
+      operation: "persistYjsMarkdown",
+      noteId: room.noteId,
+    });
+    return;
+  }
   // 生成纯文本（给 FTS 用）—— 用最朴素的剥离，复杂的由前端 contentFormat 负责
   const contentText = markdown
     .replace(/```[\s\S]*?```/g, "")

@@ -16,7 +16,9 @@ export function storeAuthTokens(tokens: { token: string; refreshToken?: string |
     localStorage.setItem(ACCESS_TOKEN_KEY, tokens.token);
     if (tokens.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
     else if (tokens.refreshToken === null) localStorage.removeItem(REFRESH_TOKEN_KEY);
-    window.dispatchEvent(new CustomEvent("nowen:token-changed"));
+    window.dispatchEvent(new CustomEvent("nowen:token-changed", {
+      detail: { authenticated: true },
+    }));
   } catch {
     // localStorage 不可用时沿用调用方现有的登录失败处理。
   }
@@ -28,6 +30,13 @@ export function clearAuthTokens(): void {
     localStorage.removeItem(REFRESH_TOKEN_KEY);
   } catch {
     // ignore
+  }
+  try {
+    window.dispatchEvent(new CustomEvent("nowen:token-changed", {
+      detail: { authenticated: false },
+    }));
+  } catch {
+    // 非浏览器运行时无需派发。
   }
 }
 

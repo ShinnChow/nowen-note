@@ -68,6 +68,10 @@ import {
   shouldOfferRestore,
   type NoteDraft,
 } from "@/lib/draftStorage";
+import {
+  reportTransientNoteImageSource,
+  stabilizeNoteContentForPersistence,
+} from "@/lib/noteContentPersistence";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import {
@@ -1511,6 +1515,19 @@ export default function EditorPane({
   const handleUpdate = useCallback(async (data: NoteEditorUpdatePayload) => {
     const currentNote = activeNoteRef.current;
     if (!currentNote || currentNote.isLocked || viewLockedIdsRef.current.has(currentNote.id)) return;
+
+    if (typeof data.content === "string") {
+      try {
+        const content = stabilizeNoteContentForPersistence(data.content, currentNote.contentFormat);
+        if (content !== data.content) data = { ...data, content };
+      } catch (error) {
+        reportTransientNoteImageSource(error, {
+          operation: "handleEditorUpdate",
+          noteId: currentNote.id,
+        });
+        return;
+      }
+    }
 
     // P0: 如果调度时的 noteId 与当前 activeNote 不一致，说明已切换笔记，跳过保存
     if (data._noteId && data._noteId !== currentNote.id) {

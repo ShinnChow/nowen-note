@@ -80,6 +80,11 @@ import { extractRtfImagesAsync } from "@/lib/rtfImageWorkerClient";
 import { replaceDataUrlImagesWithAttachments } from "@/lib/rtfImageUploader";
 import { shouldLocalizeUrl } from "@/lib/remoteImageLocalizer";
 import {
+  normalizeTiptapAttachmentSources,
+  reportTransientNoteImageSource,
+  stabilizeNoteContentForPersistence,
+} from "@/lib/noteContentPersistence";
+import {
   normalizeLegacyFontColors,
 } from "@/lib/pasteForegroundColor";
 import {
@@ -2817,7 +2822,8 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           noteRef.current.id,
           editor,
         )) return;
-        const json = JSON.stringify(editor.getJSON());
+        const json = serializeEditorContentForPersistence(editor, scheduledNoteId);
+        if (!json) return;
         const plainTextStartedAt = performance.now();
         const text = getEditorPlainTextForSave(editor, analysisCacheRef.current);
         recordPhaseAPerfEvent({ type: "tiptap-plain-text", durationMs: performance.now() - plainTextStartedAt });
@@ -2962,7 +2968,8 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       clearTimeout(debounceTimer.current);
       debounceTimer.current = null;
     }
-    const json = JSON.stringify(editor.getJSON());
+    const json = serializeEditorContentForPersistence(editor, noteRef.current.id);
+    if (!json) return;
     const text = getEditorPlainTextForSave(editor, analysisCacheRef.current);
     const title = isTitleComposingRef.current
       ? noteRef.current.title
@@ -3179,7 +3186,8 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           onUpdateRef.current({ title, _noteId: noteRef.current.id });
           return;
         }
-        const json = JSON.stringify(editor.getJSON());
+        const json = serializeEditorContentForPersistence(editor, noteRef.current.id);
+        if (!json) return;
         const text = getEditorPlainTextForSave(editor, analysisCacheRef.current);
         lastEmittedTitleRef.current = title;
         onUpdateRef.current({
@@ -3205,8 +3213,10 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       },
       getSnapshot: () => {
         if (!editor) return null;
+        const content = serializeEditorContentForPersistence(editor, noteRef.current.id);
+        if (!content) return null;
         return {
-          content: JSON.stringify(editor.getJSON()),
+          content,
           contentText: getEditorPlainTextForSave(editor, analysisCacheRef.current),
           title: titleRef.current?.value || noteRef.current.title,
         };
@@ -6743,7 +6753,14 @@ function parseContent(content: string): any {
         // 不会立刻报错，但任何后续 transaction 都会触发 contentMatchAt 崩溃。
         // 这里走一遍 headless Editor 的 schema fixup 兜底，~10-20ms 切笔记
         // 时一次开销，用户无感。详见 tiptapSchemaRepair.ts 顶部注释。
-        return removeEmptyParagraphsBeforeImages(repairTiptapJson(parsed));
+        let persistentDocument = parsed;
+        try {
+          persistentDocument = normalizeTiptapAttachmentSources(parsed);
+        } catch (error) {
+          // 无可靠 attachmentId 的历史 blob 仍允许打开以便诊断，但后续保存边界会拒绝覆盖。
+          reportTransientNoteImageSource(error, { operation: "parseTiptapContent" });
+        }
+        return removeEmptyParagraphsBeforeImages(repairTiptapJson(persistentDocument));
       }
       // 是合法 JSON 但不是 Tiptap doc → 当 MD / 纯文本继续往下走
     } catch {
@@ -6791,4 +6808,13 @@ function parseContent(content: string): any {
     type: "doc",
     content: [{ type: "paragraph", content: [{ type: "text", text: content }] }],
   };
+}
+
+function serializeEditorContentForPersistence(editor: Editor, noteId: string): string | null {
+  try {
+    return stabilizeNoteContentForPersistence(JSON.stringify(editor.getJSON()), "tiptap-json");
+  } catch (error) {
+    reportTransientNoteImageSource(error, { operation: "serializeTiptapContent", noteId });
+    return null;
+  }
 }

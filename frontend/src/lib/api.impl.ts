@@ -51,6 +51,10 @@ import {
   resolveAttachmentAccessUrl,
 } from "@/lib/noteAttachmentAccessBridge";
 import {
+  reportTransientNoteImageSource,
+  stabilizeNoteMutationPayload,
+} from "@/lib/noteContentPersistence";
+import {
   clearAuthTokens,
   fetchWithAuthRefresh,
   getAccessToken,
@@ -62,6 +66,18 @@ import {
 // 公共请求不带 Authorization，authSession 会原样透传。
 const fetch: typeof globalThis.fetch = (input, init) =>
   fetchWithAuthRefresh(input, init, getBaseUrl());
+
+function protectNoteMutationPayload<T extends Partial<Note>>(
+  data: T,
+  context: Record<string, unknown>,
+): T {
+  try {
+    return stabilizeNoteMutationPayload(data);
+  } catch (error) {
+    reportTransientNoteImageSource(error, context);
+    throw error;
+  }
+}
 
 // 服务器地址管理
 const SERVER_URL_KEY = "nowen-server-url";
@@ -1562,7 +1578,10 @@ export const api = {
     // Phase D: 客户端提前生成 UUID v4，后端接受。
     //   - 优点：离线创建不需要临时 ID + 后期映射；
     //   - 调用方依然可以显式传 id 覆盖（如导入场景）。
-    const payload: Partial<Note> & { id?: string } = { ...data };
+    const payload: Partial<Note> & { id?: string } = protectNoteMutationPayload(
+      { ...data },
+      { operation: "createNote" },
+    );
     if (!payload.id) {
       payload.id = (typeof crypto !== "undefined" && (crypto as any).randomUUID)
         ? (crypto as any).randomUUID()
@@ -1571,7 +1590,8 @@ export const api = {
     return request<Note>("/notes", { method: "POST", body: JSON.stringify(payload) });
   },
   updateNote: (id: string, data: Partial<Note>) => {
-    const p = request<Note>(`/notes/${id}`, { method: "PUT", body: JSON.stringify(data) });
+    const payload = protectNoteMutationPayload(data, { operation: "updateNote", noteId: id });
+    const p = request<Note>(`/notes/${id}`, { method: "PUT", body: JSON.stringify(payload) });
     // Phase D: 成功后同步本地缓存，保证离线重启后也能看到最新内容
     p.then((note) => {
       void import("@/lib/syncEngine").then((m) => m.cacheNoteContent(note)).catch(() => { });

@@ -2,7 +2,14 @@ export * from "./api.impl";
 
 import { api as baseApi, getBaseUrl, getCurrentWorkspace, getServerUrl } from "./api.impl";
 import { invalidateNotebooks } from "./notebookInvalidation";
-import { registerAttachmentAccessUrls } from "./noteAttachmentAccessBridge";
+import {
+  getPersistentAttachmentUrl,
+  registerAttachmentAccessUrls,
+} from "./noteAttachmentAccessBridge";
+import {
+  reportTransientNoteImageSource,
+  stabilizeNoteMutationPayload,
+} from "./noteContentPersistence";
 import { getProgressiveSearchExtraDelayMs } from "./searchRequestPolicy";
 import { installTaskOfflineApi } from "./taskOfflineApi";
 import { emitTaskReminderScheduleChanged } from "./taskNotificationSchedule";
@@ -253,7 +260,9 @@ api.attachments.upload = (async (noteId: string, file: File) => {
     },
   );
   registerAttachmentAccessUrls(payload.accessUrls, fullUrl);
-  return payload;
+  const stableUrl = getPersistentAttachmentUrl(payload.url)
+    || getPersistentAttachmentUrl(`/api/attachments/${payload.id}`);
+  return stableUrl ? { ...payload, url: stableUrl } : payload;
 }) as typeof baseApi.attachments.upload;
 
 const nativeMoveNotebook = baseApi.moveNotebook.bind(baseApi);
@@ -299,10 +308,16 @@ api.restoreTaskCompletedAt = (taskId: string, completedAt: string) =>
   });
 
 api.createNoteConfirmed = async (data: Partial<Note>) => {
-  const payload: Partial<Note> & { id: string } = {
-    ...data,
-    id: data.id || generateConfirmedNoteId(),
-  };
+  let payload: Partial<Note> & { id: string };
+  try {
+    payload = stabilizeNoteMutationPayload({
+      ...data,
+      id: data.id || generateConfirmedNoteId(),
+    });
+  } catch (error) {
+    reportTransientNoteImageSource(error, { operation: "createNoteConfirmed" });
+    throw error;
+  }
   const created = await confirmedNoteJson<Note>("/notes", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -312,9 +327,16 @@ api.createNoteConfirmed = async (data: Partial<Note>) => {
 };
 
 api.updateNoteConfirmed = async (id: string, data: Partial<Note>) => {
+  let payload: Partial<Note>;
+  try {
+    payload = stabilizeNoteMutationPayload(data);
+  } catch (error) {
+    reportTransientNoteImageSource(error, { operation: "updateNoteConfirmed", noteId: id });
+    throw error;
+  }
   const updated = await confirmedNoteJson<Note>(`/notes/${encodeURIComponent(id)}`, {
     method: "PUT",
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   void import("@/lib/syncEngine").then((module) => module.cacheNoteContent(updated)).catch(() => {});
   return updated;

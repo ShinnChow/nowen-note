@@ -10,6 +10,10 @@ import {
   hasPersistentNoteAttachmentReference,
   primeNoteAttachmentAccess,
 } from "@/lib/noteAttachmentAccessPriming";
+import {
+  reportTransientNoteImageSource,
+  stabilizeNoteMutationPayload,
+} from "@/lib/noteContentPersistence";
 
 export interface CacheFirstNoteLoadOptions {
   noteId: string;
@@ -50,7 +54,12 @@ export function canApplyRevalidatedNote({
 }
 
 async function persistDetail(note: Note): Promise<void> {
-  await putNote({ ...note, __detailCached: true });
+  try {
+    const stableNote = stabilizeNoteMutationPayload(note);
+    await putNote({ ...stableNote, __detailCached: true });
+  } catch (error) {
+    reportTransientNoteImageSource(error, { operation: "persistNoteDetail", noteId: note.id });
+  }
 }
 
 async function prepareCachedNoteRuntime(cached: CachedNote): Promise<void> {

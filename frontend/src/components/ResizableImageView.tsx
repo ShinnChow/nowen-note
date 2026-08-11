@@ -3,7 +3,10 @@ import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
 import { Capacitor } from "@capacitor/core";
 import { resolveAttachmentUrl, getServerUrl } from "@/lib/api";
 import {
+  acquireAttachmentRenderUrl,
+  getAttachmentRenderSource,
   getAttachmentAccessSnapshot,
+  invalidateOfflineAttachmentRenderUrl,
   subscribeAttachmentAccess,
 } from "@/lib/noteAttachmentAccessBridge";
 import {
@@ -197,12 +200,15 @@ export function ResizableImageView(props: NodeViewProps) {
 
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const [blobSrc, setBlobSrc] = useState<string | null>(null);
-  useSyncExternalStore(
+  const accessStateRevision = useSyncExternalStore(
     subscribeAttachmentAccess,
     getAttachmentAccessSnapshot,
     getAttachmentAccessSnapshot,
   );
-  const resolvedSrc = resolveAttachmentUrl(src);
+  const renderSource = getAttachmentRenderSource(src);
+  const resolvedSrc = resolveAttachmentUrl(renderSource.persistentSrc);
+
+  useEffect(() => acquireAttachmentRenderUrl(resolvedSrc), [resolvedSrc]);
 
   // In progressive modes an offscreen attachment image must not start a fetch/blob conversion.
   useEffect(() => {
@@ -220,8 +226,13 @@ export function ResizableImageView(props: NodeViewProps) {
         })
         .catch((err) => {
           console.error("[ResizableImageView] blob fetch failed:", {
+            attachmentId: renderSource.attachmentId,
             originalSrc: src,
             resolvedSrc,
+            finalSrc: resolvedSrc,
+            offlineObjectUrlHit: renderSource.offlineObjectUrlHit,
+            signedUrlPresent: renderSource.signedUrlPresent,
+            accessStateRevision,
             error: err,
           });
         });
@@ -229,7 +240,15 @@ export function ResizableImageView(props: NodeViewProps) {
         cancelled = true;
       };
     }
-  }, [src, resolvedSrc, shouldRenderHeavyContent]);
+  }, [
+    accessStateRevision,
+    renderSource.attachmentId,
+    renderSource.offlineObjectUrlHit,
+    renderSource.signedUrlPresent,
+    resolvedSrc,
+    shouldRenderHeavyContent,
+    src,
+  ]);
 
   useEffect(() => () => {
     if (blobSrc) URL.revokeObjectURL(blobSrc);
@@ -312,10 +331,21 @@ export function ResizableImageView(props: NodeViewProps) {
             setFailedSrc((current) => current === finalSrc ? null : current);
           }}
           onError={() => {
+            const recoveredFromOfflineObjectUrl = invalidateOfflineAttachmentRenderUrl(finalSrc);
             console.error("[ResizableImageView] img load failed:", {
+              attachmentId: renderSource.attachmentId,
               originalSrc: src,
               resolvedSrc,
+              finalSrc,
+              offlineObjectUrlHit: renderSource.offlineObjectUrlHit,
+              signedUrlPresent: renderSource.signedUrlPresent,
+              accessStateRevision,
+              recoveredFromOfflineObjectUrl,
             });
+            if (recoveredFromOfflineObjectUrl) {
+              setFailedSrc(null);
+              return;
+            }
             // 错误状态绑定到触发失败的地址，不能覆盖随后切换成功的新地址。
             setFailedSrc(finalSrc);
           }}

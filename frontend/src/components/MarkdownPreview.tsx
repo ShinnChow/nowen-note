@@ -23,7 +23,10 @@ import { preprocessInternalNoteLinks } from "@/lib/noteLinkSyntax";
 import { projectMarkdownForUser } from "@/lib/markdownUserContent";
 import { resolveAttachmentUrl } from "@/lib/api";
 import {
+  acquireAttachmentRenderUrl,
+  getAttachmentRenderSource,
   getAttachmentAccessSnapshot,
+  invalidateOfflineAttachmentRenderUrl,
   subscribeAttachmentAccess,
 } from "@/lib/noteAttachmentAccessBridge";
 import {
@@ -196,7 +199,14 @@ function PreviewImage({ src, alt }: { src?: string; alt?: string }) {
     getAttachmentAccessSnapshot,
     getAttachmentAccessSnapshot,
   );
-  const resolvedSrc = !src ? "" : src.startsWith("//") ? src : resolveAttachmentUrl(src);
+  const renderSource = getAttachmentRenderSource(src);
+  const resolvedSrc = !src
+    ? ""
+    : src.startsWith("//")
+      ? src
+      : resolveAttachmentUrl(renderSource.persistentSrc);
+
+  useEffect(() => acquireAttachmentRenderUrl(resolvedSrc), [resolvedSrc]);
 
   useEffect(() => {
     setFailedSrc(null);
@@ -232,7 +242,13 @@ function PreviewImage({ src, alt }: { src?: string; alt?: string }) {
         className="my-4 block max-h-[520px] max-w-full cursor-pointer rounded-xl border border-app-border object-contain shadow-sm transition-opacity hover:opacity-90"
         onClick={(event) => openViewer(event.currentTarget)}
         onLoad={() => setFailedSrc((current) => current === resolvedSrc ? null : current)}
-        onError={() => setFailedSrc(resolvedSrc)}
+        onError={() => {
+          if (invalidateOfflineAttachmentRenderUrl(resolvedSrc)) {
+            setFailedSrc(null);
+            return;
+          }
+          setFailedSrc(resolvedSrc);
+        }}
       />
       <FullscreenImageViewer
         open={!!viewer}

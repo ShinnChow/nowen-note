@@ -49,6 +49,11 @@ import { reclaimSpace } from "../lib/reclaimSpace";
 import { buildFtsSearchTerm } from "../lib/searchQuery";
 import { resolveNotebookNoteScopeIds } from "../lib/notebookNoteScope";
 import { resolveKnowledgeTreeNoteScopeIds } from "../lib/knowledgeTreeNoteScope";
+import {
+  reportTransientPersistedImageSource,
+  stabilizePersistedNoteContent,
+  TransientPersistedImageSourceError,
+} from "../lib/noteContentAttachmentIdentity";
 
 const app = new Hono();
 
@@ -603,7 +608,17 @@ app.post("/", async (c) => {
     : body.contentFormat === "html" ? "html"
     : "tiptap-json";
   const defaultContent = contentFormat === "markdown" ? "# 无标题 Markdown\n\n" : "{}";
-  const initialContent = typeof body.content === "string" ? body.content : defaultContent;
+  let initialContent = typeof body.content === "string" ? body.content : defaultContent;
+  try {
+    initialContent = stabilizePersistedNoteContent(initialContent, contentFormat);
+  } catch (error) {
+    if (!(error instanceof TransientPersistedImageSourceError)) throw error;
+    reportTransientPersistedImageSource(error, { operation: "createNote", userId });
+    return c.json({
+      error: "图片仍是临时地址，已保留原内容，请重新插入或等待附件上传完成",
+      code: "TRANSIENT_IMAGE_SOURCE",
+    }, 400);
+  }
 
   const legacyNoteCreateTx = db.transaction(() => {
     db.prepare(`
@@ -733,6 +748,25 @@ app.put("/:id", async (c) => {
   }
   if (needsWrite && !hasPermission(permission, "write")) {
     return c.json({ error: "权限不足", code: "FORBIDDEN" }, 403);
+  }
+
+  if (typeof body.content === "string") {
+    const currentFormat = db.prepare("SELECT contentFormat FROM notes WHERE id = ?").get(id) as
+      | { contentFormat: string }
+      | undefined;
+    const effectiveFormat = typeof body.contentFormat === "string"
+      ? body.contentFormat
+      : currentFormat?.contentFormat || "tiptap-json";
+    try {
+      body.content = stabilizePersistedNoteContent(body.content, effectiveFormat);
+    } catch (error) {
+      if (!(error instanceof TransientPersistedImageSourceError)) throw error;
+      reportTransientPersistedImageSource(error, { operation: "updateNote", noteId: id, userId });
+      return c.json({
+        error: "图片仍是临时地址，数据库已保留上一份有效内容",
+        code: "TRANSIENT_IMAGE_SOURCE",
+      }, 400);
+    }
   }
 
   // H4: 乐观锁——对"内容类"变更强制要求 version 字段，防止客户端在未感知他人改动的
