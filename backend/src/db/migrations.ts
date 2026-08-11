@@ -36,6 +36,7 @@ import { taskTimePlanningMigration } from "./taskTimePlanningMigration.js";
 import { taskInboxMigration } from "./taskInboxMigration.js";
 import { workspaceJournalsMigration } from "./workspaceJournalsMigration.js";
 import { noteTemplatesMigration } from "./noteTemplatesMigration.js";
+import { taskReminderTimezoneMigration } from "./taskReminderTimezoneMigration.js";
 
 export type { Migration } from "./migrations.impl.js";
 
@@ -132,8 +133,6 @@ const patchedV44: Migration = {
     if (!cols.some((column) => column.name === "completedAt")) {
       db.prepare("ALTER TABLE tasks ADD COLUMN completedAt TEXT").run();
     }
-    // updatedAt is not a trustworthy historical completion timestamp. Unknown
-    // historical completion times stay NULL instead of polluting heatmaps.
     db.prepare(
       "UPDATE tasks SET completedAt = NULL WHERE isCompleted = 0 AND completedAt IS NOT NULL",
     ).run();
@@ -150,9 +149,6 @@ const repairNotesFtsMigration: Migration = {
   version: 46,
   name: "repair-notes-fts-index",
   up: (db) => {
-    // External-content FTS tables can drift after interrupted historical imports
-    // or old trigger versions. Rebuild from notes once during upgrade; the live
-    // insert/update/delete triggers keep it synchronized afterwards.
     db.prepare("INSERT INTO notes_fts(notes_fts) VALUES('rebuild')").run();
   },
 };
@@ -272,8 +268,6 @@ const repairSearchContentTextMigration: Migration = {
   },
 };
 
-// 任务功能曾在独立 bootstrap 中占用 v71-v73，导致 v71 与 Yjs 回执迁移冲突。
-// 保留历史版本含义，并用新版本把所有 schema 纳入同一条正式迁移链。
 const yjsOperationReceiptsRepairMigration: Migration = {
   ...yjsOperationReceiptsMigration,
   version: 74,
@@ -328,6 +322,7 @@ export const MIGRATIONS: Migration[] = [
   taskInboxCanonicalMigration,
   workspaceJournalsMigration,
   noteTemplatesMigration,
+  taskReminderTimezoneMigration,
 ].sort((a, b) => a.version - b.version);
 
 export const CURRENT_SCHEMA_VERSION: number = MIGRATIONS.reduce(
@@ -392,9 +387,6 @@ export function runMigrations(db: Database.Database): number {
     );
   }
 
-  // schema_migrations is an applied-migration ledger, not a single cursor.
-  // Looking only at MAX(version) permanently skips a migration added later with
-  // a lower historical version (the v48 block schema was affected by this).
   const pending = getPendingMigrations(db);
   if (pending.length === 0) return 0;
 
