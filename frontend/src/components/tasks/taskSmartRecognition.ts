@@ -275,9 +275,15 @@ export function parseTaskQuickAdd(input: string, now = new Date()): TaskQuickAdd
         reminderOffsets.push(0, advanceSpec.offsetMinutes);
         consumedRanges.push(advanceSpec.range);
         if (dueReminderSpec) consumedRanges.push(dueReminderSpec.range);
-    } else if (dueReminderSpec && taskPatch.dueAt) {
+    } else if (dueReminderSpec && (taskPatch.dueDate || taskPatch.dueAt)) {
+        if (taskPatch.dueDate && !taskPatch.dueAt) {
+            taskPatch.dueAt = `${taskPatch.dueDate}T08:30`;
+        }
         reminderOffsets.push(0);
         consumedRanges.push(dueReminderSpec.range);
+    }
+    if (hasFutureDueAt(taskPatch, now) && reminderOffsets.length === 0) {
+        reminderOffsets.push(0);
     }
 
     const cleanTitle = cleanupTitle(removeRanges(raw, consumedRanges));
@@ -288,6 +294,10 @@ export function parseTaskQuickAdd(input: string, now = new Date()): TaskQuickAdd
         reminderOffsets: sortUniqueOffsets(reminderOffsets),
         recognizedRanges: mergeRanges(consumedRanges),
     };
+}
+
+function hasFutureDueAt(taskPatch: Partial<Task>, now: Date): boolean {
+    return !!taskPatch.dueAt && new Date(taskPatch.dueAt).getTime() > now.getTime();
 }
 
 function parseTimeSpec(text: string, protectedRanges: MatchRange[]): TimeSpec | null {
