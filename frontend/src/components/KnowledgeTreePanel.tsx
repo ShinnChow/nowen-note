@@ -89,7 +89,9 @@ import {
   KNOWLEDGE_TREE_SORT_OPTIONS,
   loadKnowledgeTreeSortMode,
   planKnowledgeTreeSiblingReorder,
+  resolveKnowledgeTreeDropPlacement,
   saveKnowledgeTreeSortMode,
+  type KnowledgeTreeDropPlacement,
   type KnowledgeTreeSiblingDropPlacement,
 } from "@/lib/knowledgeTreeSort";
 import {
@@ -328,7 +330,7 @@ export function KnowledgeTreePanel({
   const [compactDesktopToolbar, setCompactDesktopToolbar] = useState(false);
   const [treeDropTarget, setTreeDropTarget] = useState<{
     nodeId: string;
-    placement: KnowledgeTreeSiblingDropPlacement;
+    placement: KnowledgeTreeDropPlacement;
   } | null>(null);
   const draggedTreeNodeIdRef = useRef<string | null>(null);
   const selectionAnchorRef = useRef<string | null>(null);
@@ -373,12 +375,16 @@ export function KnowledgeTreePanel({
         new Map([...ownedResult.value.nodes, ...shared].map((node) => [node.id, node])).values(),
       );
       if (requestExpansionScope !== getKnowledgeTreeExpansionScope()) return;
-      const folderIds = new Set(merged.filter((node) => node.nodeType === "folder").map((node) => node.id));
+      const expandableNodeIds = new Set(
+        merged
+          .filter((node) => node.nodeType === "folder" || node.childCount > 0)
+          .map((node) => node.id),
+      );
       setNodes(merged);
       initializeKnowledgeTreeExpansion(
         requestExpansionScope,
-        merged.filter((node) => node.nodeType === "folder" && Boolean(node.isExpanded)).map((node) => node.id),
-        folderIds,
+        merged.filter((node) => expandableNodeIds.has(node.id) && Boolean(node.isExpanded)).map((node) => node.id),
+        expandableNodeIds,
         sharedResult.status === "fulfilled",
       );
     } catch (requestError: any) {
@@ -948,6 +954,31 @@ export function KnowledgeTreePanel({
     );
   };
 
+  const canMoveIntoTarget = (sourceId: string, target: KnowledgeTreeNode) => {
+    const source = nodes.find((node) => node.id === sourceId);
+    if (
+      !source
+      || source.id === target.id
+      || (source.parentId ?? null) === target.id
+      || !source.access.capabilities.canMove
+      || isSharedRoot(source)
+      || (!target.access.capabilities.canCreate && !target.access.capabilities.canMove)
+      || source.scopeKey !== target.scopeKey
+      || (source.workspaceId ?? null) !== (target.workspaceId ?? null)
+      || (source.sharedRootId ?? null) !== (target.sharedRootId ?? null)
+      || !isFolderUnlocked(target, unlockedFolderIds)
+    ) return false;
+    return !descendantsOf(source.id, allChildren).has(target.id);
+  };
+
+  const canDropWithTarget = (
+    sourceId: string,
+    target: KnowledgeTreeNode,
+    placement: KnowledgeTreeDropPlacement,
+  ) => placement === "inside"
+    ? canMoveIntoTarget(sourceId, target)
+    : currentSortMode === "manual" && canReorderWithTarget(sourceId, target);
+
   const dropReorder = async (
     sourceId: string,
     target: KnowledgeTreeNode,
@@ -976,6 +1007,24 @@ export function KnowledgeTreePanel({
     } catch (requestError: any) {
       void reload();
       toast.error(requestError?.message || "排序失败");
+    }
+  };
+
+  const dropIntoNode = async (sourceId: string, target: KnowledgeTreeNode) => {
+    if (!canMoveIntoTarget(sourceId, target)) {
+      toast.error("无法移动到该节点");
+      return;
+    }
+    try {
+      await knowledgeTreeApi.move(sourceId, { parentId: target.id });
+      setNodeExpanded(target.id, true);
+      await reload();
+      emitTreeChanged("node-moved");
+      actions.refreshNotebooks();
+      actions.refreshNotes();
+      toast.success("已移动");
+    } catch (requestError: any) {
+      toast.error(requestError?.message || "移动失败");
     }
   };
 
@@ -1105,9 +1154,11 @@ export function KnowledgeTreePanel({
               && "before:absolute before:inset-x-0 before:top-0 before:z-10 before:h-0.5 before:bg-accent-primary",
             treeDropTarget?.nodeId === node.id && treeDropTarget.placement === "after"
               && "after:absolute after:inset-x-0 after:bottom-0 after:z-10 after:h-0.5 after:bg-accent-primary",
+            treeDropTarget?.nodeId === node.id && treeDropTarget.placement === "inside"
+              && "bg-accent-primary/10 text-tx-primary ring-1 ring-inset ring-accent-primary/50",
           )}
           style={{ paddingLeft: `${depth * treeIndent + treeInset}px` }}
-          draggable={currentSortMode === "manual" && !query.trim() && node.access.capabilities.canMove && !isSharedRoot(node)}
+          draggable={!query.trim() && node.access.capabilities.canMove && !isSharedRoot(node)}
           onDragStart={(event) => {
             draggedTreeNodeIdRef.current = node.id;
             event.dataTransfer.effectAllowed = "move";
@@ -1118,13 +1169,13 @@ export function KnowledgeTreePanel({
             event.preventDefault();
             event.stopPropagation();
             const sourceId = event.dataTransfer.getData("application/x-nowen-tree-node") || draggedTreeNodeIdRef.current || "";
-            if (!canReorderWithTarget(sourceId, node)) {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const placement = resolveKnowledgeTreeDropPlacement(event.clientY, rect.top, rect.height);
+            if (!canDropWithTarget(sourceId, node, placement)) {
               event.dataTransfer.dropEffect = "none";
               setTreeDropTarget(null);
               return;
             }
-            const rect = event.currentTarget.getBoundingClientRect();
-            const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
             event.dataTransfer.dropEffect = "move";
             setTreeDropTarget((current) => (
               current?.nodeId === node.id && current.placement === placement
@@ -1138,10 +1189,15 @@ export function KnowledgeTreePanel({
             event.stopPropagation();
             const sourceId = event.dataTransfer.getData("application/x-nowen-tree-node") || draggedTreeNodeIdRef.current || "";
             const rect = event.currentTarget.getBoundingClientRect();
-            const placement = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+            const placement = resolveKnowledgeTreeDropPlacement(event.clientY, rect.top, rect.height);
             setTreeDropTarget(null);
             draggedTreeNodeIdRef.current = null;
-            void dropReorder(sourceId, node, placement);
+            if (!canDropWithTarget(sourceId, node, placement)) return;
+            if (placement === "inside") {
+              void dropIntoNode(sourceId, node);
+            } else {
+              void dropReorder(sourceId, node, placement);
+            }
           }}
           onDragEnd={() => {
             draggedTreeNodeIdRef.current = null;
@@ -1154,6 +1210,7 @@ export function KnowledgeTreePanel({
           onTouchCancel={cancelLongPress}
           data-knowledge-tree-node-id={node.id}
           data-knowledge-tree-select-id={node.id}
+          data-knowledge-tree-drop-placement={treeDropTarget?.nodeId === node.id ? treeDropTarget.placement : undefined}
           aria-selected={selected}
         >
           <button

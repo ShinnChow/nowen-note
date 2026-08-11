@@ -132,6 +132,19 @@ export function applyKnowledgeTreeSort(
 }
 
 export type KnowledgeTreeSiblingDropPlacement = "before" | "after";
+export type KnowledgeTreeDropPlacement = KnowledgeTreeSiblingDropPlacement | "inside";
+
+export function resolveKnowledgeTreeDropPlacement(
+  pointerY: number,
+  rowTop: number,
+  rowHeight: number,
+): KnowledgeTreeDropPlacement {
+  if (!Number.isFinite(rowHeight) || rowHeight <= 0) return "inside";
+  const ratio = (pointerY - rowTop) / rowHeight;
+  if (ratio < 0.25) return "before";
+  if (ratio > 0.75) return "after";
+  return "inside";
+}
 
 export interface KnowledgeTreeSiblingReorderPlan {
   nodes: KnowledgeTreeNode[];

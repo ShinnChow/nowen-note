@@ -8,6 +8,7 @@ import {
   compareKnowledgeTreePinnedPriority,
   loadKnowledgeTreeSortMode,
   planKnowledgeTreeSiblingReorder,
+  resolveKnowledgeTreeDropPlacement,
   saveKnowledgeTreeSortMode,
 } from "@/lib/knowledgeTreeSort";
 import type { KnowledgeTreeNode } from "@/lib/knowledgeTreeApi";
@@ -89,6 +90,12 @@ describe("knowledgeTreeSort", () => {
     ];
 
     expect(planKnowledgeTreeSiblingReorder(nodes, "child", "root", "before")).toBeNull();
+  });
+
+  it("splits a tree row into before, inside, and after drop zones", () => {
+    expect(resolveKnowledgeTreeDropPlacement(104, 100, 40)).toBe("before");
+    expect(resolveKnowledgeTreeDropPlacement(120, 100, 40)).toBe("inside");
+    expect(resolveKnowledgeTreeDropPlacement(136, 100, 40)).toBe("after");
   });
 
   it("sorts every sibling group by title without flattening hierarchy", () => {
