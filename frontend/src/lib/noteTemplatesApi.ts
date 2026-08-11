@@ -46,7 +46,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const noteTemplatesApi = {
   list() {
-    return request<{ templates: NoteTemplateSummary[] }>(`/?${workspaceQuery()}`);
+    return request<{ templates: NoteTemplateSummary[] }>(`?${workspaceQuery()}`);
   },
 
   createFromNote(noteId: string, name: string) {
