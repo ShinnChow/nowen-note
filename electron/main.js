@@ -16,6 +16,7 @@ const { registerDiscoveryIpc, shutdown: shutdownDiscovery } = require("./discove
 const { setSettingsPath, readSettings, writeSettings } = require("./settings");
 const { openSetupWindow } = require("./setupWindow");
 const { openLocalAttachmentWithSystem } = require("./attachment-open");
+const { registerTextContextMenu } = require("./text-context-menu");
 const {
   setCredentialsPath,
   registerCredentialsIpc,
@@ -939,6 +940,7 @@ function createWindow() {
 
   // SEC-ELECTRON-01-B-RV1: 注册主窗口 webContents.id 用于 IPC sender 校验
   setTrustedMainWindowId(mainWindow.webContents.id);
+  registerTextContextMenu(mainWindow, Menu);
   let hasShownMainWindow = false;
   let loadingErrorPage = false;
   let recoveringRenderer = false;
