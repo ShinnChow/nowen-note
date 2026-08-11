@@ -13,8 +13,6 @@ import { ConfirmProvider } from "./components/ui/confirm";
 import Toaster from "./components/Toaster";
 import NoteIconBridge from "./components/NoteIconBridge";
 import EmbedPasswordBridge from "./components/EmbedPasswordBridge";
-import ImageExperienceBridge from "./components/ImageExperienceBridge";
-import MobileImageViewerBridge from "./components/MobileImageViewerBridge";
 import MediaExperienceBridge from "./components/MediaExperienceBridge";
 import EditorImageTransformBridge from "./components/EditorImageTransformBridge";
 import DesktopUpdateCenter from "./components/DesktopUpdateCenter";
@@ -43,8 +41,6 @@ import { installMobileStartupBridge } from "./lib/mobileStartupBridge";
 import { installMobileWebStartupBridge } from "./lib/mobileWebStartupBridge";
 import { installNoteAttachmentAccessBridge } from "./lib/noteAttachmentAccessBridge";
 import { installReliableExportDownloadBridge } from "./lib/reliableExportDownloadBridge";
-import { installShareLightboxRotationGuard } from "./lib/shareLightboxRotationGuard";
-import { installMobileImageFocusGuard } from "./lib/mobileImageFocusGuard";
 import { installNoteSyncSafety } from "./lib/noteSyncSafety";
 import { installNoteUpdateResponseGuard } from "./lib/noteUpdateResponseGuard";
 import { installNoteUpdateSerialQueue } from "./lib/noteUpdateSerialQueue";
@@ -104,8 +100,6 @@ installNoteSyncSafety();
 installNoteUpdateResponseGuard();
 installNoteUpdateSerialQueue();
 installKnowledgeTreeTitleSyncBridge();
-installShareLightboxRotationGuard();
-installMobileImageFocusGuard();
 installTaskAttachmentExportFallback();
 installTaskUpdateSafetyBridge();
 installReliableExportDownloadBridge();
@@ -160,8 +154,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <>
             <NoteIconBridge />
             <EmbedPasswordBridge />
-            <ImageExperienceBridge />
-            <MobileImageViewerBridge />
             <MediaExperienceBridge />
             <EditorImageTransformBridge />
             <DesktopUpdateCenter />

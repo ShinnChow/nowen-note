@@ -14,7 +14,7 @@ import {
 } from "@/lib/markdownPreviewOutline";
 import { preprocessMarkdownVideos } from "@/lib/markdownVideoSyntax";
 import { MarkdownVideoPreview } from "@/components/MarkdownVideoPreview";
-import MobileImageViewer from "@/components/MobileImageViewer";
+import FullscreenImageViewer, { type FullscreenImageItem } from "@/components/FullscreenImageViewer";
 import { MarkdownCodeBlock, isMarkdownBlockCode } from "@/components/MarkdownCodeBlock";
 import { MathView } from "@/components/MathView";
 import { NoteLinkPreviewAnchor } from "@/components/NoteLinkPreview";
@@ -190,7 +190,7 @@ function PreviewIframe({ src, title }: { src?: string; title?: string }) {
 function PreviewImage({ src, alt }: { src?: string; alt?: string }) {
   const { t } = useTranslation();
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [viewer, setViewer] = useState<{ images: FullscreenImageItem[]; initialIndex: number } | null>(null);
   useSyncExternalStore(
     subscribeAttachmentAccess,
     getAttachmentAccessSnapshot,
@@ -200,8 +200,23 @@ function PreviewImage({ src, alt }: { src?: string; alt?: string }) {
 
   useEffect(() => {
     setFailedSrc(null);
-    setPreviewOpen(false);
+    setViewer(null);
   }, [resolvedSrc]);
+
+  const openViewer = (image: HTMLImageElement) => {
+    const root = image.closest(".nowen-md-preview");
+    const elements = Array.from(root?.querySelectorAll<HTMLImageElement>("img") || []);
+    const images = elements
+      .map<FullscreenImageItem>((item) => ({
+        src: item.currentSrc || item.src || item.getAttribute("src") || "",
+        alt: item.alt || "",
+      }))
+      .filter((item) => !!item.src);
+    setViewer({
+      images: images.length ? images : [{ src: resolvedSrc, alt: alt || "" }],
+      initialIndex: Math.max(0, elements.indexOf(image)),
+    });
+  };
 
   if (!src) return null;
   if (failedSrc === resolvedSrc) {
@@ -215,15 +230,15 @@ function PreviewImage({ src, alt }: { src?: string; alt?: string }) {
         alt={alt || ""}
         loading="lazy"
         className="my-4 block max-h-[520px] max-w-full cursor-pointer rounded-xl border border-app-border object-contain shadow-sm transition-opacity hover:opacity-90"
-        onClick={() => setPreviewOpen(true)}
+        onClick={(event) => openViewer(event.currentTarget)}
         onLoad={() => setFailedSrc((current) => current === resolvedSrc ? null : current)}
         onError={() => setFailedSrc(resolvedSrc)}
       />
-      <MobileImageViewer
-        open={previewOpen}
-        src={resolvedSrc}
-        alt={alt || ""}
-        onClose={() => setPreviewOpen(false)}
+      <FullscreenImageViewer
+        open={!!viewer}
+        images={viewer?.images}
+        initialIndex={viewer?.initialIndex || 0}
+        onClose={() => setViewer(null)}
       />
     </>
   );

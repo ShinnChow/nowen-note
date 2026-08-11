@@ -1,4 +1,6 @@
 import React, { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Keyboard } from "@capacitor/keyboard";
 import { sanitizeForPaste } from "@/lib/sanitizeHtml";
 import { createPortal } from "react-dom";
 import { useEditor, Editor, EditorContent, Extension, ReactNodeViewRenderer } from "@tiptap/react";
@@ -16,7 +18,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Image from "@tiptap/extension-image";
 import ResizableImageView from "./ResizableImageView";
 import ImageEditDialog from "@/components/image-editor/ImageEditDialog";
-import MobileImageViewer from "@/components/MobileImageViewer";
+import FullscreenImageViewer, { type FullscreenImageItem } from "@/components/FullscreenImageViewer";
 import { editedImageBlobToFile, isSvgImageSource } from "@/components/image-editor/imageEditService";
 import { TableGridPicker, TableResizeDialog } from "./TableGridPicker";
 import { CodeBlock, type CodeBlockOptions } from "@tiptap/extension-code-block";
@@ -90,6 +92,7 @@ import {
   FileType, Check, AlertCircle, Info, ArrowUp, Copy, Link as LinkIcon,
   ExternalLink, Unlink2, Workflow, Sigma, BookOpen, Download, Phone,
   Type, Palette, Eraser, Paintbrush, ChevronDown, Search, Upload, FolderSearch, ClipboardPlus,
+  FlipHorizontal, MoreHorizontal, RotateCcw, RotateCw, Scan,
   // 表格气泡菜单图标
   Rows3, Columns3, Merge, Split, Heading, Network,
 } from "lucide-react";
@@ -108,6 +111,8 @@ import { openTaskQuickCapture } from "@/lib/taskInboxApi";
 import { saveAs } from "file-saver";
 import { findTextAction, type TextAction } from "@/lib/textActions";
 import { choose as chooseDialog, prompt as promptDialog } from "@/components/ui/confirm";
+import { normalizeImageFlipX, normalizeImageRotation } from "@/lib/imageNodeTransformBootstrap";
+import { registerMobileBackHandler } from "@/lib/mobileBackNavigation";
 import { Note, Tag, type FileDetail, type FileItem } from "@/types";
 import TagInput from "@/components/TagInput";
 import AIWritingAssistant from "@/components/AIWritingAssistant";
@@ -1592,7 +1597,10 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   >(null);
   const [attachmentLibraryOpen, setAttachmentLibraryOpen] = useState(false);
   const attachmentLibraryAnchorRef = useRef<AsyncInsertAnchor | null>(null);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [imageViewer, setImageViewer] = useState<{
+    images: FullscreenImageItem[];
+    initialIndex: number;
+  } | null>(null);
   // 编辑器是否聚焦 —— 用来控制移动端浮动工具栏是否显示
   // （未聚焦时键盘其实已经收起，这里是双重保险：避免聚焦到标题栏时误显示）
 
@@ -2835,6 +2843,40 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   });
 
   useEffect(() => {
+    if (!isMobile || !imageBubble.open) return;
+    const editorDom = editor?.view.dom;
+    const previousInputMode = editorDom?.getAttribute("inputmode") ?? null;
+    editorDom?.setAttribute("inputmode", "none");
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    editorDom?.blur();
+    const hideKeyboard = () => {
+      if (Capacitor.isNativePlatform()) void Keyboard.hide().catch(() => {});
+    };
+    hideKeyboard();
+    const timers = [80, 260].map((delay) => window.setTimeout(hideKeyboard, delay));
+    const close = () => setImageBubble((current) => ({ ...current, open: false }));
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    const unregisterBack = registerMobileBackHandler("sheet", () => {
+      close();
+      return true;
+    });
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      window.removeEventListener("keydown", onKeyDown, true);
+      unregisterBack();
+      if (editorDom) {
+        if (previousInputMode === null) editorDom.removeAttribute("inputmode");
+        else editorDom.setAttribute("inputmode", previousInputMode);
+      }
+    };
+  }, [editor, imageBubble.open, isMobile]);
+
+  useEffect(() => {
     analysisControllerRef.current?.destroy();
     analysisRequestRef.current = null;
     analysisCacheRef.current = null;
@@ -3394,11 +3436,33 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     };
   }, []);
 
-  // 图片点击预览事件监听
-  //
-  // Web 与 Electron 都在渲染进程内打开同一查看器，不依赖 window.open。
-  // ProseMirror 会先完成图片节点选中；关闭预览后仍可继续使用尺寸手柄和图片工具栏。
-  // 四角 handle 的 onMouseDown 会 stopPropagation，不会误触发预览。
+  const openImageViewer = useCallback((targetSrc: string, targetAlt = "", targetPos?: number) => {
+    if (!editor || !targetSrc) return;
+    const images: FullscreenImageItem[] = [];
+    const positions: number[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== "image") return;
+      const imageSrc = typeof node.attrs.src === "string" ? node.attrs.src : "";
+      if (!imageSrc) return;
+      images.push({
+        src: resolveAttachmentUrl(imageSrc),
+        alt: typeof node.attrs.alt === "string" ? node.attrs.alt : "",
+        filename: getImageDownloadFilename(node.attrs as ImageNodeAttrs),
+      });
+      positions.push(pos);
+    });
+    const resolvedTarget = resolveAttachmentUrl(targetSrc);
+    const positionIndex = typeof targetPos === "number" ? positions.indexOf(targetPos) : -1;
+    const sourceIndex = images.findIndex((item) => item.src === targetSrc || item.src === resolvedTarget);
+    const initialIndex = Math.max(0, positionIndex >= 0 ? positionIndex : sourceIndex);
+    setImageViewer({
+      images: images.length ? images : [{ src: resolvedTarget, alt: targetAlt }],
+      initialIndex,
+    });
+  }, [editor]);
+
+  // 编辑态单击只选中图片，双击直达 Viewer；只读态单击直接查看。
+  // 四角 resize handle 会拦截事件，不会误触发预览。
   useEffect(() => {
     if (!editor) return;
 
@@ -3410,20 +3474,32 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     const openPreview = (img: HTMLImageElement) => {
       const src = img.currentSrc || img.src || img.getAttribute("src") || "";
       if (!src) return;
-      setPreviewImage(src);
+      let pos: number | undefined;
+      try { pos = editor.view.posAtDOM(img, 0); } catch { /* 使用 URL 匹配兜底 */ }
+      openImageViewer(src, img.alt || "", pos);
     };
 
     const handleClick = (e: MouseEvent) => {
       if (!isEditorImage(e.target)) return;
+      if (editable) return;
+      openPreview(e.target as HTMLImageElement);
+    };
+
+    const handleDoubleClick = (e: MouseEvent) => {
+      if (!isEditorImage(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
       openPreview(e.target as HTMLImageElement);
     };
 
     const editorDom = editor.view.dom;
     editorDom.addEventListener("click", handleClick);
+    editorDom.addEventListener("dblclick", handleDoubleClick);
     return () => {
       editorDom.removeEventListener("click", handleClick);
+      editorDom.removeEventListener("dblclick", handleDoubleClick);
     };
-  }, [editor]);
+  }, [editor, editable, openImageViewer]);
 
   const getSelectedImageAttrs = useCallback((): ImageNodeAttrs | null => {
     if (!editor || !editor.isActive("image")) return null;
@@ -3434,8 +3510,12 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     const attrs = getSelectedImageAttrs();
     const src = typeof attrs?.src === "string" ? attrs.src : "";
     if (!src) return;
-    setPreviewImage(resolveAttachmentUrl(src));
-  }, [getSelectedImageAttrs]);
+    openImageViewer(
+      src,
+      typeof attrs?.alt === "string" ? attrs.alt : "",
+      editor?.state.selection.from,
+    );
+  }, [editor, getSelectedImageAttrs, openImageViewer]);
 
   const handleDownloadSelectedImage = useCallback(async () => {
     const attrs = getSelectedImageAttrs();
@@ -3455,6 +3535,16 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       toast.error(t("tiptap.imageDownloadFailed", { defaultValue: "图片下载失败" }));
     }
   }, [getSelectedImageAttrs, t]);
+
+  const handleViewerDownload = useCallback(async (item: FullscreenImageItem) => {
+    const filename = item.filename || "nowen-image.png";
+    if (isAndroidNative() || item.src.startsWith("data:") || item.src.startsWith("blob:")) {
+      await saveImageBlobSource(item.src, filename);
+      toast.success(t("tiptap.imageDownloadSuccess", { defaultValue: "图片已保存" }));
+      return;
+    }
+    await downloadAttachment(item.src, filename);
+  }, [t]);
 
   const handleLocalizeSelectedImage = useCallback(async () => {
     if (!editor || localizingSelectedImage) return;
@@ -3602,6 +3692,27 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     });
     setImageBubble((b) => (b.open ? { ...b, open: false } : b));
   }, [editor, getSelectedImageAttrs, t]);
+
+  const handleRotateSelectedImage = useCallback((delta: -90 | 90) => {
+    if (!editor) return;
+    const attrs = getSelectedImageAttrs();
+    editor.chain().focus().updateAttributes("image", {
+      rotation: normalizeImageRotation(normalizeImageRotation(attrs?.rotation) + delta),
+    }).run();
+  }, [editor, getSelectedImageAttrs]);
+
+  const handleFlipSelectedImage = useCallback(() => {
+    if (!editor) return;
+    const attrs = getSelectedImageAttrs();
+    editor.chain().focus().updateAttributes("image", {
+      flipX: !normalizeImageFlipX(attrs?.flipX),
+    }).run();
+  }, [editor, getSelectedImageAttrs]);
+
+  const handleResetSelectedImageTransform = useCallback(() => {
+    if (!editor) return;
+    editor.chain().focus().updateAttributes("image", { rotation: 0, flipX: false }).run();
+  }, [editor]);
 
   const handleSaveEditedImage = useCallback(async (blob: Blob) => {
     if (!editor || !imageEditDialog) return;
@@ -4858,7 +4969,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       aiSelectedText,
       aiPosition?.top || 0,
       attachmentPreview?.id || "",
-      previewImage || "",
+      imageViewer?.images[imageViewer.initialIndex]?.src || "",
       selectedTextAction,
       bubble.open,
       imageBubble.open,
@@ -5691,18 +5802,6 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           <ToolbarButton title={t("tiptap.imageViewLarge")} onClick={handlePreviewSelectedImage}>
             <ExternalLink size={14} />
           </ToolbarButton>
-          <ToolbarButton title={t("tiptap.imageDownload")} onClick={() => { void handleDownloadSelectedImage(); }}>
-            <Download size={14} />
-          </ToolbarButton>
-          {selectedImageCanLocalize && (
-            <ToolbarButton
-              title={t("tiptap.imageLocalize", { defaultValue: "转存为附件" })}
-              disabled={localizingSelectedImage}
-              onClick={() => { void handleLocalizeSelectedImage(); }}
-            >
-              <Paperclip size={14} />
-            </ToolbarButton>
-          )}
           <ToolbarButton
             title={t("tiptap.imageReplace")}
             disabled={replacingImage}
@@ -5710,29 +5809,65 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           >
             <Upload size={14} />
           </ToolbarButton>
-          <ToolbarButton title={t("tiptap.imageCopyAddress")} onClick={() => { void handleCopySelectedImageSrc(); }}>
-            <Copy size={14} />
-          </ToolbarButton>
-          <ToolbarButton title={t("tiptap.imageDelete")} onClick={handleDeleteSelectedImage}>
-            <Trash2 size={14} />
-          </ToolbarButton>
           <ToolbarButton title={t("tiptap.imageEditComingSoon")} onClick={handleEditSelectedImage}>
             <Palette size={14} />
           </ToolbarButton>
-          <div className="w-px h-4 bg-app-border mx-0.5" />
+          <ToolbarButton title={t("tiptap.imageDownload")} onClick={() => { void handleDownloadSelectedImage(); }}>
+            <Download size={14} />
+          </ToolbarButton>
           <div className="relative">
             <ToolbarButton
-              title={t("tiptap.imageMoreSizes")}
+              title={t("common.more", { defaultValue: "更多" })}
               isActive={imageSizeMenuOpen}
               onClick={() => setImageSizeMenuOpen((v) => !v)}
             >
-              <ChevronDown size={14} />
+              <MoreHorizontal size={14} />
             </ToolbarButton>
             {imageSizeMenuOpen && (
               <div
-                className="absolute right-0 top-full mt-1 z-50 min-w-32 rounded-lg border border-app-border bg-app-elevated p-1 shadow-lg"
+                className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl border border-app-border bg-app-elevated p-1.5 shadow-xl"
                 data-popover
               >
+                <div className="px-2 pb-1 pt-0.5 text-[10px] font-medium text-tx-tertiary">图片变换（写入笔记）</div>
+                <div className="grid grid-cols-4 gap-1">
+                  <button
+                    type="button"
+                    title="向左旋转 90°"
+                    aria-label="向左旋转 90°"
+                    className="flex h-9 items-center justify-center rounded-lg text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
+                    onClick={() => handleRotateSelectedImage(-90)}
+                  >
+                    <RotateCcw size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    title="向右旋转 90°"
+                    aria-label="向右旋转 90°"
+                    className="flex h-9 items-center justify-center rounded-lg text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
+                    onClick={() => handleRotateSelectedImage(90)}
+                  >
+                    <RotateCw size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    title="水平翻转"
+                    aria-label="水平翻转"
+                    className="flex h-9 items-center justify-center rounded-lg text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
+                    onClick={handleFlipSelectedImage}
+                  >
+                    <FlipHorizontal size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    title="恢复图片变换"
+                    aria-label="恢复图片变换"
+                    className="flex h-9 items-center justify-center rounded-lg text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
+                    onClick={handleResetSelectedImageTransform}
+                  >
+                    <Scan size={15} />
+                  </button>
+                </div>
+                <div className="my-1 h-px bg-app-border" />
                 {IMAGE_SIZE_PRESETS.map((s) => (
                   <button
                     key={s.key}
@@ -5750,6 +5885,34 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
                   onClick={() => handleSetSelectedImageSize(null)}
                 >
                   {t("tiptap.imageSizeOriginal")}
+                </button>
+                <div className="my-1 h-px bg-app-border" />
+                {selectedImageCanLocalize && (
+                  <button
+                    type="button"
+                    disabled={localizingSelectedImage}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-tx-secondary hover:bg-app-hover hover:text-tx-primary disabled:opacity-40"
+                    onClick={() => { void handleLocalizeSelectedImage(); }}
+                  >
+                    <Paperclip size={14} />
+                    {t("tiptap.imageLocalize", { defaultValue: "转存为附件" })}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
+                  onClick={() => { void handleCopySelectedImageSrc(); }}
+                >
+                  <Copy size={14} />
+                  {t("tiptap.imageCopyAddress")}
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-red-500 hover:bg-red-500/10"
+                  onClick={handleDeleteSelectedImage}
+                >
+                  <Trash2 size={14} />
+                  {t("tiptap.imageDelete")}
                 </button>
               </div>
             )}
@@ -5773,21 +5936,12 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
               <X size={16} />
             </button>
           </div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-1.5">
             {[
               { key: "view", label: t("tiptap.imageViewLarge"), icon: ExternalLink, action: handlePreviewSelectedImage },
-              { key: "download", label: t("tiptap.imageDownload"), icon: Download, action: () => { void handleDownloadSelectedImage(); } },
-              ...(selectedImageCanLocalize ? [{
-                key: "localize",
-                label: t("tiptap.imageLocalize", { defaultValue: "转存为附件" }),
-                icon: Paperclip,
-                action: () => { void handleLocalizeSelectedImage(); },
-                disabled: localizingSelectedImage,
-              }] : []),
               { key: "replace", label: t("tiptap.imageReplace"), icon: Upload, action: handleReplaceSelectedImage, disabled: replacingImage },
-              { key: "copy", label: t("tiptap.imageCopyAddress"), icon: Copy, action: () => { void handleCopySelectedImageSrc(); } },
-              { key: "delete", label: t("tiptap.imageDelete"), icon: Trash2, action: handleDeleteSelectedImage },
               { key: "edit", label: t("tiptap.imageEdit"), icon: Palette, action: handleEditSelectedImage },
+              { key: "download", label: t("tiptap.imageDownload"), icon: Download, action: () => { void handleDownloadSelectedImage(); } },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -5796,36 +5950,77 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
                   type="button"
                   disabled={item.disabled}
                   onClick={item.action}
-                  className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border border-app-border bg-app-surface px-1.5 py-2 text-xs text-tx-secondary active:bg-app-hover disabled:opacity-40"
+                  className="flex h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-app-border bg-app-surface px-0.5 text-[10px] text-tx-secondary active:bg-app-hover disabled:opacity-40"
                 >
-                  <Icon size={18} />
-                  <span className="leading-tight">{item.label}</span>
+                  <Icon size={16} />
+                  <span className="max-w-full truncate leading-tight">{item.label}</span>
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setImageSizeMenuOpen((value) => !value)}
+              aria-expanded={imageSizeMenuOpen}
+              className={`flex h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border px-0.5 text-[10px] active:bg-app-hover ${imageSizeMenuOpen ? "border-accent-primary bg-accent-primary/10 text-accent-primary" : "border-app-border bg-app-surface text-tx-secondary"}`}
+            >
+              <MoreHorizontal size={16} />
+              {t("common.more", { defaultValue: "更多" })}
+            </button>
           </div>
-          <div className="mt-3">
-            <div className="mb-1.5 text-xs font-medium text-tx-tertiary">{t("tiptap.imageMoreSizes")}</div>
-            <div className="grid grid-cols-5 gap-2">
-              {IMAGE_SIZE_PRESETS.map((s) => (
+          {imageSizeMenuOpen && (
+            <div className="mt-2 rounded-xl border border-app-border bg-app-hover/40 p-2">
+              <div className="mb-1.5 text-[10px] font-medium text-tx-tertiary">{t("tiptap.imageMoreSizes")}</div>
+              <div className="flex gap-1.5 overflow-x-auto hide-scrollbar">
+                {IMAGE_SIZE_PRESETS.map((s) => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    className="h-8 shrink-0 rounded-lg border border-app-border bg-app-surface px-2.5 text-[11px] text-tx-secondary active:bg-app-hover"
+                    onClick={() => handleSetSelectedImageSize(s.ratio)}
+                  >
+                    {t(s.labelKey)}
+                  </button>
+                ))}
                 <button
-                  key={s.key}
                   type="button"
-                  className="h-9 rounded-lg border border-app-border text-xs text-tx-secondary active:bg-app-hover"
-                  onClick={() => handleSetSelectedImageSize(s.ratio)}
+                  className="h-8 shrink-0 rounded-lg border border-app-border bg-app-surface px-2.5 text-[11px] text-tx-secondary active:bg-app-hover"
+                  onClick={() => handleSetSelectedImageSize(null)}
                 >
-                  {t(s.labelKey)}
+                  {t("tiptap.imageSizeOriginal")}
                 </button>
-              ))}
-              <button
-                type="button"
-                className="h-9 rounded-lg border border-app-border text-xs text-tx-secondary active:bg-app-hover"
-                onClick={() => handleSetSelectedImageSize(null)}
-              >
-                {t("tiptap.imageSizeOriginal")}
-              </button>
+              </div>
+              <div data-nowen-image-transform-slot="true" />
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                {selectedImageCanLocalize && (
+                  <button
+                    type="button"
+                    disabled={localizingSelectedImage}
+                    onClick={() => { void handleLocalizeSelectedImage(); }}
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-app-border bg-app-surface text-[11px] text-tx-secondary active:bg-app-hover disabled:opacity-40"
+                  >
+                    <Paperclip size={14} />
+                    {t("tiptap.imageLocalize", { defaultValue: "转存为附件" })}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { void handleCopySelectedImageSrc(); }}
+                  className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-app-border bg-app-surface text-[11px] text-tx-secondary active:bg-app-hover"
+                >
+                  <Copy size={14} />
+                  {t("tiptap.imageCopyAddress")}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedImage}
+                  className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/10 text-[11px] text-red-500 active:bg-red-500/20"
+                >
+                  <Trash2 size={14} />
+                  {t("tiptap.imageDelete")}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -6239,11 +6434,12 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
         />
       )}
 
-      <MobileImageViewer
-        open={!!previewImage}
-        src={previewImage || ""}
-        alt=""
-        onClose={() => setPreviewImage(null)}
+      <FullscreenImageViewer
+        open={!!imageViewer}
+        images={imageViewer?.images}
+        initialIndex={imageViewer?.initialIndex || 0}
+        onDownload={handleViewerDownload}
+        onClose={() => setImageViewer(null)}
       />
 
       {/* AI Writing Assistant */}
