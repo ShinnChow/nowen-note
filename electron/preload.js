@@ -69,6 +69,17 @@ contextBridge.exposeInMainWorld("nowenDesktop", {
     return ipcRenderer.invoke("app:open-data-dir");
   },
 
+  /** 仅按附件 ID 请求主进程使用系统默认程序打开；renderer 不接触物理路径。 */
+  attachments: {
+    openWithSystem(attachmentId) {
+      if (typeof attachmentId !== "string"
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(attachmentId)) {
+        return Promise.resolve({ ok: false, error: "INVALID_ATTACHMENT_ID" });
+      }
+      return ipcRenderer.invoke("attachment:open-with-system", { attachmentId });
+    },
+  },
+
   /** 查看桌面端 IndexedDB 离线缓存位置。 */
   getOfflineStorageInfo() {
     return ipcRenderer.invoke("app:get-offline-storage-info");

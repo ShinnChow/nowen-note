@@ -102,17 +102,18 @@ import {
 } from "@/lib/tiptapEditorScrollLayout";
 import { resolveEditorBubbleKind, type BubbleSelectionKind } from "@/lib/editorBubbleSelection";
 import { toast } from "@/lib/toast";
+import { decideAttachmentPrimaryAction, detectAttachmentPreviewKind } from "@/lib/attachmentOpenStrategy";
 import { copyText } from "@/lib/clipboard";
 import { openTaskQuickCapture } from "@/lib/taskInboxApi";
 import { saveAs } from "file-saver";
 import { findTextAction, type TextAction } from "@/lib/textActions";
 import { choose as chooseDialog, prompt as promptDialog } from "@/components/ui/confirm";
-import { Note, Tag, type FileItem } from "@/types";
+import { Note, Tag, type FileDetail, type FileItem } from "@/types";
 import TagInput from "@/components/TagInput";
 import AIWritingAssistant from "@/components/AIWritingAssistant";
 import type { NoteEditorHandle, NoteEditorHeading, NoteEditorProps } from "@/components/editors/types";
 import type { FormatMenuPayload } from "@/lib/desktopBridge";
-import { sendFormatState } from "@/lib/desktopBridge";
+import { openDesktopAttachmentWithSystem, sendFormatState } from "@/lib/desktopBridge";
 import { SlashCommandsMenu, getDefaultSlashCommands, createSlashExtension, createSlashEventHandlers } from "@/components/SlashCommands";
 import { NoteLinkMenu, type NoteSearchResult, type NoteLinkBlockItem, type NoteLinkSelectionOptions } from "@/components/NoteLinkExtension";
 import { NoteLinkHoverPreview } from "@/components/NoteLinkPreview";
@@ -1583,14 +1584,12 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   const [showAI, setShowAI] = useState(false);
   const [aiSelectedText, setAiSelectedText] = useState("");
   const [aiPosition, setAiPosition] = useState<{ top: number; left: number } | undefined>();
-  // 内嵌附件预览：点编辑器里 📎 附件链接 → 右侧抽屉显示附件详情。
+  // 附件详情：内联可预览附件进入右侧抽屉；桌面本地办公附件优先交给系统程序打开。
   // 采用 attachmentId 走 api.files.get 拿完整详情（包含外链分享 / 重命名 / 引用列表），
   // 与文件管理抽屉体验一致。
-  // - id：从 /api/attachments/<uuid> 抠出。
-  // - isDocx：docx 走中转渲染（支持上传新版本）；其他走默认 AttachmentPreview。
   const [attachmentPreview, setAttachmentPreview] = useState<
-    { id: string; isDocx: boolean; filename: string } | null
-  >(null);  // 图片预览状态
+    { id: string; isDocx: boolean } | null
+  >(null);
   const [attachmentLibraryOpen, setAttachmentLibraryOpen] = useState(false);
   const attachmentLibraryAnchorRef = useRef<AsyncInsertAnchor | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -1672,6 +1671,62 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   });
   // hover 关闭延迟定时器：用户从链接移到气泡上时给一个缓冲，避免穿过空隙时闪烁
   const linkHoverCloseTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const showAttachmentDetail = useCallback((detail: FileDetail) => {
+    setLinkBubble((current) => (current.open ? { ...current, open: false } : current));
+    setAttachmentPreview({
+      id: detail.id,
+      isDocx: detectAttachmentPreviewKind(detail.mimeType, detail.filename) === "docx",
+    });
+  }, []);
+
+  const loadAndShowAttachmentDetail = useCallback(async (attachmentId: string) => {
+    try {
+      showAttachmentDetail(await api.files.get(attachmentId));
+    } catch (error: any) {
+      toast.error(error?.message || "附件详情加载失败");
+    }
+  }, [showAttachmentDetail]);
+
+  const openAttachmentPrimaryAction = useCallback(async (attachmentId: string) => {
+    setLinkBubble((current) => (current.open ? { ...current, open: false } : current));
+    let detail: FileDetail;
+    try {
+      detail = await api.files.get(attachmentId);
+    } catch (error: any) {
+      toast.error(error?.message || "附件信息加载失败");
+      return;
+    }
+
+    if (decideAttachmentPrimaryAction(detail.mimeType, detail.filename) !== "desktop-default") {
+      showAttachmentDetail(detail);
+      return;
+    }
+
+    let result;
+    try {
+      result = await openDesktopAttachmentWithSystem(attachmentId);
+    } catch (error: any) {
+      showAttachmentDetail(detail);
+      toast.error(`无法调用系统默认程序，已打开附件详情：${error?.message || "桌面桥接调用失败"}`);
+      return;
+    }
+    if (result.ok) {
+      toast.success("已使用系统默认程序打开附件");
+      return;
+    }
+
+    showAttachmentDetail(detail);
+    if (["NOT_DESKTOP", "NOT_FULL_MODE", "STORAGE_NOT_LOCAL"].includes(result.error || "")) return;
+    const message = result.error === "ATTACHMENT_FILE_NOT_FOUND"
+      ? "本地附件文件不存在，已打开详情，可尝试下载或检查存储配置"
+      : result.error === "PATH_OUTSIDE_ATTACHMENTS_ROOT" || result.error === "INVALID_ATTACHMENT_PATH"
+        ? "附件路径安全校验失败，已阻止打开并显示附件详情"
+        : result.error === "OPEN_FAILED"
+          ? `系统默认程序打开失败：${result.message || "请检查文件关联"}`
+          : `无法使用系统默认程序打开附件：${result.message || result.error || "未知错误"}`;
+    toast.error(message);
+  }, [showAttachmentDetail]);
 
   // 笔记引用搜索菜单状态（[[ / 【【 触发）
   const [noteLinkMenu, setNoteLinkMenu] = useState<{
@@ -1989,19 +2044,9 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           //   StarterKit 默认 Link mark 只保留 href / target / rel / class，
           //   data-attachment / data-size / download 等自定义属性会在 parse/serialize
           //   阶段被丢弃，因此只能依赖 href 模式。
-          // 命中后阻止浏览器默认下载，改为右侧抽屉内联预览：
-          //   - .docx → DocxAttachmentPreview（自研 OOXML 渲染，支持"上传新版本"）
-          //   - 其他  → AttachmentPreview（图片 / 视频 / 文本 / 代码 等）
-          // 不支持的格式由 AttachmentPreview 内部显示"该格式不支持内联预览"占位 + 下载兜底。
+          // 命中后阻止浏览器默认下载，交给统一附件策略决定预览、系统程序打开或详情 fallback。
           const attachmentMatch = /^\/api\/attachments\/[0-9a-fA-F-]{36}/.test(href);
           if (attachmentMatch) {
-            // 文件名优先取 download，没有则尝试从链接文字"📎 文件名 (大小)"里抠
-            let fname = anchor.getAttribute("download") || "";
-            if (!fname) {
-              const txt = anchor.textContent || "";
-              const m = txt.match(/📎\s*(.+?)\s*\([^)]*\)\s*$/);
-              fname = m ? m[1] : txt.replace(/^📎\s*/, "");
-            }
             // 从 /api/attachments/<uuid> 中抠 id；regex 已在 attachmentMatch 处验过。
             const idMatch = href.match(/\/api\/attachments\/([0-9a-fA-F-]{36})/);
             const attachmentId = idMatch ? idMatch[1] : "";
@@ -2009,14 +2054,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
               return false;
             }
             event.preventDefault();
-            // 打开右侧文件详情抽屉时，同步关闭 hover/caret 触发的链接气泡，
-            // 避免气泡（路径预览 + 下载/链接/取消链接）与抽屉同屏并存造成视觉干扰。
-            setLinkBubble(b => (b.open ? { ...b, open: false } : b));
-            setAttachmentPreview({
-              id: attachmentId,
-              filename: fname,
-              isDocx: /\.docx$/i.test(fname),
-            });
+            void openAttachmentPrimaryAction(attachmentId);
             return true;
           }
           if (/^(mailto:|tel:|sms:)/i.test(href)) {
@@ -5587,19 +5625,28 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
             {linkBubble.href}
           </a>
           <div className="w-px h-4 bg-app-border mx-0.5" />
-          {/* 附件链接（href 形如 /api/attachments/<id>）展示「下载」按钮——
-             点击链接文本本身已在 handleDOMEvents.click 里走内联预览抽屉，
-             所以气泡里只补强"下载到本地"这个明确动作。普通 http(s) 链接
+          {/* 附件链接提供明确的详情与下载次级操作；普通 http(s) 链接
              保留"打开链接"在新标签页打开。 */}
           {/^\/api\/attachments\//.test(linkBubble.href) ? (
-            <ToolbarButton
-              onClick={() => {
-                void downloadAttachment(linkBubble.href, linkBubble.filename || "");
-              }}
-              title={t('tiptap.linkDownload')}
-            >
-              <Download size={14} />
-            </ToolbarButton>
+            <>
+              <ToolbarButton
+                onClick={() => {
+                  const id = linkBubble.href.match(/\/api\/attachments\/([0-9a-fA-F-]{36})/)?.[1];
+                  if (id) void loadAndShowAttachmentDetail(id);
+                }}
+                title="查看附件详情"
+              >
+                <Info size={14} />
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => {
+                  void downloadAttachment(linkBubble.href, linkBubble.filename || "");
+                }}
+                title={t('tiptap.linkDownload')}
+              >
+                <Download size={14} />
+              </ToolbarButton>
+            </>
           ) : (
             <ToolbarButton
               onClick={() => openLinkUrl(linkBubble.href)}

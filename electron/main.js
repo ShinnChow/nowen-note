@@ -15,6 +15,7 @@ const { handleArgv, setupMacOpenFile, flushPending } = require("./fileAssoc");
 const { registerDiscoveryIpc, shutdown: shutdownDiscovery } = require("./discovery");
 const { setSettingsPath, readSettings, writeSettings } = require("./settings");
 const { openSetupWindow } = require("./setupWindow");
+const { openLocalAttachmentWithSystem } = require("./attachment-open");
 const {
   setCredentialsPath,
   registerCredentialsIpc,
@@ -1805,6 +1806,35 @@ function registerAppIpc() {
     const dir = getUserDataPath();
     await shell.openPath(dir);
     return { ok: true, path: dir };
+  });
+
+  ipcMain.removeHandler("attachment:open-with-system");
+  ipcMain.handle("attachment:open-with-system", async (event, payload = {}) => {
+    const reject = assertMainWindowSender(event);
+    if (reject) return reject;
+    const attachmentId = typeof payload.attachmentId === "string" ? payload.attachmentId : "";
+    return openLocalAttachmentWithSystem({
+      attachmentId,
+      mode: currentMode,
+      attachmentsRoot: path.join(getUserDataPath(), "attachments"),
+      loadMetadata: async (id) => {
+        if (!backendPort) return { ok: false, error: "BACKEND_NOT_READY" };
+        const response = await localApiRequest(
+          "/auth/desktop/attachment-open-metadata",
+          { attachmentId: id },
+          { "X-Nowen-Desktop-Secret": getLocalAccountSecret() },
+        );
+        if (response.status !== 200 || !response.data?.ok) {
+          return {
+            ok: false,
+            error: response.data?.code || "ATTACHMENT_METADATA_FAILED",
+            message: response.data?.error,
+          };
+        }
+        return response.data;
+      },
+      openPath: (filePath) => shell.openPath(filePath),
+    });
   });
 
   ipcMain.removeHandler("app:get-offline-storage-info");

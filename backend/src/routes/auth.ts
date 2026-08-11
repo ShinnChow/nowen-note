@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { timingSafeEqual } from "node:crypto";
 import { getDb } from "../db/schema";
 import { userSessionsRepository } from "../repositories";
 import { v4 as uuid } from "uuid";
@@ -31,14 +32,17 @@ import {
 import { logAudit } from "../services/audit";
 import jwt from "jsonwebtoken";
 import { disconnectUser } from "../services/realtime";
+import { getAttachmentStorageInfo } from "../services/attachment-storage";
 
 const auth = new Hono();
 
-function verifyDesktopLocalResetSecret(c: Context): boolean {
+function verifyDesktopLocalSecret(c: Context): boolean {
   const expected = process.env.ELECTRON_LOCAL_ACCOUNT_SECRET;
   if (!expected || expected.length < 16) return false;
   const got = c.req.header("X-Nowen-Desktop-Secret") || "";
-  return got === expected;
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  const gotBuffer = Buffer.from(got, "utf8");
+  return expectedBuffer.length === gotBuffer.length && timingSafeEqual(expectedBuffer, gotBuffer);
 }
 
 // ========== 会话管理辅助 ==========
@@ -304,7 +308,7 @@ auth.post("/register", async (c) => {
 });
 
 auth.post("/desktop/reset-local", async (c) => {
-  if (!verifyDesktopLocalResetSecret(c)) {
+  if (!verifyDesktopLocalSecret(c)) {
     return c.json({ error: "forbidden" }, 403);
   }
 
@@ -371,6 +375,32 @@ auth.post("/desktop/reset-local", async (c) => {
     : user.personalImportEnabled !== 0;
 
   return c.json({ ...tokens, user });
+});
+
+auth.post("/desktop/attachment-open-metadata", async (c) => {
+  if (!verifyDesktopLocalSecret(c)) {
+    return c.json({ error: "forbidden", code: "DESKTOP_SECRET_INVALID" }, 403);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const attachmentId = String((body as any)?.attachmentId || "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(attachmentId)) {
+    return c.json({ error: "附件 ID 无效", code: "INVALID_ATTACHMENT_ID" }, 400);
+  }
+
+  const storage = getAttachmentStorageInfo();
+  if (storage.driver !== "local") {
+    return c.json({ error: "当前附件不在本机存储", code: "STORAGE_NOT_LOCAL" }, 409);
+  }
+  const attachment = getDb()
+    .prepare("SELECT path FROM attachments WHERE id = ?")
+    .get(attachmentId) as { path: string } | undefined;
+  if (!attachment) {
+    return c.json({ error: "附件不存在", code: "ATTACHMENT_NOT_FOUND" }, 404);
+  }
+  if (!attachment.path || typeof attachment.path !== "string") {
+    return c.json({ error: "附件路径无效", code: "INVALID_ATTACHMENT_PATH" }, 409);
+  }
+  return c.json({ ok: true, driver: "local", path: attachment.path });
 });
 
 // ========== 登录 ==========

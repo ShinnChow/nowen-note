@@ -275,6 +275,12 @@ export interface DesktopAccountHistoryAPI {
   remove(id: string): Promise<{ ok: boolean; error?: string }>;
 }
 
+export interface DesktopAttachmentOpenResult {
+  ok: boolean;
+  error?: string;
+  message?: string;
+}
+
 export interface DesktopHttpAPI {
   requestJson(payload: {
     url: string;
@@ -302,6 +308,9 @@ interface NowenDesktopAPI {
   getEditorPerformanceMetrics?: () => Promise<{ heapBytes: number }>;
   openLogDir: () => Promise<{ ok: boolean; path: string }>;
   openDataDir?: () => Promise<{ ok: boolean; path: string }>;
+  attachments?: {
+    openWithSystem?: (attachmentId: string) => Promise<DesktopAttachmentOpenResult>;
+  };
   openUgreenRemoteWorkspace?: (url: string) => Promise<{ ok: boolean; error?: string }>;
   getOfflineStorageInfo?: () => Promise<OfflineStorageInfo>;
   openOfflineStorageDir?: () => Promise<{ ok: boolean; path: string; error?: string }>;
@@ -506,6 +515,14 @@ export async function openDataDir(): Promise<{ ok: boolean; path?: string; reaso
   const bridge = getBridge();
   if (!bridge?.openDataDir) return { ok: false, reason: "not-supported" };
   return bridge.openDataDir();
+}
+
+export async function openDesktopAttachmentWithSystem(
+  attachmentId: string,
+): Promise<DesktopAttachmentOpenResult> {
+  const bridge = getBridge();
+  if (!bridge?.attachments?.openWithSystem) return { ok: false, error: "NOT_DESKTOP" };
+  return bridge.attachments.openWithSystem(attachmentId);
 }
 
 export async function getOfflineStorageInfo(): Promise<OfflineStorageInfo | null> {
