@@ -7,7 +7,10 @@ import {
   isReady as localStoreReady,
 } from "@/lib/localStore";
 import type { Note, NoteListItem, Notebook, Tag } from "@/types";
-import { hydrateOfflineAttachmentsForNote } from "@/lib/noteAttachmentAccessBridge";
+import {
+  clearOfflineAttachmentObjectUrls,
+  hydrateOfflineAttachmentsForNote,
+} from "@/lib/noteAttachmentAccessBridge";
 
 export interface OfflineNoteSnapshot {
   noteId: string;
@@ -77,7 +80,12 @@ export function isOfflineNoteSnapshot(noteId: string): boolean {
 }
 
 if (typeof window !== "undefined") {
-  window.addEventListener("online", () => setOffline(false));
+  window.addEventListener("online", () => {
+    setOffline(false);
+    // 离线附件只作为断网兜底。网络恢复后立即退休运行时 blob URL，附件 NodeView
+    // 会通过 access bridge 的订阅重新解析到当前服务器签名 URL。
+    clearOfflineAttachmentObjectUrls();
+  });
 }
 
 export function isCurrentlyOffline(): boolean {
@@ -173,9 +181,15 @@ export function readNote(id: string, online: () => Promise<Note>): Promise<Note>
       onFallback: (note) => markOfflineNoteSnapshot(note),
     },
   ).then(async (note) => {
-    await hydrateOfflineAttachmentsForNote(note.id).catch((error) => {
-      console.warn("[offlineRead] hydrate cached attachments failed", error);
-    });
+    // 本地 Blob 只在真正使用离线笔记快照时注册。旧实现无论在线/离线都会 hydrate，
+    // 导致 Mac/Electron 联网时也优先命中 IndexedDB 中的旧/损坏附件，覆盖正常服务器图片。
+    if (isOfflineNoteSnapshot(note.id) || isCurrentlyOffline()) {
+      await hydrateOfflineAttachmentsForNote(note.id).catch((error) => {
+        console.warn("[offlineRead] hydrate cached attachments failed", error);
+      });
+    } else {
+      clearOfflineAttachmentObjectUrls();
+    }
     return note;
   });
 }
