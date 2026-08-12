@@ -1,0 +1,116 @@
+name: Auto Fix Rich Text Paste Fidelity
+
+on:
+  push:
+    branches: [release/v1.4.10]
+    paths:
+      - '.github/workflows/auto-fix-richtext-copy-format.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Patch internal rich text paste priority
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/src/components/TiptapEditor.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(source: str, old: str, new: str, label: str) -> str:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one marker, found {count}')
+              return source.replace(old, new, 1)
+
+          text = replace_once(
+              text,
+              r'''          const rawHtml = event.clipboardData?.getData("text/html") || "";
+          const html = sanitizeForPaste(normalizeLegacyFontColors(rawHtml));''',
+              r'''          const rawHtml = event.clipboardData?.getData("text/html") || "";
+          // ProseMirror/Tiptap 内部复制会带 data-pm-slice。已有富文本结构时必须优先使用 HTML，
+          // 不能再让 text/plain 的 Markdown / 代码启发式判断抢走粘贴事件，否则笔记 A → B 会丢格式。
+          const isInternalRichTextPaste = /\bdata-pm-slice\s*=/i.test(rawHtml);
+          const html = sanitizeForPaste(normalizeLegacyFontColors(rawHtml));''',
+              'detect internal ProseMirror rich text',
+          )
+
+          text = replace_once(
+              text,
+              r'''          const wikiNoteLinks = text
+            ? parsePastedWikiNoteLinks(text, t("editorTabs.noTitle", { defaultValue: "无标题笔记" }))
+            : null;''',
+              r'''          const wikiNoteLinks = !isInternalRichTextPaste && text
+            ? parsePastedWikiNoteLinks(text, t("editorTabs.noTitle", { defaultValue: "无标题笔记" }))
+            : null;''',
+              'preserve internal rich text before wiki-link parsing',
+          )
+
+          text = replace_once(
+              text,
+              r'''          if (text && text.includes("\n") && !looksLikeMarkdown(text) && looksLikeCode(text)) {''',
+              r'''          if (!isInternalRichTextPaste && text && text.includes("\n") && !looksLikeMarkdown(text) && looksLikeCode(text)) {''',
+              'preserve internal rich text before code detection',
+          )
+
+          text = replace_once(
+              text,
+              r'''          if (text && looksLikeMarkdown(text)) {''',
+              r'''          if (!isInternalRichTextPaste && text && looksLikeMarkdown(text)) {''',
+              'preserve internal rich text before markdown detection',
+          )
+
+          text = replace_once(
+              text,
+              r'''          // 5) 只有 HTML 没有多行纯文本（如从网页复制的富文本片段）：解析插入
+          //    先归一化：把 <div>/<br> 伪多行段落拆成真正的多个 <p>，''',
+              r'''          // 5) HTML 富文本：解析插入。Nowen Note / ProseMirror 内部复制会绕过上面的纯文本启发式，
+          //    从而保留标题、列表、粗斜体、颜色、字号、表格等已有格式。
+          //    先归一化：把 <div>/<br> 伪多行段落拆成真正的多个 <p>，''',
+              'update HTML paste comment',
+          )
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate patch contract
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          text = Path('frontend/src/components/TiptapEditor.tsx').read_text(encoding='utf-8')
+          required = [
+              'const isInternalRichTextPaste = /\\bdata-pm-slice\\s*=/i.test(rawHtml);',
+              'const wikiNoteLinks = !isInternalRichTextPaste && text',
+              'if (!isInternalRichTextPaste && text && text.includes("\\n") && !looksLikeMarkdown(text) && looksLikeCode(text)) {',
+              'if (!isInternalRichTextPaste && text && looksLikeMarkdown(text)) {',
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f'missing patch marker: {marker}')
+          if text.count('const isInternalRichTextPaste =') != 1:
+              raise SystemExit('internal rich text detector must exist exactly once')
+          PY
+
+      - name: Validate frontend
+        run: |
+          cd frontend
+          npm install --no-audit --no-fund
+          npx tsc -b
+          npx vite build
+
+      - name: Commit fix and remove temporary workflow
+        run: |
+          rm .github/workflows/auto-fix-richtext-copy-format.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/components/TiptapEditor.tsx .github/workflows/auto-fix-richtext-copy-format.yml
+          git commit -m "fix(富文本粘贴): 保留笔记间复制格式"
+          git push
