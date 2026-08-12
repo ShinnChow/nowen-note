@@ -45,7 +45,9 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import {
+  search,
   searchKeymap,
+  openSearchPanel,
   highlightSelectionMatches,
 } from "@codemirror/search";
 import {
@@ -88,6 +90,7 @@ import {
   Minus,
   Quote,
   Redo,
+  Search,
   Sparkles,
   Strikethrough,
   Table2,
@@ -197,6 +200,23 @@ function isMobileMarkdownViewport(): boolean {
     && window.matchMedia("(max-width: 639px)").matches;
 }
 
+function markdownSearchPhrases(language?: string) {
+  const isChinese = (language || "").toLowerCase().startsWith("zh");
+  return EditorState.phrases.of(isChinese ? {
+    Find: "查找",
+    Replace: "替换",
+    next: "下一个",
+    previous: "上一个",
+    all: "全部",
+    "match case": "区分大小写",
+    regexp: "正则",
+    "by word": "全词匹配",
+    replace: "替换",
+    "replace all": "全部替换",
+    close: "关闭",
+  } : {});
+}
+
 // ---------------------------------------------------------------------------
 // ��������С��ť + �ָ���
 // ---------------------------------------------------------------------------
@@ -266,6 +286,93 @@ const nowenMdHighlight = HighlightStyle.define([
 ]);
 
 /** �༭�� DOM �������⣨���� / �ߴ� / ��ɫ�� */
+const searchPanelTheme = EditorView.theme({
+  ".cm-panels": {
+    color: "var(--color-tx-primary, #0f172a)",
+    backgroundColor: "transparent",
+  },
+  ".cm-panels-top": {
+    borderBottom: "1px solid var(--color-border, #e5e7eb)",
+  },
+  ".cm-panel.cm-search": {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: "6px",
+    padding: "9px 46px 9px 10px",
+    backgroundColor: "var(--color-elevated, #ffffff)",
+    boxShadow: "0 6px 18px rgba(15, 23, 42, 0.08)",
+    fontSize: "12px",
+    lineHeight: "1.2",
+  },
+  ".cm-panel.cm-search label": {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "5px",
+    color: "var(--color-tx-secondary, #64748b)",
+    whiteSpace: "nowrap",
+  },
+  ".cm-panel.cm-search input[type=text]": {
+    boxSizing: "border-box",
+    width: "clamp(145px, 28vw, 230px)",
+    height: "30px",
+    padding: "0 9px",
+    border: "1px solid var(--color-border, #e5e7eb)",
+    borderRadius: "7px",
+    outline: "none",
+    color: "var(--color-tx-primary, #0f172a)",
+    backgroundColor: "var(--color-bg, #ffffff)",
+    font: "inherit",
+    fontSize: "12px",
+    transition: "border-color 120ms ease, box-shadow 120ms ease",
+  },
+  ".cm-panel.cm-search input[type=text]:focus": {
+    borderColor: "var(--color-accent-primary, #3b82f6)",
+    boxShadow: "0 0 0 2px rgba(59, 130, 246, 0.12)",
+  },
+  ".cm-panel.cm-search button": {
+    boxSizing: "border-box",
+    minHeight: "30px",
+    padding: "0 9px",
+    border: "1px solid var(--color-border, #e5e7eb)",
+    borderRadius: "7px",
+    color: "var(--color-tx-secondary, #64748b)",
+    backgroundColor: "var(--color-surface, #f9fafb)",
+    font: "inherit",
+    fontSize: "12px",
+    cursor: "pointer",
+    transition: "background-color 120ms ease, color 120ms ease, border-color 120ms ease",
+  },
+  ".cm-panel.cm-search button:hover": {
+    color: "var(--color-tx-primary, #0f172a)",
+    borderColor: "var(--color-accent-primary, #3b82f6)",
+    backgroundColor: "var(--color-hover, #f3f4f6)",
+  },
+  ".cm-panel.cm-search button[name=close]": {
+    position: "absolute",
+    top: "9px",
+    right: "10px",
+    width: "30px",
+    minWidth: "30px",
+    padding: "0",
+    fontSize: "18px",
+    lineHeight: "1",
+  },
+  ".cm-panel.cm-search input[type=checkbox]": {
+    width: "14px",
+    height: "14px",
+    margin: "0",
+    accentColor: "var(--color-accent-primary, #3b82f6)",
+  },
+  ".cm-panel.cm-search br": {
+    display: "block",
+    flexBasis: "100%",
+    width: "100%",
+    height: "0",
+  },
+});
+
 const baseTheme = EditorView.theme({
   "&": {
     height: "100%",
@@ -402,7 +509,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
   yDoc,
   awareness,
 }, ref) {
-  const { t: tr } = useTranslation();
+  const { t: tr, i18n } = useTranslation();
   const { prefs: userPrefs } = useUserPreferences();
   const { visible: keyboardVisible } = useKeyboardVisible();
   const compactMobileEditing = editable
@@ -480,6 +587,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
   // �����л��õ� Compartment
   const themeCompartmentRef = useRef(new Compartment());
   const editableCompartmentRef = useRef(new Compartment());
+  const searchPhraseCompartmentRef = useRef(new Compartment());
 
   // ���һ�δ��� pointer ʱ���������"ѡ�����ݴ������� Android ϵͳ���Ʋ˵�"�߼�
   const lastTouchAtRef = useRef<number>(0);
@@ -1110,6 +1218,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
         rectangularSelection(),
         crosshairCursor(),
         highlightActiveLine(),
+        search({ top: true }),
         highlightSelectionMatches(),
         EditorView.lineWrapping,
         ...internalMarkdownMarkerExtensions,
@@ -1128,6 +1237,8 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
         baseTheme,
         themeCompartmentRef.current.of(isDarkMode() ? oneDark : []),
         editableCompartmentRef.current.of(EditorView.editable.of(editable)),
+        searchPhraseCompartmentRef.current.of(markdownSearchPhrases(i18n.resolvedLanguage || i18n.language)),
+        searchPanelTheme,
 
         // ��ݼ�������Ĭ�� keymap ע�ᣬ��֤ Mod-s ���� chrome �̣�
         saveKeymap,
@@ -1637,6 +1748,37 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
     fn(v);
   }, []);
 
+  const openMarkdownSearch = useCallback(() => {
+    const revealSearch = () => {
+      const view = viewRef.current;
+      if (!view) return;
+      openSearchPanel(view);
+    };
+
+    if (viewModeRef.current === "preview") {
+      setMarkdownViewMode("source");
+      requestAnimationFrame(revealSearch);
+      return;
+    }
+    revealSearch();
+  }, [setMarkdownViewMode]);
+
+  useEffect(() => {
+    const handler = () => openMarkdownSearch();
+    window.addEventListener("nowen:open-search", handler);
+    return () => window.removeEventListener("nowen:open-search", handler);
+  }, [openMarkdownSearch]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: searchPhraseCompartmentRef.current.reconfigure(
+        markdownSearchPhrases(i18n.resolvedLanguage || i18n.language),
+      ),
+    });
+  }, [i18n.language, i18n.resolvedLanguage]);
+
   const iconSize = 15;
 
   const handleNoteLinkSelect = useCallback((
@@ -1702,6 +1844,9 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
             <ToolbarButton onClick={() => withView((view) => redo(view))} title={tr("tiptap.redo") || "重做"}>
               <Redo size={16} />
             </ToolbarButton>
+            <ToolbarButton onClick={openMarkdownSearch} title="查找与替换">
+              <Search size={16} />
+            </ToolbarButton>
             <ToolbarDivider />
             <ToolbarButton onClick={() => withView((view) => toggleHeading(view, 1))} title={tr("tiptap.heading1") || "一级标题"}>
               <Heading1 size={16} />
@@ -1742,9 +1887,15 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
           </ToolbarButton>
           <ToolbarButton
             onClick={() => withView((v) => redo(v))}
-            title={tr("tiptap.redo") || "����"}
+            title={tr("tiptap.redo") || "重做"}
           >
             <Redo size={iconSize} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={openMarkdownSearch}
+            title="查找与替换"
+          >
+            <Search size={iconSize} />
           </ToolbarButton>
 
           {/* MARKDOWN-MOBILE-PREVIEW-01: 预览入口前置，避免被横向工具栏遮挡。 */}
