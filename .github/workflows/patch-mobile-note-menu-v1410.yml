@@ -33,9 +33,8 @@ jobs:
               raise SystemExit(f"expected one mobile menu container, found {text.count(old_container)}")
           text = text.replace(old_container, new_container, 1)
 
-          start_marker = new_container
+          start = text.index(new_container)
           end_marker = "<span>{t('editor.trashTooltip')}</span>"
-          start = text.index(start_marker)
           end = text.index(end_marker, start) + len(end_marker)
           block = text[start:end]
           compact_count = block.count("py-2.5")
@@ -48,7 +47,7 @@ jobs:
           print(f"compacted {compact_count} mobile menu rows")
           PY
 
-      - name: Commit fix and remove temporary workflow
+      - name: Commit fix, rebase latest branch, and remove temporary workflow
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -57,4 +56,11 @@ jobs:
           git add frontend/src/components/EditorPane.tsx
           git diff --cached --check
           git commit -m "fix: adapt mobile note menu to short viewports"
-          git push origin HEAD:release/v1.4.10
+          for attempt in 1 2 3; do
+            git pull --rebase origin release/v1.4.10
+            if git push origin HEAD:release/v1.4.10; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
