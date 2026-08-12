@@ -2638,7 +2638,11 @@ const moveToTrash = useCallback(async () => {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: -4 }}
                   transition={{ duration: 0.12 }}
-                  className="absolute top-full right-0 mt-1 w-56 bg-app-elevated border border-app-border rounded-lg shadow-xl z-50 py-1 overflow-hidden"
+                  className="absolute top-full right-0 mt-1 w-56 max-h-[calc(100vh-9rem)] bg-app-elevated border border-app-border rounded-lg shadow-xl z-50 py-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+                  style={{
+                    maxHeight: "calc(100dvh - 9rem - env(safe-area-inset-bottom, 0px))",
+                    WebkitOverflowScrolling: "touch",
+                  }}
                 >
                   {/* �ö� / ȡ���ö� */}
                   <button
@@ -2646,7 +2650,7 @@ const moveToTrash = useCallback(async () => {
                       window.dispatchEvent(new CustomEvent('nowen:open-search'));
                       setShowMobileMenu(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <Search size={15} className="text-tx-tertiary" />
                     <span>{t('editor.searchInNote')}</span>
@@ -2654,7 +2658,7 @@ const moveToTrash = useCallback(async () => {
                   <button
                     onClick={() => { toggleFavorite(); setShowMobileMenu(false); }}
                     disabled={isTrashed}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
                   >
                     <Star size={15} className={cn(activeNote.isFavorite ? "text-amber-400 fill-amber-400" : "text-tx-tertiary")} />
                     <span>{activeNote.isFavorite ? t('editor.unfavoriteTooltip') : t('editor.favoriteTooltip')}</span>
@@ -2662,7 +2666,7 @@ const moveToTrash = useCallback(async () => {
                   <button
                     onClick={() => { toggleLock(); setShowMobileMenu(false); }}
                     disabled={isTrashed}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
                   >
                     {effectiveLocked ? <Lock size={15} className="text-orange-500" /> : <Unlock size={15} className="text-tx-tertiary" />}
                     <span>{effectiveLocked ? t('editor.unlockTooltip') : t('editor.lockTooltip')}</span>
@@ -2671,7 +2675,7 @@ const moveToTrash = useCallback(async () => {
                   <button
                     onClick={() => { togglePin(); setShowMobileMenu(false); }}
                     disabled={!!activeNote.isLocked || isTrashed}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
                   >
                     <Pin size={15} className={cn(activeNote.isPinned ? "text-accent-primary fill-accent-primary" : "text-tx-tertiary")} />
                     <span>{activeNote.isPinned ? t('editor.unpinTooltip') : t('editor.pinTooltip')}</span>
@@ -2681,7 +2685,7 @@ const moveToTrash = useCallback(async () => {
                   <button
                     onClick={() => setShowMobileMoveMenu(!showMobileMoveMenu)}
                     disabled={isTrashed}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
                   >
                     <FolderInput size={15} className="text-tx-tertiary" />
                     <span className="flex-1 text-left">{t('editor.moveToNotebook')}</span>
@@ -2721,7 +2725,7 @@ const moveToTrash = useCallback(async () => {
                       setShowMobileOutline(true);
                       setShowMobileMenu(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <ListTree size={15} className="text-tx-tertiary" />
                     <span>{t('editor.showOutline')}</span>
@@ -2734,7 +2738,7 @@ const moveToTrash = useCallback(async () => {
                       setShowMobileMenu(false);
                     }}
                     disabled={aiTitleLoading || !activeNote.contentText || effectiveLocked}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
                   >
                     {aiTitleLoading ? <Loader2 size={15} className="animate-spin text-violet-500" /> : <Type size={15} className="text-violet-500" />}
                     <span>{t('editor.aiGenerateTitle')}</span>
@@ -2746,7 +2750,7 @@ const moveToTrash = useCallback(async () => {
                       setShowMobileMenu(false);
                     }}
                     disabled={aiTagsLoading || !activeNote.contentText || effectiveLocked}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
                   >
                     {aiTagsLoading ? <Loader2 size={15} className="animate-spin text-violet-500" /> : <TagIcon size={15} className="text-violet-500" />}
                     <span>{t('editor.aiSuggestTags')}</span>
@@ -2758,7 +2762,7 @@ const moveToTrash = useCallback(async () => {
                       setShowMobileMenu(false);
                     }}
                     disabled={aiSummaryLoading || !activeNote.contentText || effectiveLocked}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors disabled:opacity-40"
                   >
                     {aiSummaryLoading ? <Loader2 size={15} className="animate-spin text-violet-500" /> : <Sparkles size={15} className="text-violet-500" />}
                     <span>{t('editor.aiSummary')}</span>
@@ -2770,7 +2774,7 @@ const moveToTrash = useCallback(async () => {
                       setShowShareModal(true);
                       setShowMobileMenu(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <Share2 size={15} className="text-emerald-500" />
                     <span>{t('editor.shareNote')}</span>
@@ -2781,7 +2785,7 @@ const moveToTrash = useCallback(async () => {
                       setShowVersionHistory(true);
                       setShowMobileMenu(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <History size={15} className="text-violet-500" />
                     <span>{t('editor.versionHistory')}</span>
@@ -2792,7 +2796,7 @@ const moveToTrash = useCallback(async () => {
                       setShowCommentPanel(true);
                       setShowMobileMenu(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <MessageCircle size={15} className="text-blue-500" />
                     <span>{t('editor.noteComments')}</span>
@@ -2803,7 +2807,7 @@ const moveToTrash = useCallback(async () => {
                       setShowBacklinksPanel(true);
                       setShowMobileMenu(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <Link2 size={15} className="text-emerald-500" />
                     <span>反向链接</span>
@@ -2817,7 +2821,7 @@ const moveToTrash = useCallback(async () => {
                       setShowAttachmentsPanel(true);
                       setShowMobileMenu(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <Paperclip size={15} className="text-amber-500" />
                     <span>{t('editor.attachments')}</span>
@@ -2828,7 +2832,7 @@ const moveToTrash = useCallback(async () => {
                         onSplitDocument();
                         setShowMobileMenu(false);
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                     >
                       <Scissors size={15} className="text-accent-primary" />
                       <span>拆分文档</span>
@@ -2843,7 +2847,7 @@ const moveToTrash = useCallback(async () => {
                           setShowMobileMenu(false);
                           await handleToggleHtmlPreviewMode();
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                       >
                         {htmlPreviewMode ? <Pencil size={15} className="text-amber-500" /> : <Eye size={15} className="text-blue-500" />}
                         <span>{htmlPreviewMode ? t("editor.htmlPreview.switchToEdit") : t("editor.htmlPreview.switchToPreview")}</span>
@@ -2853,7 +2857,7 @@ const moveToTrash = useCallback(async () => {
                   <div className="h-px bg-app-border mx-2 my-0.5" />
                   <button
                     onClick={() => { setShowMobileMenu(false); handlePrintNote(); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <Printer size={15} className="text-tx-tertiary" />
                     <span>{t("note.print")}</span>
@@ -2861,14 +2865,14 @@ const moveToTrash = useCallback(async () => {
                   {/* NOTE-IMAGE-EXPORT-01: 导出为图片 */}
                   <button
                     onClick={() => { setShowMobileMenu(false); handleExportNoteImage("png"); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <Image size={15} className="text-tx-tertiary" />
                     <span>{t("note.exportAsPng")}</span>
                   </button>
                   <button
                     onClick={() => { setShowMobileMenu(false); handleExportNoteImage("jpg"); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-tx-secondary active:bg-app-hover transition-colors"
                   >
                     <Image size={15} className="text-tx-tertiary" />
                     <span>{t("note.exportAsJpg")}</span>
@@ -2881,7 +2885,7 @@ const moveToTrash = useCallback(async () => {
                       setShowMobileMenu(false);
                     }}
                     disabled={effectiveLocked}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-red-500 active:bg-red-50 dark:active:bg-red-900/20 transition-colors disabled:opacity-40"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 active:bg-red-50 dark:active:bg-red-900/20 transition-colors disabled:opacity-40"
                   >
                     <Trash2 size={15} />
                     <span>{t('editor.trashTooltip')}</span>
