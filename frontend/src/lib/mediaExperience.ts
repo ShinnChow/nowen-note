@@ -54,6 +54,21 @@ export function prepareMediaFiles(files: Iterable<File>): PreparedMediaFile[] {
   });
 }
 
+/**
+ * Android WebView 把 File 放进 DataTransfer 后，编辑器收到的可能是新的 File 包装对象。
+ * 上传队列不能依赖对象引用相等，使用浏览器能稳定提供的文件元数据做本次会话指纹。
+ */
+export function mediaFileFingerprint(
+  file: Pick<Blob, "size" | "type"> & { name?: string; lastModified?: number },
+): string {
+  return [
+    file.name || "",
+    Number.isFinite(file.size) ? file.size : 0,
+    (file.type || "").toLowerCase(),
+    Number.isFinite(file.lastModified) ? file.lastModified : 0,
+  ].join("\u0000");
+}
+
 export function formatMediaBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   // UI 使用 KB / MB / GB 文案，因此按十进制单位展示，与 Android / iOS / Windows
