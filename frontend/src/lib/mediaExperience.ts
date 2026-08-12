@@ -1,4 +1,5 @@
 import { isVideoFile } from "@/lib/mediaUploadService";
+import { rememberMediaUploadDispatchFiles } from "@/lib/mediaUploadLifecycle";
 
 export type MediaKind = "image" | "video";
 export type MediaItemStatus = "ready" | "uploading" | "success" | "error";
@@ -149,6 +150,11 @@ export function dispatchMediaFilesToEditor(
   if (!files.length || typeof document === "undefined") return false;
   const target = options?.target || findActiveEditorDropTarget(document);
   if (!target) return false;
+
+  // 保存相册/文件选择器返回的原始 File。Android WebView 的 DataTransfer 可能重新包装
+  // File，真正上传时由 mediaUploadLifecycle 映射回来，使移动端上传面板状态不会卡在“等待”。
+  rememberMediaUploadDispatchFiles(files);
+
   const coords = getEditorDropCoordinates(target, options?.near || null);
   const transfer = makeDataTransfer(files);
 
