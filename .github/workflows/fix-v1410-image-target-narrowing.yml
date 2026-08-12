@@ -1,0 +1,52 @@
+name: Fix v1.4.10 image target narrowing
+
+on:
+  push:
+    branches:
+      - release/v1.4.10
+    paths:
+      - .github/workflows/fix-v1410-image-target-narrowing.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.10
+          fetch-depth: 0
+      - name: Apply TypeScript narrowing fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/src/components/TiptapEditor.tsx')
+          text = path.read_text()
+
+          old_open = '''    const imagePos = resolveEditorImageTargetPosition(editor, target);\n    const node = imagePos == null ? null : editor.state.doc.nodeAt(imagePos);\n    if (!isImageReplaceTargetNode(node)) {\n      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后编辑" }));\n      return;\n    }\n'''
+          new_open = '''    const imagePos = resolveEditorImageTargetPosition(editor, target);\n    if (imagePos == null) {\n      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后编辑" }));\n      return;\n    }\n    const node = editor.state.doc.nodeAt(imagePos);\n    if (!isImageReplaceTargetNode(node)) {\n      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后编辑" }));\n      return;\n    }\n'''
+
+          old_save = '''    const targetPos = resolveEditorImageTargetPosition(editor, targetIdentity);\n    const targetNode = targetPos == null ? null : editor.state.doc.nodeAt(targetPos);\n    if (!isImageReplaceTargetNode(targetNode)) {\n      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后替换" }));\n      return false;\n    }\n'''
+          new_save = '''    const targetPos = resolveEditorImageTargetPosition(editor, targetIdentity);\n    if (targetPos == null) {\n      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后替换" }));\n      return false;\n    }\n    const targetNode = editor.state.doc.nodeAt(targetPos);\n    if (!isImageReplaceTargetNode(targetNode)) {\n      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后替换" }));\n      return false;\n    }\n'''
+
+          if text.count(old_open) != 1:
+              raise SystemExit(f'expected one open-image target block, found {text.count(old_open)}')
+          if text.count(old_save) != 1:
+              raise SystemExit(f'expected one save-image target block, found {text.count(old_save)}')
+
+          text = text.replace(old_open, new_open, 1)
+          text = text.replace(old_save, new_save, 1)
+          path.write_text(text)
+          PY
+
+          rm .github/workflows/fix-v1410-image-target-narrowing.yml
+          git config user.name 'Drug'
+          git config user.email 'cropflre2333@gmail.com'
+          git add frontend/src/components/TiptapEditor.tsx .github/workflows/fix-v1410-image-target-narrowing.yml
+          git commit -m 'fix(editor): narrow image target positions before use'
+          git pull --rebase origin release/v1.4.10
+          git push origin HEAD:release/v1.4.10
