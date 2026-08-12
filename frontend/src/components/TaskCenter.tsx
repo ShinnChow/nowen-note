@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import TaskCenterImpl from "./TaskCenterImpl";
 import { TaskMetadataWorkspace } from "./tasks/TaskMetadataWorkspace";
+import TaskEntryUxBridge from "./tasks/TaskEntryUxBridge";
 import { shouldConfirmHabitDelete } from "./tasks/taskCenterHardening";
 
 export * from "./TaskCenterImpl";
@@ -41,6 +42,7 @@ export default function TaskCenter() {
 
   return (
     <TaskMetadataWorkspace key={workspaceGeneration}>
+      <TaskEntryUxBridge />
       <TaskCenterImpl />
     </TaskMetadataWorkspace>
   );
