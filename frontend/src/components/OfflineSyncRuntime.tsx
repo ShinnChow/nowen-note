@@ -1,6 +1,11 @@
 import { useEffect } from "react";
 import { api } from "@/lib/api";
 import { SYNC_SNAPSHOT_APPLIED_EVENT } from "@/lib/syncEngine";
+import { syncOfflineWorkspace } from "@/lib/offlineWorkspaceSync";
+import {
+  installOfflineAttachmentRecoveryCapture,
+  OFFLINE_ATTACHMENT_RETRY_EVENT,
+} from "@/lib/offlineAttachmentRecovery";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useAppActions } from "@/store/AppContext";
 
@@ -13,6 +18,19 @@ import { useAppActions } from "@/store/AppContext";
 export default function OfflineSyncRuntime() {
   const actions = useAppActions();
   useNetworkStatus({ signalRecovery: false });
+
+  useEffect(() => installOfflineAttachmentRecoveryCapture(), []);
+
+  useEffect(() => {
+    const handleAttachmentRetry = () => {
+      // syncOfflineWorkspace already coalesces concurrent runs. If a broken local Blob is
+      // quarantined while a sync is active, the queued job remains durable and the normal
+      // interval will pick it up even when this call joins the current run.
+      void syncOfflineWorkspace({ force: true, reason: "network" });
+    };
+    window.addEventListener(OFFLINE_ATTACHMENT_RETRY_EVENT, handleAttachmentRetry);
+    return () => window.removeEventListener(OFFLINE_ATTACHMENT_RETRY_EVENT, handleAttachmentRetry);
+  }, []);
 
   useEffect(() => {
     const handleSnapshot = () => {
