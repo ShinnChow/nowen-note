@@ -56,11 +56,13 @@ export function prepareMediaFiles(files: Iterable<File>): PreparedMediaFile[] {
 
 export function formatMediaBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  // UI 使用 KB / MB / GB 文案，因此按十进制单位展示，与 Android / iOS / Windows
+  // 文件管理器的常见显示口径一致。旧实现用 1024 除数但仍标成 MB，会造成大小观感偏差。
   const units = ["B", "KB", "MB", "GB"];
   let value = bytes;
   let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
+  while (value >= 1000 && index < units.length - 1) {
+    value /= 1000;
     index += 1;
   }
   const digits = index === 0 || value >= 10 ? 0 : 1;
