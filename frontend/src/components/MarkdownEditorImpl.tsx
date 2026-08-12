@@ -417,7 +417,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
   const previewRootRef = useRef<HTMLDivElement | null>(null);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const titleRef = useRef<HTMLInputElement | null>(null);
+  const titleRef = useRef<HTMLTextAreaElement | null>(null);
   const isTitleComposingRef = useRef(false);
   const lastEmittedTitleRef = useRef(note.title);
 
@@ -1405,6 +1405,14 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
     }
   }, [note.title]);
 
+  // 标题改为多行 textarea 后，根据实际内容高度自动撑开；同时覆盖标题相同但切换笔记的场景。
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [note.id, note.title]);
+
   // ---------- editable ����ͬ�� ----------
 
   useEffect(() => {
@@ -1563,7 +1571,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
   }, []);
 
   const handleTitleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter") {
         e.preventDefault();
         viewRef.current?.focus();
@@ -1980,18 +1988,24 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
         data-markdown-mobile-title=""
         className={cn("px-4 md:px-8 pb-2", compactMobileEditing ? "pt-2" : "pt-3 md:pt-6")}
       >
-        <input
+        <textarea
           ref={titleRef}
+          rows={1}
           defaultValue={note.title}
           placeholder={tr("tiptap.titlePlaceholder") || "�ޱ���"}
           onBlur={handleTitleBlur}
           onCompositionStart={handleTitleCompositionStart}
           onCompositionEnd={handleTitleCompositionEnd}
+          onInput={(event) => {
+            const el = event.currentTarget;
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
+          }}
           onKeyDown={handleTitleKeyDown}
           spellCheck={false}
           readOnly={!editable}
           className={cn(
-            "w-full bg-transparent outline-none text-xl md:text-3xl font-bold text-tx-primary placeholder:text-tx-tertiary/60",
+            "w-full resize-none overflow-hidden break-words bg-transparent outline-none text-xl md:text-3xl font-bold text-tx-primary placeholder:text-tx-tertiary/60",
             compactMobileEditing && "text-lg leading-7",
           )}
         />

@@ -1597,7 +1597,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     useParentScrollContainer,
     !presentationMode,
   );
-  const titleRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   const derivedTimer = useRef<NodeJS.Timeout | null>(null);
   const analysisControllerRef = useRef<TiptapAnalysisController | null>(null);
@@ -3419,6 +3419,14 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       lastEmittedTitleRef.current = note.title;
     }
   }, [note.title]);
+
+  // 标题改为多行 textarea 后，根据实际内容高度自动撑开；同时覆盖标题相同但切换笔记的场景。
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [note.id, note.title]);
 
   // 组件卸载时清理 debounce timer
   useEffect(() => {
@@ -5573,17 +5581,26 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
         data-mobile-editor-title=""
         className={cn("px-4 md:px-8 pb-0", compactMobileEditing ? "pt-2" : "pt-3 md:pt-6")}
       >
-        <input
+        <textarea
           ref={titleRef}
+          rows={1}
           defaultValue={note.title}
           onBlur={handleTitleBlur}
           onCompositionStart={handleTitleCompositionStart}
           onCompositionEnd={handleTitleCompositionEnd}
+          onInput={(event) => {
+            const el = event.currentTarget;
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !isTitleComposingRef.current) event.preventDefault();
+          }}
           placeholder={t('tiptap.titlePlaceholder')}
           spellCheck={false}
           readOnly={!editable}
           className={cn(
-            "w-full bg-transparent text-xl md:text-2xl font-bold text-tx-primary placeholder:text-tx-tertiary focus:outline-none no-focus-ring",
+            "w-full resize-none overflow-hidden break-words bg-transparent text-xl md:text-2xl font-bold text-tx-primary placeholder:text-tx-tertiary focus:outline-none no-focus-ring",
             compactMobileEditing && "text-lg leading-7",
             !editable && "cursor-default"
           )}
