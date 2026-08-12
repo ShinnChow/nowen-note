@@ -3260,7 +3260,13 @@ export default function NoteList() {
       </header>
 
       {/* Desktop Header */}
-      <div className="hidden md:flex items-center justify-between gap-2 px-4 py-3 border-b border-app-border relative z-40">
+      <div
+        className={cn(
+          "hidden md:flex items-center justify-between gap-2 px-4 py-3 border-b border-app-border relative z-40",
+          layoutMode === "three-column" && "flex-wrap",
+        )}
+        data-note-workspace-layout={layoutMode}
+      >
         <div className="flex min-w-0 items-center gap-2">
           <FileText size={16} className="text-accent-primary" />
           <h2 className="min-w-0 truncate text-sm font-medium text-tx-primary">{viewTitles[state.viewMode]}</h2>

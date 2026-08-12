@@ -250,7 +250,12 @@ export default function LazyNoteListRuntime() {
     ? createPortal(
         <div
           data-note-directory-search=""
-          className="order-1 hidden min-w-0 max-w-[190px] flex-1 px-2 md:flex"
+          className={[
+            "hidden min-w-0 md:flex",
+            desktopHeaderTarget.dataset.noteWorkspaceLayout === "three-column"
+              ? "order-3 basis-full w-full max-w-none px-0"
+              : "order-1 max-w-[190px] flex-1 px-2",
+          ].join(" ")}
           title={directoryQuery.trim() && matchCount !== null
             ? `当前目录匹配 ${matchCount} 篇文档`
             : "搜索本目录文档"}
