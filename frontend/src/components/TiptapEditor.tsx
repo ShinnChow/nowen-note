@@ -3704,7 +3704,11 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       return;
     }
     const imagePos = resolveEditorImageTargetPosition(editor, target);
-    const node = imagePos == null ? null : editor.state.doc.nodeAt(imagePos);
+    if (imagePos == null) {
+      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后编辑" }));
+      return;
+    }
+    const node = editor.state.doc.nodeAt(imagePos);
     if (!isImageReplaceTargetNode(node)) {
       toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后编辑" }));
       return;
@@ -3788,7 +3792,11 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     }
     if (editor.isDestroyed) return false;
     const targetPos = resolveEditorImageTargetPosition(editor, targetIdentity);
-    const targetNode = targetPos == null ? null : editor.state.doc.nodeAt(targetPos);
+    if (targetPos == null) {
+      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后替换" }));
+      return false;
+    }
+    const targetNode = editor.state.doc.nodeAt(targetPos);
     if (!isImageReplaceTargetNode(targetNode)) {
       toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后替换" }));
       return false;
