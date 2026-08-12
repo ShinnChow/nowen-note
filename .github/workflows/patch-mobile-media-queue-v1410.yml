@@ -1,0 +1,80 @@
+name: Apply mobile media queue status fix
+
+on:
+  push:
+    branches:
+      - release/v1.4.10
+    paths:
+      - .github/workflows/patch-mobile-media-queue-v1410.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.10
+      - name: Patch Android media queue status matching
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/src/components/MediaExperienceBridge.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str, label: str):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''  formatMediaBytes,\n  formatMediaDuration,\n  prepareMediaFiles,''',
+              '''  formatMediaBytes,\n  formatMediaDuration,\n  mediaFileFingerprint,\n  prepareMediaFiles,''',
+              'mediaExperience import',
+          )
+
+          replace_once(
+              '''type QueueItem = PreparedMediaFile & {\n  previewUrl: string;\n  validationError: boolean;\n};''',
+              '''type QueueItem = PreparedMediaFile & {\n  previewUrl: string;\n  validationError: boolean;\n  uploadedSize?: number;\n};''',
+              'QueueItem',
+          )
+
+          replace_once(
+              '''    setItems((previous) => previous.map((item) => {\n      if (item.file !== detail.file) return item;\n      if (detail.phase === "start") return { ...item, status: "uploading", error: undefined };\n      if (detail.phase === "success") return { ...item, status: "success", error: undefined };\n      return { ...item, status: "error", error: detail.error || "上传失败" };\n    }));''',
+              '''    setItems((previous) => {\n      const fingerprint = mediaFileFingerprint(detail.file);\n      let matched = false;\n      return previous.map((item) => {\n        if (matched || mediaFileFingerprint(item.file) !== fingerprint) return item;\n\n        // Android WebView may create a new File wrapper after DataTransfer. Match by stable\n        // file metadata and advance only one queue item in the expected phase, so selecting\n        // the same file twice still produces two independent upload rows.\n        if (detail.phase === "start") {\n          if (item.status !== "ready" && item.status !== "error") return item;\n          matched = true;\n          return { ...item, status: "uploading", error: undefined };\n        }\n        if (item.status !== "uploading") return item;\n        matched = true;\n        if (detail.phase === "success") {\n          const result = detail.result as { size?: unknown } | undefined;\n          const uploadedSize = typeof result?.size === "number" && Number.isFinite(result.size) && result.size > 0\n            ? result.size\n            : undefined;\n          return { ...item, status: "success", error: undefined, uploadedSize };\n        }\n        return { ...item, status: "error", error: detail.error || "上传失败" };\n      });\n    });''',
+              'lifecycle matcher',
+          )
+
+          replace_once(
+              'totalBytes: valid.reduce((sum, item) => sum + item.file.size, 0),',
+              'totalBytes: valid.reduce((sum, item) => sum + (item.uploadedSize ?? item.file.size), 0),',
+              'queue total size',
+          )
+
+          replace_once(
+              '{item.kind === "video" ? "视频" : item.kind === "image" ? "图片" : "不支持"} · {formatMediaBytes(item.file.size)}',
+              '{item.kind === "video" ? "视频" : item.kind === "image" ? "图片" : "不支持"} · {formatMediaBytes(item.uploadedSize ?? item.file.size)}',
+              'queue row size',
+          )
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-mobile-media-queue-v1410.yml
+          git add frontend/src/components/MediaExperienceBridge.tsx
+          git diff --cached --check
+          git commit -m "fix: sync mobile media upload queue status"
+          for attempt in 1 2 3; do
+            git pull --rebase origin release/v1.4.10
+            if git push origin HEAD:release/v1.4.10; then exit 0; fi
+            sleep 2
+          done
+          exit 1
