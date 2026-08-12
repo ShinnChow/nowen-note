@@ -2,6 +2,7 @@ import React, { Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import LazyWorkspaceFallback from "./LazyWorkspaceFallback";
+import TitleDuplicateAssistBridge from "./TitleDuplicateAssistBridge";
 import { useApp, useAppActions } from "@/store/AppContext";
 import { canWriteNote } from "@/lib/notePermissions";
 import { consumeNewNoteTitleFocus } from "@/lib/noteTitleFocus";
@@ -146,6 +147,8 @@ export default function EditorPaneRuntime() {
 
   return (
     <div ref={editorRootRef} className="relative flex h-full min-h-0 flex-col overflow-hidden">
+      <TitleDuplicateAssistBridge rootRef={editorRootRef} />
+
       <Suspense fallback={<LazyWorkspaceFallback label="正在加载编辑器…" />}>
         <LazyFormatAwareEditorPane
           canSplitDocument={canSplit}
