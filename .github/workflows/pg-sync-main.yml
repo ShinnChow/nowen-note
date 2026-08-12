@@ -294,14 +294,17 @@ jobs:
       - name: Publish success
         if: success()
         run: |
-          gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${STATUS_COMMENT_ID}" -X PATCH -f body="## ✅ latest main synchronized into pg-migration-unified
-
-Before: \`${{ steps.merge.outputs.before }}\`
-Main: \`${{ steps.merge.outputs.main }}\`
-Merge head: \`${{ steps.merge.outputs.after }}\`
-Run: \`${{ github.run_id }}\`
-
-TypeScript, SQLite boundary audit, PostgreSQL schema parity, SQL dialect, full SQLite regression, real PostgreSQL regression, production bundle, migrations 0001–0008 packaging, and PostgreSQL runtime-only smoke all passed."
+          {
+            echo '## ✅ latest main synchronized into pg-migration-unified'
+            echo
+            echo 'Before: `${{ steps.merge.outputs.before }}`'
+            echo 'Main: `${{ steps.merge.outputs.main }}`'
+            echo 'Merge head: `${{ steps.merge.outputs.after }}`'
+            echo 'Run: `${{ github.run_id }}`'
+            echo
+            echo 'TypeScript, SQLite boundary audit, PostgreSQL schema parity, SQL dialect, full SQLite regression, real PostgreSQL regression, production bundle, migrations 0001–0008 packaging, and PostgreSQL runtime-only smoke all passed.'
+          } > /tmp/status.md
+          gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${STATUS_COMMENT_ID}" -X PATCH -f body="$(cat /tmp/status.md)"
 
       - name: Publish failure
         if: failure()
