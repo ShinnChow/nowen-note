@@ -1,6 +1,11 @@
 {
-  "generatedAt": "2026-08-10T08:51:32.558Z",
+  "generatedAt": "2026-08-12T04:48:06.598Z",
   "entries": [
+    {
+      "version": "1.4.10",
+      "date": "2026-08-12",
+      "body": "### ✨ 新增\n\n- **笔记模板**: 支持保存模板、从模板创建笔记，并补齐移动端入口与模板附件保护\n- **编辑器**: 增强图片查看、编辑、旋转与附件打开体验\n- **Electron**: 新增原生文本右键菜单与本地办公附件系统默认程序打开\n\n### 🐛 修复\n\n- **笔记图片**: 加固附件身份与内容持久化，避免保存后重新打开出现图片占位符\n- **导入导出**: 修复 Nowen Markdown 附件 ZIP 往返导入，并完善思源导入反馈与文件识别\n- **备份**: 修复自动/手动备份的 db-only 保留策略及停用配置持久化\n- **任务提醒**: 统一全天截止、创建端时区与原生通知调度，并收紧提醒接口权限\n- **移动端**: 修复 Android 返回键浮层消费顺序并优化媒体入口\n- **编辑器**: 修复图片目标位置可空导致的 TypeScript 发版阻断\n\n### ⚡ 优化\n\n- **下载页**: 增强 GitHub Release 页面回退，并按平台与安装类型稳定分组\n- **离线同步**: 调整为首次默认关闭，仅在用户主动开启后运行"
+    },
     {
       "version": "1.4.9",
       "date": "2026-08-10",
@@ -45,11 +50,6 @@
       "version": "1.4.1",
       "date": "2026-07-17",
       "body": "### 📝 文档\n\n- design markdown live preview image auth fix (eaf611e)\n\n### 🤖 CI\n\n- remove temporary PostgreSQL access/session validator (abec8f3)\n- temporarily validate PostgreSQL access and sessions (38251e6)\n\n### 📌 杂项\n\n- fix preserve protocol-relative markdown images (c394870)\n- fix markdown live preview attachment images (13f5822)\n- fix notebook export attachment auth (9bd3dd8)\n- fix clipboard copy (03b2c68)\n- fix notebook publication routes (5b02e06)"
-    },
-    {
-      "version": "1.4.0",
-      "date": "2026-07-17",
-      "body": "### 🐛 修复\n\n- **db**: migrate share comment source fields before indexing (ee86795)\n\n### 📝 文档\n\n- **db**: plan share comments migration fix (080b955)\n- **db**: document share comments migration fix (7cbaf4e)"
     }
   ]
 }
