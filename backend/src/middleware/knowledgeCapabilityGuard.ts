@@ -1,5 +1,10 @@
 import type { Context, Next } from "hono";
 
+import { getDb } from "../db/schema.js";
+import {
+  canViewNoteThroughFolderPasswords,
+  resolveUnlockedFolderNodeIds,
+} from "../lib/knowledgeTreePasswordAccess.js";
 import {
   hasKnowledgeCapability,
   resolveResourceKnowledgeAccess,
@@ -81,13 +86,23 @@ async function filterCollectionResponse(
   if (!Array.isArray(payload)) return;
 
   const userId = c.req.header("X-User-Id") || "";
+  const db = getDb();
+  const unlockedFolderNodeIds = resourceType === "note"
+    ? resolveUnlockedFolderNodeIds(db, userId, c.req.header("X-Folder-Unlock-Tokens"))
+    : new Set<string>();
   const filtered = payload.filter((row) => {
     const id = row && typeof row === "object" && typeof (row as any).id === "string"
       ? (row as any).id
       : "";
     if (!id) return false;
     const includeDeleted = resourceType === "note" && Number((row as any).isTrashed) === 1;
-    return resourceAccess(resourceType, id, userId, "canView", { includeDeleted }).allowed;
+    if (!resourceAccess(resourceType, id, userId, "canView", { includeDeleted }).allowed) return false;
+    return resourceType !== "note" || canViewNoteThroughFolderPasswords(
+      db,
+      id,
+      unlockedFolderNodeIds,
+      { includeDeleted },
+    );
   });
 
   if (filtered.length === payload.length) return;
@@ -135,7 +150,16 @@ export async function enforceKnowledgeNoteCapabilities(c: Context, next: Next) {
 
   if (method === "GET" || method === "HEAD") {
     const checked = resourceAccess("note", noteId, userId, "canView");
-    return checked.allowed ? next() : hiddenResource(c);
+    if (!checked.allowed) return hiddenResource(c);
+    const db = getDb();
+    const unlockedFolderNodeIds = resolveUnlockedFolderNodeIds(
+      db,
+      userId,
+      c.req.header("X-Folder-Unlock-Tokens"),
+    );
+    return canViewNoteThroughFolderPasswords(db, noteId, unlockedFolderNodeIds)
+      ? next()
+      : hiddenResource(c);
   }
 
   if (method === "DELETE") {

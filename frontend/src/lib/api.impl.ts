@@ -796,6 +796,7 @@ async function request<T>(url: string, options?: RequestOptions): Promise<T> {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(sudoToken ? { "X-Sudo-Token": sudoToken } : {}),
       ...(includeConnId && connId ? { "X-Connection-Id": connId } : {}),
+      ...folderUnlockRequestHeaders(),
       ...restOptions?.headers,
     });
     const tryNativeFallback = async (error: unknown, includeConnId: boolean): Promise<Response | null> => {
