@@ -19,6 +19,7 @@ import { registerMobileBackHandler } from "@/lib/mobileBackNavigation";
 import { copyText } from "@/lib/clipboard";
 import { downloadAttachment } from "@/lib/downloadFile";
 import { toast } from "@/lib/toast";
+import { normalizeImageFlipX, normalizeImageRotation } from "@/lib/imageNodeTransformBootstrap";
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 5;
@@ -47,6 +48,8 @@ export interface FullscreenImageItem {
   src: string;
   alt?: string;
   filename?: string;
+  rotation?: number;
+  flipX?: boolean;
 }
 
 export interface FullscreenImageViewerProps {
@@ -113,6 +116,8 @@ export default function FullscreenImageViewer({
   const galleryKey = gallery.map((item) => item.src).join("\n");
   const [currentIndex, setCurrentIndex] = useState(0);
   const currentItem = gallery[currentIndex] || gallery[0] || { src: "", alt: "" };
+  const baseRotation = normalizeImageRotation(currentItem.rotation);
+  const baseFlipX = normalizeImageFlipX(currentItem.flipX);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const pointersRef = useRef(new Map<number, Point>());
@@ -174,10 +179,10 @@ export default function FullscreenImageViewer({
   }, []);
 
   const resetTransform = useCallback(() => {
-    rotationRef.current = 0;
-    setRotation(0);
+    rotationRef.current = baseRotation;
+    setRotation(baseRotation);
     commitTransform(MIN_SCALE, { x: 0, y: 0 });
-  }, [commitTransform]);
+  }, [baseRotation, commitTransform]);
 
   const navigateGallery = useCallback((delta: -1 | 1) => {
     const next = clamp(currentIndex + delta, 0, Math.max(0, gallery.length - 1));
@@ -517,7 +522,7 @@ export default function FullscreenImageViewer({
   if (typeof document === "undefined") return null;
 
   const hasTransform = scale > MIN_SCALE + 0.01
-    || rotation !== 0
+    || rotation !== baseRotation
     || Math.abs(position.x) > 0.5
     || Math.abs(position.y) > 0.5;
   const displayPercent = Math.max(1, Math.round(fitRatio * scale * 100));
@@ -562,7 +567,7 @@ export default function FullscreenImageViewer({
           style={{
             maxWidth: rotation % 180 !== 0 ? "calc(100dvh - 32px)" : "calc(100vw - 24px)",
             maxHeight: rotation % 180 !== 0 ? "calc(100vw - 24px)" : "calc(100dvh - 32px)",
-            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)`,
+            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)${baseFlipX ? " scaleX(-1)" : ""}`,
             transformOrigin: "center center",
             transition: interacting ? "none" : "transform 140ms ease-out",
           }}

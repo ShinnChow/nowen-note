@@ -3463,6 +3463,8 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
         src: resolveAttachmentUrl(imageSrc),
         alt: typeof node.attrs.alt === "string" ? node.attrs.alt : "",
         filename,
+        rotation: normalizeImageRotation(attrs.rotation),
+        flipX: normalizeImageFlipX(attrs.flipX),
       });
       targets.push({
         imagePos: pos,
