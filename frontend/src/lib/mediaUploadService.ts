@@ -56,6 +56,21 @@ export async function uploadMediaAttachment({
 
   try {
     const uploaded = await api.attachments.upload(noteId, file);
+
+    // 移动端 multipart 一旦被 WebView / native HTTP bridge 错误序列化，后端仍有
+    // 可能收到一个“合法但字节不完整”的 File。此时绝不能继续把坏附件写进正文。
+    // 服务端响应的 size 来自实际收到的 File.size，与选择器拿到的本地字节数必须一致。
+    if (
+      file.size > 0
+      && Number.isFinite(uploaded.size)
+      && uploaded.size > 0
+      && uploaded.size !== file.size
+    ) {
+      throw new Error(
+        `视频上传校验失败：本地 ${file.size} 字节，服务端 ${uploaded.size} 字节，请重新上传`,
+      );
+    }
+
     const result: MediaUploadResult = {
       attachmentId: uploaded.id,
       url: uploaded.url,
