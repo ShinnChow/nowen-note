@@ -1653,7 +1653,7 @@ const SettingsModal = React.forwardRef<HTMLDivElement, SettingsModalProps>(
           {/* 关闭按钮 — 桌面端 */}
           <button
             onClick={onClose}
-            className="hidden md:block absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors z-10"
+            className="hidden md:block sticky top-4 ml-auto mr-4 -mb-7 w-fit p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors z-20"
           >
             <X className="w-4 h-4" />
           </button>
