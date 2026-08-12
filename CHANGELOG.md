@@ -16,6 +16,115 @@
 
 ### ✨ 新增
 
+- add duplicate title prefix warning (581a72a)
+- improve Markdown find and replace (4848f8d)
+- add current directory note search (b61b6b6)
+- **知识树**: 支持拖拽移动节点层级 (2dd76d0)
+- **图片预览**: 增加旋转与独立复原操作 (e2d3e22)
+- **笔记模板**: 补齐移动端模板入口 (94008d6)
+- **桌面编辑器**: 增加原生文本上下文菜单 (4debf98)
+- **桌面附件**: 使用系统默认程序打开本地办公附件 (f72e2d6)
+- **移动编辑器**: 将图片和视频加入紧凑工具栏 (8e0512a)
+- **笔记模板**: 支持保存模板并从模板新建笔记 (3dd7800)
+
+### 🐛 修复
+
+- **编辑器**: 优化 Markdown 搜索面板换行布局 (6d9f4d5)
+- **知识树**: 隐藏加密目录中的笔记 (b208299)
+- **ci**: repair PostgreSQL sync workflow YAML (79b0f3f)
+- **editor**: narrow image target positions before use (531225b)
+- disable offline sync by default (92f7b12)
+- retry quarantined offline attachments (55e6dac)
+- validate offline blobs before rendering (a7450f8)
+- quarantine broken offline attachment blobs (ae9b07d)
+- add offline attachment recovery signal (e77f297)
+- keep offline attachment blobs out of online rendering (1cd4582)
+- **富文本粘贴**: 保留笔记间复制格式 (e516c5b)
+- tolerate Android media File wrapper metadata (e4d59d7)
+- map image upload events to selected file (cba6ff9)
+- map video upload events to selected file (1460923)
+- bridge original media files into upload lifecycle (8f7aeed)
+- preserve mobile media file identity (b615415)
+- identify mobile media files across DataTransfer (231ca0a)
+- verify uploaded video byte size (4f50677)
+- align mobile media size display (30a2740)
+- stabilize native multipart attachment uploads (c054fed)
+- prevent note card text selection on mobile long press (7506ff2)
+- **三栏布局**: 将目录搜索框换行显示 (d9dcf29)
+- adapt mobile note menu to short viewports (36e9174)
+- keep settings close button visible while scrolling (fa78f46)
+- preserve image rotation in fullscreen viewer (d424eb0)
+- focus title after creating note (c54e665)
+- wrap long note titles (58a479c)
+- **附件**: 稳定图片身份并保护临时地址持久化 (c843ccb)
+- **服务器地址**: 修复公共路由前缀识别 (5c5ba8b)
+- **图片编辑**: 修复查看到编辑的完整交互 (351eb04)
+- **笔记模板**: 改用应用内保存弹窗 (b881665)
+- **tasks**: keep postgres reminder schema in sync (bc27503)
+- **tasks**: keep reminder behavior consistent in quick capture (b6d5c64)
+- **tasks**: make reminder creation timezone-aware and observable (752d908)
+- **tasks**: use server-resolved reminder time when timezone is known (9f55b84)
+- **tasks**: resolve reminder times in creator timezone (47632dd)
+- **tasks**: persist reminder timezone offset (1a4be7f)
+- **tasks**: register reminder timezone migration (f231155)
+- **tasks**: preserve date-only deadline semantics (0b84165)
+- **tasks**: add postgres reminder timezone column (b76e6c7)
+- **tasks**: add reminder timezone migration (fca68fd)
+- **笔记模板**: 修正模板列表请求路径 (7253c3f)
+- **下载页**: 增强发布资产回退与平台分组 (9c9174b)
+- **笔记模板**: 防止清理任务误删模板附件 (784a5e5)
+- **备份保留**: 统一 db-only 清理并持久化停用配置 (9de297a)
+- **移动端返回**: 统一浮层返回键消费顺序 (739c0ea)
+- **思源导入**: 完善拖拽识别与无响应提示 (947b677)
+- **思源导入**: 让自动恢复目录走统一知识树持久化 (5eda64b)
+- **往返导入**: 修复 Markdown 附件 ZIP 无法重新导入 (e32752c)
+- **tasks**: 修复截止时间提醒未自动创建 (58bc857)
+
+### ♻️ 重构
+
+- **富文本粘贴**: 默认保留文字颜色 (8008c98)
+- **图片体验**: 统一查看器与编辑交互 (3eeb77b)
+
+### ✅ 测试
+
+- **tasks**: cover timezone-aware reminder schedule (68c49d4)
+- **tasks**: keep date-only reminder separate from deadline (ce3f576)
+- **移动编辑器**: 补充紧凑工具栏契约 (333f7cf)
+
+### 🔧 其他
+
+- **ci**: remove obsolete invalid PostgreSQL final sync workflow (8c0a275)
+- **ci**: repair PostgreSQL sync workflow parser error (cd67ee4)
+- **version**: prepare v1.4.10 (09bfa5b)
+- apply v1.4.10 TypeScript release fix (7d287c8)
+- remove temporary offline sync workflow (c8d412e)
+- set offline sync default off (6b5c77f)
+- remove temporary offline attachment patch workflow (5256665)
+- apply offline attachment recovery fix (5ebb5fb)
+- remove temporary rich text paste workflow v2 (adc4cdc)
+- remove temporary rich text paste workflow (26c30ac)
+- remove temporary mobile media queue workflow (61aaea5)
+- add concurrency-safe rich text paste fix workflow (d30be70)
+- make rich text paste fix concurrency-safe (096533d)
+- apply mobile media queue status fix (32d070e)
+- remove temporary mobile video retry workflow (dd6f432)
+- remove temporary mobile video patch workflow (dc60725)
+- add temporary workflow for rich text paste fix (2540cb2)
+- retry mobile video upload fix with dependencies (d4cdee9)
+- apply mobile video upload fix (7dabbd7)
+- apply markdown search UI fix (7a251a4)
+- retry mobile note menu viewport fix (d27dac5)
+- clean directory search runtime import (545daa7)
+- apply mobile note menu viewport fix (9aecbb3)
+- apply settings close button sticky fix (6fdb05f)
+- apply image viewer transform fix (0e9dade)
+- apply long note title wrapping fix (2c86bd3)
+- **tasks**: preserve migration documentation (ec99b04)
+- **tasks**: keep reminder repository diff focused (a0cf6e0)
+
+
+### ✨ 新增
+
 - **笔记模板**: 支持保存模板、从模板创建笔记，并补齐移动端入口与模板附件保护
 - **编辑器**: 增强图片查看、编辑、旋转与附件打开体验
 - **Electron**: 新增原生文本右键菜单与本地办公附件系统默认程序打开
