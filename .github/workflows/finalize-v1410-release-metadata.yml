@@ -24,49 +24,8 @@ jobs:
       - name: Finalize Android version and changelog
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          gradle = Path('frontend/android/app/build.gradle')
-          text = gradle.read_text()
-          if 'versionCode 10409' not in text or 'versionName "1.4.9"' not in text:
-              raise SystemExit('unexpected Android version metadata')
-          text = text.replace('versionCode 10409', 'versionCode 10410', 1)
-          text = text.replace('versionName "1.4.9"', 'versionName "1.4.10"', 1)
-          gradle.write_text(text)
-
-          changelog = Path('CHANGELOG.md')
-          raw = changelog.read_text()
-          marker = '<!-- ADD_NEW_HERE -->'
-          if marker not in raw:
-              raise SystemExit('missing changelog marker')
-          section = '''## v1.4.10 - 2026-08-12
-
-### ✨ 新增
-
-- **笔记模板**: 支持保存模板、从模板创建笔记，并补齐移动端入口与模板附件保护
-- **编辑器**: 增强图片查看、编辑、旋转与附件打开体验
-- **Electron**: 新增原生文本右键菜单与本地办公附件系统默认程序打开
-
-### 🐛 修复
-
-- **笔记图片**: 加固附件身份与内容持久化，避免保存后重新打开出现图片占位符
-- **导入导出**: 修复 Nowen Markdown 附件 ZIP 往返导入，并完善思源导入反馈与文件识别
-- **备份**: 修复自动/手动备份的 db-only 保留策略及停用配置持久化
-- **任务提醒**: 统一全天截止、创建端时区与原生通知调度，并收紧提醒接口权限
-- **移动端**: 修复 Android 返回键浮层消费顺序并优化媒体入口
-- **编辑器**: 修复图片目标位置可空导致的 TypeScript 发版阻断
-
-### ⚡ 优化
-
-- **下载页**: 增强 GitHub Release 页面回退，并按平台与安装类型稳定分组
-- **离线同步**: 调整为首次默认关闭，仅在用户主动开启后运行
-'''
-          if '## v1.4.10 ' in raw:
-              raise SystemExit('v1.4.10 changelog already exists')
-          changelog.write_text(raw.replace(marker, marker + '\n\n' + section.rstrip(), 1))
-          PY
-
+          python -c "from pathlib import Path; p=Path('frontend/android/app/build.gradle'); s=p.read_text(); assert 'versionCode 10409' in s and 'versionName \"1.4.9\"' in s; p.write_text(s.replace('versionCode 10409','versionCode 10410',1).replace('versionName \"1.4.9\"','versionName \"1.4.10\"',1))"
+          python -c "from pathlib import Path; import base64; p=Path('CHANGELOG.md'); s=p.read_text(); marker='<!-- ADD_NEW_HERE -->'; assert marker in s and '## v1.4.10 ' not in s; section=base64.b64decode('IyMgdjEuNC4xMCAtIDIwMjYtMDgtMTIKCiMjIyDinKgg5paw5aKeCgotICoq56yU6K6w5qih5p2/Kio6IOaUr+aMgeS/neWtmOaooeadv+OAgeS7juaooeadv+WIm+W7uueslOiusO+8jOW5tuihpem9kOenu+WKqOerr+WFpeWPo+S4juaooeadv+mZhOS7tuS/neaKpAotICoq57yW6L6R5ZmoKio6IOWinuW8uuWbvueJh+afpeeci+OAgee8lui+keOAgeaXi+i9rOS4jumZhOS7tuaJk+W8gOS9k+mqjAotICoqRWxlY3Ryb24qKjog5paw5aKe5Y6f55Sf5paH5pys5Y+z6ZSu6I+c5Y2V5LiO5pys5Zyw5Yqe5YWs6ZmE5Lu257O757uf6buY6K6k56iL5bqP5omT5byACgojIyMg8J+QmyDkv67lpI0KCi0gKirnrJTorrDlm77niYcqKjog5Yqg5Zu66ZmE5Lu26Lqr5Lu95LiO5YaF5a655oyB5LmF5YyW77yM6YG/5YWN5L+d5a2Y5ZCO6YeN5paw5omT5byA5Ye6546w5Zu+54mH5Y2g5L2N56ymCi0gKirlr7zlhaXlr7zlh7oqKjog5L+u5aSNIE5vd2VuIE1hcmtkb3duIOmZhOS7tiBaSVAg5b6A6L+U5a+85YWl77yM5bm25a6M5ZaE5oCd5rqQ5a+85YWl5Y+N6aaI5LiO5paH5Lu26K+G5YirCi0gKirlpIfku70qKjog5L+u5aSN6Ieq5YqoL+aJi+WKqOWkh+S7veeahCBkYi1vbmx5IOS/neeVmeetlueVpeWPiuWBnOeUqOmFjee9ruaMgeS5heWMlgotICoq5Lu75Yqh5o+Q6YaSKio6IOe7n+S4gOWFqOWkqeaIquatouOAgeWIm+W7uuerr+aXtuWMuuS4juWOn+eUn+mAmuefpeiwg+W6pu+8jOW5tuaUtue0p+aPkOmGkuaOpeWPo+adg+mZkAotICoq56e75Yqo56uvKio6IOS/ruWkjSBBbmRyb2lkIOi/lOWbnumUrua1ruWxgua2iOi0uemhuuW6j+W5tuS8mOWMluWqkuS9k+WFpeWPowotICoq57yW6L6R5ZmoKio6IOS/ruWkjeWbvueJh+ebruagh+S9jee9ruWPr+epuuWvvOiHtOeahCBUeXBlU2NyaXB0IOWPkeeJiOmYu+aWrQoKIyMjIOKaoSDkvJjljJYKCi0gKirkuIvovb3pobUqKjog5aKe5by6IEdpdEh1YiBSZWxlYXNlIOmhtemdouWbnumAgO+8jOW5tuaMieW5s+WPsOS4juWuieijheexu+Wei+eos+WumuWIhue7hAotICoq56a757q/5ZCM5q2lKio6IOiwg+aVtOS4uummluasoem7mOiupOWFs+mXre+8jOS7heWcqOeUqOaIt+S4u+WKqOW8gOWQr+WQjui/kOihjAo=').decode(); p.write_text(s.replace(marker, marker+'\n\n'+section.rstrip(),1))"
           node scripts/generate-changelog.mjs --emit-json --json-limit 10
           rm .github/workflows/finalize-v1410-release-metadata.yml
           git config user.name 'Drug'
