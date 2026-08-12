@@ -1,0 +1,46 @@
+name: Apply settings close button sticky fix
+
+on:
+  push:
+    branches:
+      - release/v1.4.10
+    paths:
+      - .github/workflows/patch-settings-close-sticky-v1410.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.10
+
+      - name: Keep settings close button visible while scrolling
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path("frontend/src/components/SettingsModal.tsx")
+          text = path.read_text(encoding="utf-8")
+          old = 'className="hidden md:block absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors z-10"'
+          new = 'className="hidden md:block sticky top-4 ml-auto mr-4 -mb-7 w-fit p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors z-20"'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"expected exactly one settings close button class, found {count}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-settings-close-sticky-v1410.yml
+          git add frontend/src/components/SettingsModal.tsx
+          git diff --cached --check
+          git commit -m "fix: keep settings close button visible while scrolling"
+          git push origin HEAD:release/v1.4.10
