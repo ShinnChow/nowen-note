@@ -56,4 +56,14 @@ describe("mobile knowledge tree mode switch contract", () => {
     expect(bridgeMount).toBeLessThan(providerEnd);
     expect(mainSource).not.toContain("<SidebarSearchExperienceBridge />");
   });
+
+  it("keeps mobile Markdown body editing on one keyboard-sized scroll surface", () => {
+    expect(bridgeSource).toContain("MOBILE_MARKDOWN_KEYBOARD_LAYOUT_CSS");
+    expect(bridgeSource).toContain('[data-markdown-body-focused]');
+    expect(bridgeSource).toContain("padding-bottom: 0 !important");
+    expect(bridgeSource).toContain("overflow: hidden !important");
+    expect(bridgeSource).toContain(".nowen-md-editor .cm-scroller");
+    expect(bridgeSource).toContain("getFocusedMobileMarkdownRoot");
+    expect(bridgeSource).toContain('data-mobile-markdown-keyboard-layout');
+  });
 });
