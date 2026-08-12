@@ -1,0 +1,122 @@
+name: Apply markdown search UI fix
+
+on:
+  push:
+    branches:
+      - release/v1.4.10
+    paths:
+      - .github/workflows/patch-markdown-search-ui-v1410.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.10
+
+      - name: Add unified Markdown find and replace UI
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path("frontend/src/components/MarkdownEditorImpl.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''import {\n  searchKeymap,\n  highlightSelectionMatches,\n} from "@codemirror/search";''',
+              '''import {\n  search,\n  searchKeymap,\n  openSearchPanel,\n  highlightSelectionMatches,\n} from "@codemirror/search";''',
+              "search imports",
+          )
+
+          replace_once(
+              '''  Redo,\n  Sparkles,''',
+              '''  Redo,\n  Search,\n  Sparkles,''',
+              "search icon import",
+          )
+
+          replace_once(
+              '''function isMobileMarkdownViewport(): boolean {\n  return typeof window !== "undefined"\n    && typeof window.matchMedia === "function"\n    && window.matchMedia("(max-width: 639px)").matches;\n}\n''',
+              '''function isMobileMarkdownViewport(): boolean {\n  return typeof window !== "undefined"\n    && typeof window.matchMedia === "function"\n    && window.matchMedia("(max-width: 639px)").matches;\n}\n\nfunction markdownSearchPhrases(language?: string) {\n  const isChinese = (language || "").toLowerCase().startsWith("zh");\n  return EditorState.phrases.of(isChinese ? {\n    Find: "查找",\n    Replace: "替换",\n    next: "下一个",\n    previous: "上一个",\n    all: "全部",\n    "match case": "区分大小写",\n    regexp: "正则",\n    "by word": "全词匹配",\n    replace: "替换",\n    "replace all": "全部替换",\n    close: "关闭",\n  } : {});\n}\n''',
+              "search phrases helper",
+          )
+
+          replace_once(
+              '''const baseTheme = EditorView.theme({''',
+              '''const searchPanelTheme = EditorView.theme({\n  ".cm-panels": {\n    color: "var(--color-tx-primary, #0f172a)",\n    backgroundColor: "transparent",\n  },\n  ".cm-panels-top": {\n    borderBottom: "1px solid var(--color-border, #e5e7eb)",\n  },\n  ".cm-panel.cm-search": {\n    position: "relative",\n    display: "flex",\n    alignItems: "center",\n    flexWrap: "wrap",\n    gap: "6px",\n    padding: "9px 46px 9px 10px",\n    backgroundColor: "var(--color-elevated, #ffffff)",\n    boxShadow: "0 6px 18px rgba(15, 23, 42, 0.08)",\n    fontSize: "12px",\n    lineHeight: "1.2",\n  },\n  ".cm-panel.cm-search label": {\n    display: "inline-flex",\n    alignItems: "center",\n    gap: "5px",\n    color: "var(--color-tx-secondary, #64748b)",\n    whiteSpace: "nowrap",\n  },\n  ".cm-panel.cm-search input[type=text]": {\n    boxSizing: "border-box",\n    width: "clamp(145px, 28vw, 230px)",\n    height: "30px",\n    padding: "0 9px",\n    border: "1px solid var(--color-border, #e5e7eb)",\n    borderRadius: "7px",\n    outline: "none",\n    color: "var(--color-tx-primary, #0f172a)",\n    backgroundColor: "var(--color-bg, #ffffff)",\n    font: "inherit",\n    fontSize: "12px",\n    transition: "border-color 120ms ease, box-shadow 120ms ease",\n  },\n  ".cm-panel.cm-search input[type=text]:focus": {\n    borderColor: "var(--color-accent-primary, #3b82f6)",\n    boxShadow: "0 0 0 2px rgba(59, 130, 246, 0.12)",\n  },\n  ".cm-panel.cm-search button": {\n    boxSizing: "border-box",\n    minHeight: "30px",\n    padding: "0 9px",\n    border: "1px solid var(--color-border, #e5e7eb)",\n    borderRadius: "7px",\n    color: "var(--color-tx-secondary, #64748b)",\n    backgroundColor: "var(--color-surface, #f9fafb)",\n    font: "inherit",\n    fontSize: "12px",\n    cursor: "pointer",\n    transition: "background-color 120ms ease, color 120ms ease, border-color 120ms ease",\n  },\n  ".cm-panel.cm-search button:hover": {\n    color: "var(--color-tx-primary, #0f172a)",\n    borderColor: "var(--color-accent-primary, #3b82f6)",\n    backgroundColor: "var(--color-hover, #f3f4f6)",\n  },\n  ".cm-panel.cm-search button[name=close]": {\n    position: "absolute",\n    top: "9px",\n    right: "10px",\n    width: "30px",\n    minWidth: "30px",\n    padding: "0",\n    fontSize: "18px",\n    lineHeight: "1",\n  },\n  ".cm-panel.cm-search input[type=checkbox]": {\n    width: "14px",\n    height: "14px",\n    margin: "0",\n    accentColor: "var(--color-accent-primary, #3b82f6)",\n  },\n  ".cm-panel.cm-search br": {\n    display: "block",\n    flexBasis: "100%",\n    width: "100%",\n    height: "0",\n  },\n});\n\nconst baseTheme = EditorView.theme({''',
+              "search panel theme",
+          )
+
+          replace_once(
+              '''  const { t: tr } = useTranslation();''',
+              '''  const { t: tr, i18n } = useTranslation();''',
+              "translation hook",
+          )
+
+          replace_once(
+              '''  const themeCompartmentRef = useRef(new Compartment());\n  const editableCompartmentRef = useRef(new Compartment());''',
+              '''  const themeCompartmentRef = useRef(new Compartment());\n  const editableCompartmentRef = useRef(new Compartment());\n  const searchPhraseCompartmentRef = useRef(new Compartment());''',
+              "search phrase compartment",
+          )
+
+          replace_once(
+              '''        highlightActiveLine(),\n        highlightSelectionMatches(),''',
+              '''        highlightActiveLine(),\n        search({ top: true }),\n        highlightSelectionMatches(),''',
+              "top search extension",
+          )
+
+          replace_once(
+              '''        baseTheme,\n        themeCompartmentRef.current.of(isDarkMode() ? oneDark : []),\n        editableCompartmentRef.current.of(EditorView.editable.of(editable)),''',
+              '''        baseTheme,\n        themeCompartmentRef.current.of(isDarkMode() ? oneDark : []),\n        editableCompartmentRef.current.of(EditorView.editable.of(editable)),\n        searchPhraseCompartmentRef.current.of(markdownSearchPhrases(i18n.resolvedLanguage || i18n.language)),\n        searchPanelTheme,''',
+              "search extensions",
+          )
+
+          replace_once(
+              '''  const withView = useCallback((fn: (v: EditorView) => void) => {\n    const v = viewRef.current;\n    if (!v) return;\n    fn(v);\n  }, []);\n\n  const iconSize = 15;''',
+              '''  const withView = useCallback((fn: (v: EditorView) => void) => {\n    const v = viewRef.current;\n    if (!v) return;\n    fn(v);\n  }, []);\n\n  const openMarkdownSearch = useCallback(() => {\n    const revealSearch = () => {\n      const view = viewRef.current;\n      if (!view) return;\n      openSearchPanel(view);\n    };\n\n    if (viewModeRef.current === "preview") {\n      setMarkdownViewMode("source");\n      requestAnimationFrame(revealSearch);\n      return;\n    }\n    revealSearch();\n  }, [setMarkdownViewMode]);\n\n  useEffect(() => {\n    const handler = () => openMarkdownSearch();\n    window.addEventListener("nowen:open-search", handler);\n    return () => window.removeEventListener("nowen:open-search", handler);\n  }, [openMarkdownSearch]);\n\n  useEffect(() => {\n    const view = viewRef.current;\n    if (!view) return;\n    view.dispatch({\n      effects: searchPhraseCompartmentRef.current.reconfigure(\n        markdownSearchPhrases(i18n.resolvedLanguage || i18n.language),\n      ),\n    });\n  }, [i18n.language, i18n.resolvedLanguage]);\n\n  const iconSize = 15;''',
+              "search opener and event bridge",
+          )
+
+          replace_once(
+              '''            <ToolbarButton onClick={() => withView((view) => redo(view))} title={tr("tiptap.redo") || "重做"}>\n              <Redo size={16} />\n            </ToolbarButton>\n            <ToolbarDivider />''',
+              '''            <ToolbarButton onClick={() => withView((view) => redo(view))} title={tr("tiptap.redo") || "重做"}>\n              <Redo size={16} />\n            </ToolbarButton>\n            <ToolbarButton onClick={openMarkdownSearch} title="查找与替换">\n              <Search size={16} />\n            </ToolbarButton>\n            <ToolbarDivider />''',
+              "mobile search button",
+          )
+
+          replace_once(
+              '''          <ToolbarButton\n            onClick={() => withView((v) => redo(v))}\n            title={tr("tiptap.redo") || "����"}\n          >\n            <Redo size={iconSize} />\n          </ToolbarButton>\n\n          {/* MARKDOWN-MOBILE-PREVIEW-01:''',
+              '''          <ToolbarButton\n            onClick={() => withView((v) => redo(v))}\n            title={tr("tiptap.redo") || "重做"}\n          >\n            <Redo size={iconSize} />\n          </ToolbarButton>\n          <ToolbarButton\n            onClick={openMarkdownSearch}\n            title="查找与替换"\n          >\n            <Search size={iconSize} />\n          </ToolbarButton>\n\n          {/* MARKDOWN-MOBILE-PREVIEW-01:''',
+              "desktop search button",
+          )
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit fix, rebase latest branch, and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-markdown-search-ui-v1410.yml
+          git add frontend/src/components/MarkdownEditorImpl.tsx
+          git diff --cached --check
+          git commit -m "feat: improve Markdown find and replace"
+          for attempt in 1 2 3; do
+            git pull --rebase origin release/v1.4.10
+            if git push origin HEAD:release/v1.4.10; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
