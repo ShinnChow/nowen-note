@@ -2,7 +2,6 @@ import React, {
   Suspense,
   useDeferredValue,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
