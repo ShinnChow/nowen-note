@@ -1,0 +1,44 @@
+name: Repair mobile video upload patch workflow
+
+on:
+  push:
+    branches:
+      - release/v1.4.10
+    paths:
+      - .github/workflows/repair-mobile-video-workflow-v1410.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.10
+      - name: Add dependency install to patch workflow
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/patch-mobile-video-upload-v1410.yml')
+          text = path.read_text(encoding='utf-8')
+          old = '''          cd frontend\n          npx vitest run src/lib/__tests__/uploadRequest.test.ts src/lib/__tests__/mediaUploadService.test.ts --reporter=dot'''
+          new = '''          cd frontend\n          npm ci --ignore-scripts\n          npx vitest run src/lib/__tests__/uploadRequest.test.ts src/lib/__tests__/mediaUploadService.test.ts --reporter=dot'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected test block once, got {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/repair-mobile-video-workflow-v1410.yml
+          git add .github/workflows/patch-mobile-video-upload-v1410.yml
+          git diff --cached --check
+          git commit -m "chore: retry mobile video upload patch"
+          for attempt in 1 2 3; do
+            git pull --rebase origin release/v1.4.10
+            if git push origin HEAD:release/v1.4.10; then exit 0; fi
+            sleep 2
+          done
+          exit 1
