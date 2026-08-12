@@ -1,0 +1,84 @@
+name: Apply image viewer transform fix
+
+on:
+  push:
+    branches:
+      - release/v1.4.10
+    paths:
+      - .github/workflows/patch-image-viewer-transform-v1410.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.4.10
+
+      - name: Preserve persisted image transforms in fullscreen viewer
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}: {old!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          viewer = "frontend/src/components/FullscreenImageViewer.tsx"
+          replace_once(
+              viewer,
+              'import { toast } from "@/lib/toast";\n',
+              'import { toast } from "@/lib/toast";\nimport { normalizeImageFlipX, normalizeImageRotation } from "@/lib/imageNodeTransformBootstrap";\n',
+          )
+          replace_once(
+              viewer,
+              '''export interface FullscreenImageItem {\n  src: string;\n  alt?: string;\n  filename?: string;\n}''',
+              '''export interface FullscreenImageItem {\n  src: string;\n  alt?: string;\n  filename?: string;\n  rotation?: number;\n  flipX?: boolean;\n}''',
+          )
+          replace_once(
+              viewer,
+              '''  const currentItem = gallery[currentIndex] || gallery[0] || { src: "", alt: "" };\n  const stageRef = useRef<HTMLDivElement | null>(null);''',
+              '''  const currentItem = gallery[currentIndex] || gallery[0] || { src: "", alt: "" };\n  const baseRotation = normalizeImageRotation(currentItem.rotation);\n  const baseFlipX = normalizeImageFlipX(currentItem.flipX);\n  const stageRef = useRef<HTMLDivElement | null>(null);''',
+          )
+          replace_once(
+              viewer,
+              '''  const resetTransform = useCallback(() => {\n    rotationRef.current = 0;\n    setRotation(0);\n    commitTransform(MIN_SCALE, { x: 0, y: 0 });\n  }, [commitTransform]);''',
+              '''  const resetTransform = useCallback(() => {\n    rotationRef.current = baseRotation;\n    setRotation(baseRotation);\n    commitTransform(MIN_SCALE, { x: 0, y: 0 });\n  }, [baseRotation, commitTransform]);''',
+          )
+          replace_once(
+              viewer,
+              '''  const hasTransform = scale > MIN_SCALE + 0.01\n    || rotation !== 0\n    || Math.abs(position.x) > 0.5''',
+              '''  const hasTransform = scale > MIN_SCALE + 0.01\n    || rotation !== baseRotation\n    || Math.abs(position.x) > 0.5''',
+          )
+          replace_once(
+              viewer,
+              '''            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)`,''',
+              '''            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)${baseFlipX ? " scaleX(-1)" : ""}`,''',
+          )
+
+          editor = "frontend/src/components/TiptapEditor.tsx"
+          replace_once(
+              editor,
+              '''      images.push({\n        src: resolveAttachmentUrl(imageSrc),\n        alt: typeof node.attrs.alt === "string" ? node.attrs.alt : "",\n        filename,\n      });''',
+              '''      images.push({\n        src: resolveAttachmentUrl(imageSrc),\n        alt: typeof node.attrs.alt === "string" ? node.attrs.alt : "",\n        filename,\n        rotation: normalizeImageRotation(attrs.rotation),\n        flipX: normalizeImageFlipX(attrs.flipX),\n      });''',
+          )
+          PY
+
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-image-viewer-transform-v1410.yml
+          git add frontend/src/components/FullscreenImageViewer.tsx frontend/src/components/TiptapEditor.tsx
+          git diff --cached --check
+          git commit -m "fix: preserve image rotation in fullscreen viewer"
+          git push origin HEAD:release/v1.4.10
