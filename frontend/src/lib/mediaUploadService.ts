@@ -1,5 +1,8 @@
 import { api } from "@/lib/api";
-import { emitMediaUploadLifecycle } from "@/lib/mediaUploadLifecycle";
+import {
+  emitMediaUploadLifecycle,
+  resolveMediaUploadLifecycleFile,
+} from "@/lib/mediaUploadLifecycle";
 
 const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "ogg", "ogv", "m4v", "mov"]);
 
@@ -47,9 +50,11 @@ export async function uploadMediaAttachment({
   file,
   source = "editor",
 }: MediaUploadOptions): Promise<MediaUploadResult> {
+  const lifecycleFile = resolveMediaUploadLifecycleFile(file);
+
   emitMediaUploadLifecycle({
     phase: "start",
-    file,
+    file: lifecycleFile,
     filename: file.name,
     mediaType: "video",
   });
@@ -82,7 +87,7 @@ export async function uploadMediaAttachment({
     };
     emitMediaUploadLifecycle({
       phase: "success",
-      file,
+      file: lifecycleFile,
       filename: file.name,
       mediaType: "video",
       result,
@@ -91,7 +96,7 @@ export async function uploadMediaAttachment({
   } catch (error: any) {
     emitMediaUploadLifecycle({
       phase: "error",
-      file,
+      file: lifecycleFile,
       filename: file.name,
       mediaType: "video",
       error: error?.message || "视频上传失败",
