@@ -175,11 +175,12 @@ export function TaskQuickAdd({
 
   return (
     <div
+      data-task-quick-add=""
       className={cn(
-        "px-4 py-2.5 rounded-lg border border-dashed bg-app-elevated/50 transition-colors",
+        "rounded-xl border px-3 py-3 transition-all md:px-4",
         dragOver
-          ? "border-accent-primary bg-accent-primary/5 ring-2 ring-accent-primary/30"
-          : "border-app-border hover:border-accent-primary/40",
+          ? "border-accent-primary bg-accent-primary/10 ring-2 ring-accent-primary/20"
+          : "border-accent-primary/20 bg-accent-primary/[0.035] hover:border-accent-primary/35 focus-within:border-accent-primary/45 focus-within:ring-2 focus-within:ring-accent-primary/10",
       )}
       onDragEnter={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
@@ -210,9 +211,27 @@ export function TaskQuickAdd({
         if (files.length > 0) void uploadFiles(files);
       }}
     >
-      <div className="flex items-center gap-3">
-        <Plus size={16} className="text-tx-tertiary flex-shrink-0" />
-        <div className="relative flex-1 min-w-0">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-primary/12 text-accent-primary">
+            <Plus size={15} strokeWidth={2.2} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-tx-primary">
+              {t("tasks.newTask", { defaultValue: "新建任务" })}
+            </div>
+            <div className="hidden text-[11px] text-tx-tertiary sm:block">
+              {t("tasks.newTaskHint", { defaultValue: "输入任务内容，按 Enter 快速创建" })}
+            </div>
+          </div>
+        </div>
+        <span className="hidden shrink-0 rounded-md border border-app-border bg-app-bg px-1.5 py-0.5 text-[10px] text-tx-tertiary md:inline-flex">
+          Enter
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2 rounded-lg border border-app-border bg-app-bg px-3 py-2 shadow-sm transition-colors focus-within:border-accent-primary/55">
+        <div className="relative min-w-0 flex-1">
           {hasRecognizedRanges && (
             <div
               aria-hidden="true"
@@ -236,6 +255,7 @@ export function TaskQuickAdd({
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleSubmit(); } }}
             onPaste={handlePaste}
             placeholder={t('tasks.addTaskPlaceholder')}
+            aria-label={t("tasks.newTask", { defaultValue: "新建任务" })}
             className={cn(
               "relative z-10 w-full bg-transparent text-sm text-tx-primary placeholder:text-tx-tertiary focus:outline-none",
               hasRecognizedRanges && "text-transparent caret-tx-primary",
@@ -247,7 +267,7 @@ export function TaskQuickAdd({
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
           title={t('tasks.insertImage')}
-          className="flex-shrink-0 p-1 rounded hover:bg-app-hover text-tx-tertiary hover:text-accent-primary transition-colors disabled:opacity-50"
+          className="flex-shrink-0 rounded-md p-1.5 text-tx-tertiary transition-colors hover:bg-app-hover hover:text-accent-primary disabled:opacity-50"
         >
           {uploading
             ? <Loader2 size={16} className="animate-spin" />
@@ -257,7 +277,7 @@ export function TaskQuickAdd({
           type="button"
           onClick={() => void handleSubmit()}
           disabled={!value.trim() || uploading}
-          className="flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium bg-accent-primary text-white disabled:opacity-40 md:hidden"
+          className="flex-shrink-0 rounded-lg bg-accent-primary px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
         >
           {t('tasks.add')}
         </button>
