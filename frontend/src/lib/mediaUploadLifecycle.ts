@@ -15,11 +15,11 @@ const pendingOriginalFiles = new Map<string, File[]>();
 
 function mediaFileIdentity(file: File | Blob): string {
   const candidate = file as File;
+  // DataTransfer 重新包装 File 时，部分 Android WebView 可能重写 type / lastModified。
+  // name + 实际字节数在这条链路里更稳定；同名同大小重复选择由下面的数组队列区分。
   return [
     candidate.name || "",
     Number.isFinite(file.size) ? file.size : 0,
-    (file.type || "").toLowerCase(),
-    Number.isFinite(candidate.lastModified) ? candidate.lastModified : 0,
   ].join("\u0000");
 }
 
