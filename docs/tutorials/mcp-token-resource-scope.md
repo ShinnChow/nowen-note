@@ -55,7 +55,7 @@ API Token 的最终权限取三者交集：
   "mcpServers": {
     "nowen-investment": {
       "command": "node",
-      "args": ["/path/to/nowen-mcp/dist/scoped-entry.js"],
+      "args": ["/home/user/nowen-note/packages/nowen-mcp/bin/nowen-mcp.mjs"],
       "env": {
         "NOWEN_URL": "http://localhost:3001",
         "NOWEN_API_TOKEN": "nkn_xxx"

@@ -90,7 +90,7 @@ Nowen Note 支持 MCP Server，可让 Claude Code、Cursor、VS Code 等 AI 客�
 - [MCP Server English guide](./docs/tutorials/mcp.en.md)
 - [nowen-mcp 独立包说明](./packages/nowen-mcp/README.md)
 
-当前正式可用方式为源码构建：安装 Node.js 20+，构建 `packages/nowen-mcp`，在 Nowen Note 创建 restricted Personal API Token，再把 `dist/scoped-entry.js` 的绝对路径配置到客户端。
+当前正式可用方式为源码构建：安装 Node.js 20+，构建 `packages/nowen-mcp`，在 Nowen Note 创建 restricted Personal API Token，再把 `packages/nowen-mcp/bin/nowen-mcp.mjs` 的绝对路径配置到客户端。`dist/scoped-entry.js` 是启动器加载的内部构建入口，不应直接配置给客户端。
 
 ## v1.4.6 重点更新
 
