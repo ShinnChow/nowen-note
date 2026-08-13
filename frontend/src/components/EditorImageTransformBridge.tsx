@@ -42,6 +42,47 @@ function isCoarsePointer(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)")?.matches === true;
 }
 
+/**
+ * Desktop transform controls are promoted into the first-level image toolbar by this bridge.
+ * Hide the legacy transform block inside the overflow popover so the same four actions are not
+ * presented twice. Keep the size presets and the rest of the overflow actions untouched.
+ */
+export function suppressLegacyDesktopImageTransformMenu(toolbar: HTMLElement): boolean {
+  const popover = toolbar.querySelector<HTMLElement>("[data-popover]");
+  if (!popover) return false;
+
+  const children = Array.from(popover.children).filter(
+    (child): child is HTMLElement => child instanceof HTMLElement,
+  );
+  const transformGrid = children.find((child) => {
+    const heading = child.previousElementSibling;
+    return child.classList.contains("grid-cols-4")
+      && child.querySelectorAll(":scope > button").length === 4
+      && heading instanceof HTMLElement
+      && heading.textContent?.includes("图片变换");
+  });
+  if (!transformGrid) return false;
+
+  const heading = transformGrid.previousElementSibling instanceof HTMLElement
+    ? transformGrid.previousElementSibling
+    : null;
+  const divider = transformGrid.nextElementSibling instanceof HTMLElement
+    ? transformGrid.nextElementSibling
+    : null;
+
+  if (heading) {
+    heading.hidden = true;
+    heading.dataset.nowenLegacyImageTransformMenu = "hidden";
+  }
+  transformGrid.hidden = true;
+  transformGrid.dataset.nowenLegacyImageTransformMenu = "hidden";
+  if (divider?.classList.contains("bg-app-border")) {
+    divider.hidden = true;
+    divider.dataset.nowenLegacyImageTransformMenu = "hidden";
+  }
+  return true;
+}
+
 function findDesktopImageToolbar(): HTMLElement | null {
   const expectedTitles = isEnglishUi()
     ? ["View large image", "Download image"]
@@ -62,6 +103,7 @@ function findDesktopImageToolbar(): HTMLElement | null {
     if (moreContainer?.parentElement === toolbar && moreContainer.style.order !== "99") {
       moreContainer.style.order = "99";
     }
+    suppressLegacyDesktopImageTransformMenu(toolbar);
   }
 
   return toolbar;
