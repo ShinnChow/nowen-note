@@ -108,6 +108,11 @@ import {
   filterKnowledgeTreeNodes,
   isSharedRoot,
 } from "@/lib/sharedKnowledgeTree";
+import {
+  KNOWLEDGE_TREE_CLEAR_SEARCH_EVENT,
+  revealCreatedKnowledgeTreeNote,
+  type KnowledgeTreeClearSearchDetail,
+} from "@/lib/knowledgeTreeCreateVisibility";
 import { useApp, useAppActions } from "@/store/AppContext";
 
 export const FOCUS_KNOWLEDGE_TREE_EVENT = "nowen:focus-knowledge-tree";
@@ -446,6 +451,18 @@ export function KnowledgeTreePanel({
   }, [surfaceActive]);
 
   useEffect(() => {
+    if (!surfaceActive) return;
+    const revealCreatedNote = (event: Event) => {
+      const parentId = (event as CustomEvent<KnowledgeTreeClearSearchDetail>).detail?.parentId;
+      // 全文搜索由全局 searchQuery 管理，不能把它当作目录树临时筛选清空。
+      if (state.viewMode !== "search") setQuery("");
+      if (typeof parentId === "string") setNodeExpanded(parentId, true);
+    };
+    window.addEventListener(KNOWLEDGE_TREE_CLEAR_SEARCH_EVENT, revealCreatedNote);
+    return () => window.removeEventListener(KNOWLEDGE_TREE_CLEAR_SEARCH_EVENT, revealCreatedNote);
+  }, [setNodeExpanded, state.viewMode, surfaceActive]);
+
+  useEffect(() => {
     if (!draft) return;
     requestAnimationFrame(() => {
       draftInputRef.current?.focus({ preventScroll: true });
@@ -764,6 +781,7 @@ export function KnowledgeTreePanel({
               ? await importWordIntoKnowledgeTree(options)
               : await importWeChatArticleIntoKnowledgeTree(options);
         if (!imported) return;
+        revealCreatedKnowledgeTreeNote(parent?.id || null);
         activateNote(imported, parent?.id || null);
         emitTreeChanged("node-imported-plus-menu");
         actions.refreshNotes();
@@ -803,6 +821,7 @@ export function KnowledgeTreePanel({
           templateCreateRequest.templateId,
           templateCreateRequest.parentId,
         );
+        revealCreatedKnowledgeTreeNote(templateCreateRequest.parentId);
         if (templateCreateRequest.parentId) {
           setNodeExpanded(templateCreateRequest.parentId, true);
           if (!parent?.sharedRootId) {
@@ -868,6 +887,7 @@ export function KnowledgeTreePanel({
 
     setDraft(null);
     if (snapshot.parentId) setNodeExpanded(snapshot.parentId, true);
+    if (snapshot.kind !== "folder") revealCreatedKnowledgeTreeNote(snapshot.parentId);
     emitTreeChanged("node-created-inline");
     await reload();
     actions.refreshNotebooks();

@@ -9,6 +9,9 @@ import { createPortal } from "react-dom";
 import { Search, X } from "lucide-react";
 
 import LazyWorkspaceFallback from "./LazyWorkspaceFallback";
+import {
+  KNOWLEDGE_TREE_CLEAR_SEARCH_EVENT,
+} from "@/lib/knowledgeTreeCreateVisibility";
 import { useApp, useAppActions } from "@/store/AppContext";
 import type { NoteListItem } from "@/types";
 
@@ -89,6 +92,7 @@ export default function LazyNoteListRuntime() {
   const sourceNotesRef = useRef<NoteListItem[]>(state.notes);
   const lastAppliedFilterRef = useRef<AppliedFilterSnapshot | null>(null);
   const sourceRefreshPendingRef = useRef(false);
+  const preserveCurrentNotesOnCreateRef = useRef(false);
 
   const searchContextKey = `${state.viewMode}:${state.selectedNotebookId || ""}:${
     state.selectedKnowledgeTreeParentId === undefined
@@ -161,6 +165,16 @@ export default function LazyNoteListRuntime() {
     setDirectoryQuery("");
   }, [searchContextKey, state.notes]);
 
+  useEffect(() => {
+    const clearAfterCreate = () => {
+      if (!directoryQuery.trim()) return;
+      preserveCurrentNotesOnCreateRef.current = true;
+      setDirectoryQuery("");
+    };
+    window.addEventListener(KNOWLEDGE_TREE_CLEAR_SEARCH_EVENT, clearAfterCreate);
+    return () => window.removeEventListener(KNOWLEDGE_TREE_CLEAR_SEARCH_EVENT, clearAfterCreate);
+  }, [directoryQuery]);
+
   // 搜索结果仍复用 NoteList 自己的虚拟列表、右键菜单、多选和打开笔记逻辑。
   // 这里只维护一个可恢复的“源列表 -> 本地筛选结果”视图层，不触发全局 FTS 搜索。
   useEffect(() => {
@@ -169,7 +183,14 @@ export default function LazyNoteListRuntime() {
     if (!showDirectorySearch || !normalizedQuery) {
       setMatchCount(null);
       if (lastAppliedFilterRef.current) {
-        const source = sourceNotesRef.current;
+        let source = sourceNotesRef.current;
+        if (preserveCurrentNotesOnCreateRef.current) {
+          const merged = new Map(source.map((note) => [note.id, note]));
+          for (const note of state.notes) merged.set(note.id, note);
+          source = Array.from(merged.values());
+          sourceNotesRef.current = source;
+        }
+        preserveCurrentNotesOnCreateRef.current = false;
         lastAppliedFilterRef.current = null;
         sourceRefreshPendingRef.current = false;
         if (noteListSignature(state.notes) !== noteListSignature(source)) {

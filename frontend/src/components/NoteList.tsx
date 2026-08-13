@@ -2197,6 +2197,8 @@ export default function NoteList() {
         contentFormat: note.contentFormat,
       } as NoteListItem);
       actions.setMobileView("editor");
+      revealCreatedKnowledgeTreeNote(selectedKnowledgeTreeParentId);
+      emitKnowledgeTreeRefresh("note-created-from-note-list");
       actions.refreshNotebooks();
 
       // 若新建发生在「所有笔记/收藏/标签」视图且系统自动选择了归属，提示用户
@@ -3048,6 +3050,10 @@ export default function NoteList() {
       actions.setActiveNote(firstNote);
       actions.setMobileView("editor");
     }
+    if (okCount > 0) {
+      revealCreatedKnowledgeTreeNote(selectedKnowledgeTreeParentId);
+      emitKnowledgeTreeRefresh("notes-imported-from-note-list");
+    }
     actions.refreshNotebooks();
 
     if (okCount > 0 && failCount === 0) {
@@ -3057,7 +3063,7 @@ export default function NoteList() {
     } else {
       toast.error("导入失败");
     }
-  }, [state.selectedNotebookId, state.notebooks, actions]);
+  }, [state.selectedNotebookId, state.notebooks, actions, selectedKnowledgeTreeParentId]);
 
   // 拖拽排序处理（桌面端 HTML5 Drag API）
   const handleDragStart = useCallback((e: React.DragEvent, noteId: string) => {

@@ -342,6 +342,7 @@ export default function KnowledgeTreeNodeMenu({
       fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId,
     });
     if (!imported) return;
+    revealCreatedKnowledgeTreeNote(node.id);
     openLoadedNote(imported);
     await onReload();
     actions.refreshNotes();
@@ -356,6 +357,7 @@ export default function KnowledgeTreeNodeMenu({
       fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId,
     });
     if (!imported) return;
+    revealCreatedKnowledgeTreeNote(node.id);
     openLoadedNote(imported);
     await onReload();
     actions.refreshNotes();
@@ -370,6 +372,7 @@ export default function KnowledgeTreeNodeMenu({
       fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId,
     });
     if (!imported) return;
+    revealCreatedKnowledgeTreeNote(node.id);
     openLoadedNote(imported);
     await onReload();
     actions.refreshNotes();
@@ -384,6 +387,7 @@ export default function KnowledgeTreeNodeMenu({
       fallbackNotebookId: state.activeNote?.notebookId || state.selectedNotebookId,
     });
     if (!imported) return;
+    revealCreatedKnowledgeTreeNote(node.id);
     openLoadedNote(imported);
     await onReload();
     actions.refreshNotes();
