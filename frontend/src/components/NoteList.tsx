@@ -1368,6 +1368,7 @@ export default function NoteList() {
   const [unlockedFolderIds, setUnlockedFolderIds] = useState<Set<string>>(
     loadUnlockedFolderIds,
   );
+  const [folderPasswordSessionRevision, setFolderPasswordSessionRevision] = useState(0);
 
   useEffect(() => {
     const onLayoutChanged = (event: Event) => {
@@ -1406,7 +1407,10 @@ export default function NoteList() {
   const currentFolderOnly = showThreeColumnFolderContents && folderScopeMode === "current";
 
   useEffect(() => {
-    const syncUnlockedFolders = () => setUnlockedFolderIds(loadUnlockedFolderIds());
+    const syncUnlockedFolders = () => {
+      setUnlockedFolderIds(loadUnlockedFolderIds());
+      setFolderPasswordSessionRevision((current) => current + 1);
+    };
     window.addEventListener(KNOWLEDGE_TREE_PASSWORD_SESSION_CHANGED_EVENT, syncUnlockedFolders);
     return () => window.removeEventListener(KNOWLEDGE_TREE_PASSWORD_SESSION_CHANGED_EVENT, syncUnlockedFolders);
   }, []);
@@ -1573,6 +1577,8 @@ export default function NoteList() {
     sortBy: sortPref.by,
     sortDir: sortPref.dir,
     folderScope: currentFolderOnly ? "current" : "recursive",
+    unlockedFolderIds: [...unlockedFolderIds].sort(),
+    folderPasswordSessionRevision,
   }), [
     state.viewMode,
     state.selectedNotebookId,
@@ -1583,6 +1589,8 @@ export default function NoteList() {
     sortPref.by,
     sortPref.dir,
     currentFolderOnly,
+    unlockedFolderIds,
+    folderPasswordSessionRevision,
   ]);
 
   const fetchNotes = useCallback(async () => {
@@ -1751,6 +1759,8 @@ export default function NoteList() {
     sortPref.dir,
     state.notesRefreshToken,
     currentFolderOnly,
+    unlockedFolderIds,
+    folderPasswordSessionRevision,
   ]);
 
   // 按本地日期聚合每日笔记数：YYYY-MM-DD → count。
