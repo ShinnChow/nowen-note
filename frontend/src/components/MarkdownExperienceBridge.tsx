@@ -71,8 +71,14 @@ function setLivePreview(state: EditorBridgeState, active: boolean): void {
   state.liveActive = active;
 }
 
-function findModeGroup(editorRoot: HTMLElement): HTMLElement | null {
-  const toolbar = editorRoot.querySelector<HTMLElement>(".sticky.top-0");
+export function findMarkdownModeGroup(editorRoot: HTMLElement): HTMLElement | null {
+  // MarkdownEditorImpl now owns two responsive toolbars. The full toolbar is marked with a
+  // stable data attribute and becomes sticky only through md: utility classes. The old bridge
+  // queried `.sticky.top-0`, which stopped matching after the mobile-toolbar refactor and made
+  // the live-preview entry disappear on every platform. Prefer the semantic marker and retain
+  // the legacy selector only as a compatibility fallback for older editor shells.
+  const toolbar = editorRoot.querySelector<HTMLElement>('[data-markdown-mobile-toolbar="expanded"]')
+    || editorRoot.querySelector<HTMLElement>(".sticky.top-0");
   if (!toolbar) return null;
   return Array.from(toolbar.querySelectorAll<HTMLElement>("div")).find((element) => {
     return element.classList.contains("ml-auto") && element.querySelectorAll(":scope > button").length >= 3;
@@ -201,7 +207,7 @@ function reconcileMarkdownEditors(): void {
     const editorRoot = host.closest<HTMLElement>(".flex.flex-col.h-full.overflow-hidden");
     if (!editorRoot) continue;
     const state = getState(view);
-    const modeGroup = findModeGroup(editorRoot);
+    const modeGroup = findMarkdownModeGroup(editorRoot);
     if (modeGroup) bindModeButtons(modeGroup, state);
     bindSplitScroll(host, editorRoot, state);
   }
