@@ -7,10 +7,13 @@ interface MobileViewControlsTarget {
   host: HTMLDivElement;
   sourceButton: HTMLButtonElement;
   previewButton: HTMLButtonElement;
+  liveButton: HTMLButtonElement | null;
   sourceActive: boolean;
   previewActive: boolean;
+  liveActive: boolean;
   sourceLabel: string;
   previewLabel: string;
+  liveLabel: string;
 }
 
 const HOST_ATTR = "data-nowen-markdown-mobile-view-controls";
@@ -76,27 +79,40 @@ function resolveTarget(): MobileViewControlsTarget | null {
   const expandedToolbar = document.querySelector<HTMLElement>('[data-markdown-mobile-toolbar="expanded"]');
   if (!compactToolbar || !expandedToolbar) return null;
 
-  const sourceButton = findModeButton(expandedToolbar, "lucide-file-code");
-  const previewButton = findModeButton(expandedToolbar, "lucide-eye");
-  if (!sourceButton || !previewButton) return null;
+  // These two compact-mode buttons are React's canonical mobile source/preview state controls.
+  const mobileSourceButton = findModeButton(expandedToolbar, "lucide-file-code");
+  const mobilePreviewButton = findModeButton(expandedToolbar, "lucide-eye");
+  if (!mobileSourceButton || !mobilePreviewButton) return null;
 
-  let sourceActive = sourceButton.getAttribute("aria-pressed") === "true";
-  const previewActive = previewButton.getAttribute("aria-pressed") === "true";
+  // MarkdownExperienceBridge injects the historical live-preview action into the desktop mode
+  // group. Reuse that exact button on mobile so entering/leaving live preview always configures
+  // the same CodeMirror compartment and localStorage state instead of duplicating the behavior.
+  const liveButton = expandedToolbar.querySelector<HTMLButtonElement>('[data-nowen-markdown-live="1"]');
+  const liveGroup = liveButton?.parentElement instanceof HTMLElement ? liveButton.parentElement : null;
+  const liveGroupNativeButtons = liveGroup
+    ? Array.from(liveGroup.querySelectorAll<HTMLButtonElement>(":scope > button"))
+      .filter((button) => button.dataset.nowenMarkdownLive !== "1")
+    : [];
+  const sourceButton = liveGroupNativeButtons[0] || mobileSourceButton;
+  const previewButton = liveGroupNativeButtons[1] || mobilePreviewButton;
+
+  const liveActive = liveButton?.getAttribute("aria-pressed") === "true";
+  let sourceActive = !liveActive && mobileSourceButton.getAttribute("aria-pressed") === "true";
+  const previewActive = !liveActive && mobilePreviewButton.getAttribute("aria-pressed") === "true";
 
   // MarkdownEditorImpl normalizes a desktop split preference on the first phone mount, but its
-  // note-switch effect historically wrote the raw preference back. In that state neither of
-  // the phone source/preview buttons is active. Route it through the canonical source button so
-  // the existing setter performs the same mobile normalization without duplicating editor state.
-  if (isPhoneMarkdownViewport() && !sourceActive && !previewActive) {
+  // note-switch effect historically wrote the raw preference back. In that state no phone mode
+  // is active. Route it through the canonical source action, but never override live preview.
+  if (isPhoneMarkdownViewport() && !sourceActive && !previewActive && !liveActive) {
     sourceButton.click();
     sourceActive = true;
   }
 
   // The canonical mobile buttons used to live inside the collapsed secondary toolbar.
-  // Keep them as the single source of truth for handlers/state, but hide their old visual
-  // container so expanding “more” does not show a duplicate pair.
-  const originalGroup = sourceButton.parentElement;
-  if (originalGroup instanceof HTMLElement && originalGroup === previewButton.parentElement) {
+  // Keep them as the state source, but hide their old visual container so expanding “more” does
+  // not show duplicates now that source/live/preview are permanently visible on the first row.
+  const originalGroup = mobileSourceButton.parentElement;
+  if (originalGroup instanceof HTMLElement && originalGroup === mobilePreviewButton.parentElement) {
     if (!originalGroupDisplay.has(originalGroup)) {
       originalGroupDisplay.set(originalGroup, originalGroup.style.display || "");
     }
@@ -109,10 +125,13 @@ function resolveTarget(): MobileViewControlsTarget | null {
     host,
     sourceButton,
     previewButton,
+    liveButton,
     sourceActive,
     previewActive,
-    sourceLabel: sourceButton.getAttribute("aria-label") || sourceButton.title || "源码",
-    previewLabel: previewButton.getAttribute("aria-label") || previewButton.title || "预览",
+    liveActive,
+    sourceLabel: mobileSourceButton.getAttribute("aria-label") || mobileSourceButton.title || "源码",
+    previewLabel: mobilePreviewButton.getAttribute("aria-label") || mobilePreviewButton.title || "预览",
+    liveLabel: liveButton?.title || "实时预览",
   };
 }
 
@@ -121,10 +140,13 @@ function sameTarget(a: MobileViewControlsTarget | null, b: MobileViewControlsTar
   return a.host === b.host
     && a.sourceButton === b.sourceButton
     && a.previewButton === b.previewButton
+    && a.liveButton === b.liveButton
     && a.sourceActive === b.sourceActive
     && a.previewActive === b.previewActive
+    && a.liveActive === b.liveActive
     && a.sourceLabel === b.sourceLabel
-    && a.previewLabel === b.previewLabel;
+    && a.previewLabel === b.previewLabel
+    && a.liveLabel === b.liveLabel;
 }
 
 export default function MarkdownMobileViewControlsBridge() {
@@ -183,6 +205,19 @@ export default function MarkdownMobileViewControlsBridge() {
       >
         <FileCode size={14} />
       </button>
+      {target.liveButton && (
+        <button
+          type="button"
+          className={buttonClass(target.liveActive)}
+          title={target.liveLabel}
+          aria-label={target.liveLabel}
+          aria-pressed={target.liveActive}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => target.liveButton?.click()}
+        >
+          <span aria-hidden="true" className="text-[14px] leading-none">✦</span>
+        </button>
+      )}
       <button
         type="button"
         className={buttonClass(target.previewActive)}
