@@ -28,6 +28,13 @@ type Mirror = {
   inlineTextFillColor: string;
 };
 
+function isTransparentColor(value: string): boolean {
+  const normalized = value.replace(/\s+/g, "").toLowerCase();
+  return normalized === "transparent"
+    || normalized === "rgba(0,0,0,0)"
+    || normalized.endsWith(",0)");
+}
+
 function resolveTitleField(root: HTMLElement, target: EventTarget | null): TitleField | null {
   if (target instanceof HTMLTextAreaElement && root.contains(target)) {
     if (target.closest("[data-mobile-editor-title], [data-markdown-mobile-title]")) return target;
@@ -199,6 +206,13 @@ export default function TitleDuplicateAssistBridge({
     if (!session) return null;
     const field = session.field;
     const style = window.getComputedStyle(field);
+    // getComputedStyle 返回的是实时对象。必须在把真实标题设为透明前保存颜色值，
+    // 否则后续读取到的 caretColor 也会跟随 color 变成透明，镜像光标无法显示。
+    const fieldColor = style.color;
+    const computedCaretColor = style.caretColor;
+    const visibleCaretColor = computedCaretColor === "auto" || isTransparentColor(computedCaretColor)
+      ? fieldColor
+      : computedCaretColor;
 
     const root = document.createElement("div");
     root.dataset.titleDuplicateMirror = "";
@@ -217,7 +231,7 @@ export default function TitleDuplicateAssistBridge({
     const prefix = document.createElement("span");
     prefix.className = "text-red-500 dark:text-red-400";
     const suffix = document.createElement("span");
-    suffix.style.color = style.color;
+    suffix.style.color = fieldColor;
     text.append(prefix, suffix);
     root.appendChild(text);
     document.body.appendChild(root);
@@ -235,7 +249,7 @@ export default function TitleDuplicateAssistBridge({
 
     field.style.color = "transparent";
     field.style.webkitTextFillColor = "transparent";
-    field.style.caretColor = style.caretColor === "auto" ? style.color : style.caretColor;
+    field.style.caretColor = visibleCaretColor;
 
     resizeObserverRef.current = new ResizeObserver(scheduleLayout);
     resizeObserverRef.current.observe(field);
@@ -399,6 +413,12 @@ export default function TitleDuplicateAssistBridge({
       const field = resolveTitleField(root, event.target);
       if (field) startSession(field);
     };
+    const onPointerDown = (event: PointerEvent) => {
+      const field = resolveTitleField(root, event.target);
+      // Enter 会按原逻辑结束提示会话，但 Tiptap 标题仍保持焦点，后续点击不会再次
+      // 触发 focusin。仅在这种“仍聚焦但已无会话”的情况下恢复重复提示。
+      if (field && document.activeElement === field && !sessionRef.current) startSession(field);
+    };
     const onInput = (event: Event) => {
       const session = sessionRef.current;
       if (session && event.target === session.field && !session.composing) renderMatch();
@@ -431,6 +451,7 @@ export default function TitleDuplicateAssistBridge({
     };
 
     root.addEventListener("focusin", onFocusIn, true);
+    root.addEventListener("pointerdown", onPointerDown, true);
     root.addEventListener("input", onInput, true);
     root.addEventListener("compositionstart", onCompositionStart, true);
     root.addEventListener("compositionend", onCompositionEnd, true);
@@ -447,6 +468,7 @@ export default function TitleDuplicateAssistBridge({
 
     return () => {
       root.removeEventListener("focusin", onFocusIn, true);
+      root.removeEventListener("pointerdown", onPointerDown, true);
       root.removeEventListener("input", onInput, true);
       root.removeEventListener("compositionstart", onCompositionStart, true);
       root.removeEventListener("compositionend", onCompositionEnd, true);
