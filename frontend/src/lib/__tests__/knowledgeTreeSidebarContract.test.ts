@@ -30,7 +30,7 @@ describe("knowledge tree sidebar contract", () => {
     expect(panel).toContain('data-nowen-knowledge-tree="embedded"');
     expect(panel).toContain("内容暂时未加载");
     expect(panel).toContain("重新加载");
-    expect(panel).toContain("不能移动到自己的子节点中");
+    expect(panel).toContain("return !descendantsOf(source.id, allChildren).has(target.id);");
     expect(panel).not.toContain("onRequestLegacy");
     expect(panel).not.toContain("使用旧树");
     expect(panel).toContain("KnowledgeTreeNodeMenu");
