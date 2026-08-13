@@ -1247,7 +1247,7 @@
       "dailyAtTzNote": "(server local time)",
       "dailyAtHint": "Backup runs once daily at this time; pick an off-peak slot. Restarts won't trigger immediately — it waits for the next slot.",
       "keepCountLabel": "Keep count",
-      "keepCountHint": "Only excess db-only backups (automatic and manual) are pruned; full backups are kept. Every newly created backup triggers pruning. Range 1–100.",
+      "keepCountHint": "Keeps the newest automatic backups of each type. Manual db-only backups are also pruned; manual or imported full backups are never deleted. Range 1–100.",
       "autoEmailLabel": "Email backup file after successful run",
       "autoEmailPlaceholder": "ops@example.com",
       "autoEmailHint": "Requires SMTP configured below. If attachment exceeds 25MB, sends a text-only notice. Silently skipped when SMTP is disabled.",

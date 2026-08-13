@@ -3995,7 +3995,7 @@ function BackupSection() {
               </div>
             )}
 
-            {/* 保留数量只约束 db-only；任意备份创建完成后都会顺带执行同一清理规则 */}
+            {/* 自动备份按类型保留；手动创建仍只统一清理 db-only，不删除手动 full */}
             <div className="flex items-center gap-3">
               <label className="text-xs text-zinc-600 dark:text-zinc-400 whitespace-nowrap">
                 {t("dataManager.backup.keepCountLabel")}

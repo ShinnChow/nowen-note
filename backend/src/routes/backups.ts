@@ -300,7 +300,7 @@ backupsRouter.delete("/:filename", (c) => {
 // body: { enabled: boolean, intervalHours?: number, mode?, dailyAt?, keepCount?, email*? }
 //   - enabled=false: 立即停止；intervalHours 仍会被持久化为"下次启用时使用的值"
 //   - enabled=true:  以 intervalHours（缺省 24）启动并持久化
-//   - keepCount:     只控制 db-only 保留数量；full 不参与自动清理
+//   - keepCount:     自动备份按类型保留；手动创建仍只统一清理 db-only
 //
 // 持久化由 BackupManager.startAutoBackup / stopAutoBackup 内部完成，
 // 写入 system_settings 表的 backup:auto 键。重启后启动钩子会读取并恢复完整配置。

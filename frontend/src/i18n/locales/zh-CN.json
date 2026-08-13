@@ -1264,7 +1264,7 @@
       "dailyAtTzNote": "（服务器本地时区）",
       "dailyAtHint": "每天到达此时间点自动备份一次；建议选业务低峰时段。重启服务不会立即触发，会等到下一个时间点。",
       "keepCountLabel": "保留数量",
-      "keepCountHint": "仅清理超量的 db-only 备份（含自动与手动）；full 类型不动。任意备份创建完成后都会触发清理。范围 1~100。",
+      "keepCountHint": "自动备份按类型保留最新数量；手动 db-only 也会清理，手动或导入的 full 不删除。范围 1~100。",
       "autoEmailLabel": "备份成功后自动发送到邮箱",
       "autoEmailPlaceholder": "ops@example.com",
       "autoEmailHint": "需在下方「邮件通道（SMTP）」配置好账号；附件超 25MB 时仅发文本通知。SMTP 未启用时静默跳过，不影响备份。",

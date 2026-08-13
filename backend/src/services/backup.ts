@@ -100,10 +100,9 @@ const FAILURE_DEGRADE_THRESHOLD = 3;
  *                       服务启动时若今日时间点还没到 → 调度到今日；已过 → 明日。
  *                       重启不会立即触发（避免运维半夜重启抖一次备份）。
  *
- *   - keepCount：自动清理保留的 db-only 备份数量。范围 1~100，默认 15。
- *                只清理 type="db-only" 的备份，full 不动；
- *                由"自动备份完成"和"手动备份完成"两条路径共同触发，
- *                避免旧版本"只在 tick 里清理"导致手动产物无限堆积。
+ *   - keepCount：备份保留数量。范围 1~100，默认 15。
+ *                自动备份按当前 type 独立保留，自动 full 不会再无限累积；
+ *                手动创建仍只统一清理 db-only，不删除手动 full 或导入 full。
  *
  *   - emailOnSuccess + emailTo：自动备份成功后自动发邮件（SMTP 需启用且
  *                就绪，否则静默跳过，不阻塞备份）。
@@ -114,7 +113,7 @@ interface AutoBackupConfig {
   mode?: "interval" | "daily";
   /** "HH:mm" 24 小时制（服务器本地时区）；mode="daily" 时使用 */
   dailyAt?: string;
-  /** 自动清理保留的 db-only 备份数；默认 15 */
+  /** 自动备份保留数；手动创建时也用于清理 db-only。默认 15 */
   keepCount?: number;
   /** 自动备份成功后是否自动发邮件 */
   emailOnSuccess?: boolean;
@@ -227,7 +226,7 @@ export interface BackupHealth {
   autoBackupMode?: "interval" | "daily";
   /** mode="daily" 时的每日触发时间 "HH:mm" */
   autoBackupDailyAt?: string;
-  /** 自动清理保留的 db-only 备份数 */
+  /** 自动备份保留数；手动创建时也用于清理 db-only */
   autoBackupKeepCount?: number;
   /** 是否启用"备份成功后自动发邮件" */
   autoBackupEmailOnSuccess?: boolean;
