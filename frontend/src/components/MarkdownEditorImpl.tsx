@@ -281,15 +281,15 @@ const nowenMdHighlight = HighlightStyle.define([
   { tag: t.link, color: "var(--color-accent-primary, #3b82f6)", textDecoration: "underline" },
   { tag: t.url, color: "var(--color-accent-primary, #3b82f6)" },
   { tag: t.monospace, fontFamily: "ui-monospace, 'JetBrains Mono', Menlo, Monaco, Consolas, monospace" },
-  { tag: t.quote, fontStyle: "italic", color: "var(--color-tx-secondary, #64748b)" },
-  { tag: t.processingInstruction, color: "var(--color-tx-tertiary, #94a3b8)" },
+  { tag: t.quote, fontStyle: "italic", color: "var(--color-text-secondary, #64748b)" },
+  { tag: t.processingInstruction, color: "var(--color-text-tertiary, #94a3b8)" },
   { tag: t.list, color: "var(--color-accent-primary, #3b82f6)" },
 ]);
 
 /** �༭�� DOM �������⣨���� / �ߴ� / ��ɫ�� */
 const searchPanelTheme = EditorView.theme({
   ".cm-panels": {
-    color: "var(--color-tx-primary, #0f172a)",
+    color: "var(--color-text-primary, #0f172a)",
     backgroundColor: "transparent",
   },
   ".cm-panels-top": {
@@ -311,7 +311,7 @@ const searchPanelTheme = EditorView.theme({
     display: "inline-flex",
     alignItems: "center",
     gap: "5px",
-    color: "var(--color-tx-secondary, #64748b)",
+    color: "var(--color-text-secondary, #64748b)",
     whiteSpace: "nowrap",
   },
   ".cm-panel.cm-search input[type=text]": {
@@ -322,7 +322,7 @@ const searchPanelTheme = EditorView.theme({
     border: "1px solid var(--color-border, #e5e7eb)",
     borderRadius: "7px",
     outline: "none",
-    color: "var(--color-tx-primary, #0f172a)",
+    color: "var(--color-text-primary, #0f172a)",
     backgroundColor: "var(--color-bg, #ffffff)",
     font: "inherit",
     fontSize: "12px",
@@ -338,7 +338,7 @@ const searchPanelTheme = EditorView.theme({
     padding: "0 9px",
     border: "1px solid var(--color-border, #e5e7eb)",
     borderRadius: "7px",
-    color: "var(--color-tx-secondary, #64748b)",
+    color: "var(--color-text-secondary, #64748b)",
     backgroundColor: "var(--color-surface, #f9fafb)",
     font: "inherit",
     fontSize: "12px",
@@ -346,7 +346,7 @@ const searchPanelTheme = EditorView.theme({
     transition: "background-color 120ms ease, color 120ms ease, border-color 120ms ease",
   },
   ".cm-panel.cm-search button:hover": {
-    color: "var(--color-tx-primary, #0f172a)",
+    color: "var(--color-text-primary, #0f172a)",
     borderColor: "var(--color-accent-primary, #3b82f6)",
     backgroundColor: "var(--color-hover, #f3f4f6)",
   },
@@ -389,7 +389,7 @@ const baseTheme = EditorView.theme({
   ".cm-content": {
     padding: "12px 0",
     caretColor: "var(--color-accent-primary, #3b82f6)",
-    color: "var(--color-tx-primary, #0f172a)",
+    color: "var(--color-text-primary, #0f172a)",
   },
   ".cm-line": {
     padding: "0 12px",
@@ -410,13 +410,13 @@ const baseTheme = EditorView.theme({
   ".cm-gutters": {
     backgroundColor: "transparent",
     border: "none",
-    color: "var(--color-tx-tertiary, #94a3b8)",
+    color: "var(--color-text-tertiary, #94a3b8)",
   },
   ".cm-cursor": {
     borderLeftWidth: "2px",
   },
   ".cm-placeholder": {
-    color: "var(--color-tx-tertiary, #94a3b8)",
+    color: "var(--color-text-tertiary, #94a3b8)",
     fontStyle: "italic",
   },
 });
