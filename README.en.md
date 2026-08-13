@@ -30,18 +30,18 @@
 
 > **Remote NAS connection and sign-in:** Nowen Note supports deployment on **UGREEN NAS (UGOS / UGOS Pro)** and **Feiniu NAS (fnOS)**. After deployment, connect and sign in from the web, desktop, or Android client using a LAN IP address, an IPv6 address, or a public domain secured with HTTPS.
 
-## v1.4.10 is available
+## v1.4.11 is available
 
-v1.4.10 focuses on **faster editing, more reliable mobile media uploads, offline attachment recovery, knowledge-tree usability, and reminder correctness**, while expanding templates, import/export, and desktop integration.
+v1.4.11 focuses on **note duplication, search correctness, mobile Markdown editing, collaboration media stability, and everyday UI polish**, while tightening AI, backup, shared-attachment, and release workflows.
 
-- Added duplicate-title prefix warnings while typing, automatic wrapping for long titles, improved Markdown find/replace, and current-directory note search.
-- Added drag-to-change hierarchy in the knowledge tree and tightened visibility rules for notes inside encrypted directories.
-- Added image rotation and independent reset controls; rich-text paste now preserves text color and cross-note formatting more consistently. Desktop builds also gain native text context menus and system-default opening for local office files.
-- Hardened Android/mobile image and video uploads by preserving original file identity, stabilizing multipart uploads, and exposing image/video actions in the compact toolbar.
-- Added offline attachment validation, quarantine, and recovery signaling so broken cached blobs do not leak into online rendering. Offline sync now starts disabled until explicitly enabled.
-- Made reminder creation timezone-aware with safer date-only deadlines and PostgreSQL schema parity, while fixing backup retention, SiYuan import feedback, and Markdown attachment ZIP round trips.
+- Notes can now be duplicated as independent copies, making it easier to reuse content without affecting the original.
+- Search once again uses indexed note content as its source, while creating a document during knowledge-tree search now keeps the new item visible instead of appearing to lose it.
+- Note context menus are more consistent, export submenus render correctly, duplicate-title assistance keeps the caret visible, and desktop image transform actions no longer expose duplicate menus.
+- Mobile Markdown editing restores live-preview controls and mode switching, expands the usable editing viewport, and fixes the mobile editor action panel.
+- Fixed fullscreen image preview in collaborative notes on mobile, and restored attachment access for published/shared notebooks.
+- AI knowledge-base statistics and chat layout are more reliable, automatic full-backup retention cleanup is restored, iOS/TestFlight builds inherit release-tag versions, and the MCP launcher-path documentation has been corrected.
 
-See the [v1.4.10 Release](https://github.com/cropflre/nowen-note/releases/tag/v1.4.10) and the [full changelog](./CHANGELOG.md).
+See the [v1.4.11 Release](https://github.com/cropflre/nowen-note/releases/tag/v1.4.11) and the [full changelog](./CHANGELOG.md).
 
 ## Connect AI clients to Nowen Note
 
@@ -76,7 +76,7 @@ The currently supported distribution is a source build: install Node.js 20+, bui
 | **AI** | OpenAI-compatible APIs, Qwen, Gemini, DeepSeek, Doubao, and Ollama. Features include continuation, rewriting, translation, title and tag generation, summaries, embeddings, and RAG knowledge Q&A. |
 | **Tasks and visualization** | Hierarchical tasks, lists, Kanban, calendar, Gantt/timeline, dependencies, recurrence, reminders, templates, AI task breakdown, My Day, Inbox, time planning, offline tasks/habits, native Android reminder scheduling with creator-timezone/date-only deadline consistency, and mind maps. |
 | **Collaboration, permissions, and sharing** | Yjs + WebSocket collaboration, workspaces and roles, directory ACLs, Restricted access, explicit allow/deny policies, ownership transfer, centralized share management, passwords and expiration, guest comments, public knowledge spaces, and rich-text/Markdown inline comments. |
-| **Sync and edit protection** | Incremental sync, persistence acknowledgements, draft recovery, and version checks. v1.4.10 adds offline attachment validation, quarantine, and recovery signaling while keeping serial saves and Yjs state protection across Markdown/rich-text format transitions. |
+| **Sync and edit protection** | Incremental sync, persistence acknowledgements, draft recovery, and version checks. Offline attachment validation, quarantine, and recovery signaling keep broken cached blobs away from online rendering while serial saves and Yjs state protection guard Markdown/rich-text transitions. |
 | **Import, export, and migration** | Import Markdown, Word/DOCX, web URLs, WeChat articles, SingleFile HTML, SiYuan ZIP archives, Obsidian, Xiaomi Notes, and other supported sources. Export Markdown, PDF, Word, images, or full ZIP packages with permission mapping, conflict preview, reports, controlled rollback, image access preparation, and footnote handling. |
 | **Attachments and storage** | Local attachments organized under `YYYY/MM`; reusable attachment-library insertion, thumbnails, note ownership, reference checks, orphan rescans and cleanup, protected manual uploads, local disk or S3/R2/MinIO storage, plus hardened mobile image/video file identity and multipart uploads. |
 | **Accounts and security** | Multiple-account history, remembered accounts, auto-login, remote server connections, session validation and revocation, 2FA, scoped Personal API Tokens, audit logs, protected attachment access, and concealment of restricted-resource existence. |
@@ -85,35 +85,35 @@ The currently supported distribution is a source build: install Node.js 20+, bui
 
 ## Recent highlights
 
-### v1.4.10 · 2026-08-12
+### v1.4.11 · 2026-08-13
 
-#### Editing and search
+#### Notes and search
 
-- Duplicate-title prefix warnings surface possible duplicates while a title is being entered, and long titles now wrap within the editor instead of overflowing.
-- Markdown find/replace has a more resilient narrow-width layout, and search can be scoped to notes in the current directory.
-- Rich-text copy/paste between notes preserves formatting and text colors more consistently.
+- Added **independent note duplication**, so an existing note can be reused as a new standalone copy without changing the source note.
+- Restored indexed note content as the search source to keep search results aligned with the current index.
+- Fixed knowledge-tree search mode so newly created documents remain visible immediately instead of disappearing from the filtered tree.
 
-#### Images, attachments, and mobile
+#### Editor and Markdown
 
-- The image viewer adds rotation and independent reset controls, with rotation state preserved correctly in fullscreen mode.
-- Mobile image/video uploads keep original File identity across DataTransfer, queue, progress, and multipart boundaries, with real uploaded video size validation.
-- Image and video actions are available in the compact mobile toolbar, while short-viewport menus and scrolling settings surfaces receive additional layout fixes.
-- Offline attachment blobs are validated, quarantined when corrupted, and surfaced through a recovery signal instead of contaminating online rendering.
+- Unified note context-menu behavior and fixed export submenu rendering.
+- Duplicate-title assistance now keeps the text caret visible throughout editing.
+- Desktop image transform actions are exposed from the correct toolbar without duplicating the transform menu.
+- Mobile Markdown restores edit/live-preview controls, preserves mode switching across note changes, and expands the usable editing viewport.
 
-#### Knowledge tree, templates, and import/export
+#### Mobile, collaboration, and sharing
 
-- Knowledge-tree nodes can be dragged across hierarchy levels, and encrypted-directory visibility boundaries are tightened.
-- Note templates support saving, creating notes from templates, mobile entry points, an in-app save dialog, and cleanup protection for template attachments.
-- Markdown attachment ZIP round-trip import is fixed, while SiYuan import gets better drag recognition, recovery-directory persistence, and no-response feedback.
+- Fixed the black screen that could appear when opening fullscreen images in collaborative notes on mobile.
+- Fixed the mobile editor action panel and related compact-layout regressions.
+- Published/shared notebooks can once again resolve attachment access correctly.
 
-#### Tasks, backups, and desktop integration
+#### AI, backup, and release delivery
 
-- Reminder scheduling now preserves creator timezone context, date-only deadline semantics, and PostgreSQL migration/schema parity across normal creation and quick capture.
-- db-only backup retention is unified for automatic and manual backups, including persistence of disabled backup settings.
-- Desktop builds add a native text context menu and can open local office attachments with the operating system's default application.
-- Release downloads gain stronger GitHub asset fallback and stable platform/install-type grouping.
+- Fixed AI knowledge-base statistics and improved the chat-content layout.
+- Restored retention cleanup for automatic full backups.
+- iOS/TestFlight builds now derive their version from release tags for more consistent release metadata.
+- Corrected MCP launcher-path documentation so client configuration points to the supported entry path.
 
-See [CHANGELOG.md](./CHANGELOG.md) and the [v1.4.10 Release](https://github.com/cropflre/nowen-note/releases/tag/v1.4.10) for complete details.
+See [CHANGELOG.md](./CHANGELOG.md) and the [v1.4.11 Release](https://github.com/cropflre/nowen-note/releases/tag/v1.4.11) for complete details.
 
 ## Screenshots
 
@@ -192,10 +192,10 @@ docker compose up -d
 To pin the current stable release:
 
 ```bash
-NOWEN_IMAGE_TAG=v1.4.10 docker compose up -d
+NOWEN_IMAGE_TAG=v1.4.11 docker compose up -d
 ```
 
-> v1.4.10 specifically improves title and Markdown editing, knowledge-tree hierarchy changes, mobile media uploads, offline attachment recovery, and timezone-aware reminders. After upgrading, verify sign-in, note editing, image/video uploads, offline attachments, reminders, templates, import/export, and backups. Rolling back an image does not roll back the database.
+> v1.4.11 focuses on independent note copies, search correctness, editor/menu polish, mobile Markdown controls, collaborative image preview, shared attachment access, AI layout fixes, and backup retention. After upgrading, verify sign-in, note duplication, search, editing, mobile Markdown preview, shared attachments, image preview, and backups. Rolling back an image does not roll back the database.
 
 ### Managed Docker updates (optional)
 
@@ -204,7 +204,7 @@ Managed updates only support the official [`docker-compose.yml`](./docker-compos
 ```bash
 cp .env.example .env
 printf '\nNOWEN_UPDATER_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-NOWEN_IMAGE_TAG=v1.4.10 docker compose --profile updater up -d
+NOWEN_IMAGE_TAG=v1.4.11 docker compose --profile updater up -d
 ```
 
 Administrators can then run preflight checks, create a full backup, update, verify health, and roll back the image from Settings → About → Version.
@@ -222,7 +222,7 @@ docker run -d \
   -p 3001:3001 \
   -e TZ=Asia/Shanghai \
   -v /opt/nowen-note/data:/app/data \
-  cropflre/nowen-note:v1.4.10
+  cropflre/nowen-note:v1.4.11
 ```
 
 ## Data, backups, and configuration
