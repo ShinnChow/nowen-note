@@ -7,6 +7,14 @@ const editorSource = readFileSync(
   path.resolve(__dirname, "../MarkdownEditorImpl.tsx"),
   "utf8",
 );
+const experienceBridgeSource = readFileSync(
+  path.resolve(__dirname, "../MarkdownExperienceBridge.tsx"),
+  "utf8",
+);
+const mobileBridgeSource = readFileSync(
+  path.resolve(__dirname, "../MarkdownMobileViewControlsBridge.tsx"),
+  "utf8",
+);
 
 describe("MarkdownEditor mobile preview", () => {
   it("falls back to source mode when a desktop split preference is opened on mobile", () => {
@@ -15,7 +23,7 @@ describe("MarkdownEditor mobile preview", () => {
     expect(normalizeMarkdownViewModeForMobile("split", false)).toBe("split");
   });
 
-  it("places the mobile edit and preview controls before formatting tools", () => {
+  it("keeps the canonical mobile source and preview controls available", () => {
     const mobileControls = editorSource.slice(
       editorSource.indexOf("MARKDOWN-MOBILE-PREVIEW-01"),
       editorSource.indexOf("<ToolbarDivider />", editorSource.indexOf("MARKDOWN-MOBILE-PREVIEW-01")),
@@ -24,5 +32,17 @@ describe("MarkdownEditor mobile preview", () => {
     expect(mobileControls).toContain("sm:hidden");
     expect(mobileControls).toContain('setMarkdownViewMode("source")');
     expect(mobileControls).toContain('setMarkdownViewMode("preview")');
+  });
+
+  it("binds live preview through the responsive full toolbar instead of the removed sticky selector", () => {
+    expect(experienceBridgeSource).toContain('data-markdown-mobile-toolbar=\\"expanded\\"');
+    expect(experienceBridgeSource).toContain("data.nowenMarkdownLive");
+    expect(experienceBridgeSource).toContain("markdownLivePreviewExtension");
+  });
+
+  it("surfaces source, live preview and preview together on the compact mobile toolbar", () => {
+    expect(mobileBridgeSource).toContain('data-nowen-markdown-live=\\"1\\"');
+    expect(mobileBridgeSource).toContain("target.liveButton");
+    expect(mobileBridgeSource).toContain("实时预览");
   });
 });
