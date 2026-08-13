@@ -12,6 +12,73 @@
 
 <!-- ADD_NEW_HERE -->
 
+## v1.4.11 - 2026-08-13
+
+### ✨ 新增
+
+- **笔记**: 支持创建独立副本 (ae70543)
+
+### 🐛 修复
+
+- **search**: restore indexed content as search source (9bf642f)
+- **Markdown**: 修正编辑器主题变量 (6f4b659)
+- **菜单**: 统一笔记右键菜单并修复导出子菜单显示 (07a5777)
+- version iOS/TestFlight builds from release tags (2107114)
+- **AI**: 修复知识库统计和聊天内容布局 (cb52d71)
+- **知识树**: 修复搜索状态下新建文档不可见 (21941cc)
+- **移动端**: 修复协作笔记图片全屏预览黑屏 (3966880)
+- **编辑器**: 修复移动端操作面板显示异常 (aaf8aa0)
+- **备份**: 恢复自动全量备份保留清理 (434c091)
+- **编辑器**: 修复重复标题编辑时光标不可见 (33fe08b)
+- **editor**: keep duplicate title caret visible (c1b6cbe)
+- **editor**: mount duplicate title caret bridge (24ee6f5)
+- **editor**: restore visible caret for duplicate title assist (e69e635)
+- **editor**: remove duplicate desktop image transform menu (08e1440)
+- **publication**: register shared notebook attachment access (f664a41)
+- **markdown**: restore live preview on mobile toolbar (d43d9d4)
+- **markdown**: restore live preview mode binding (cec2bff)
+- **markdown**: normalize mobile split mode on note changes (18d3583)
+- **markdown**: mount mobile view controls bridge (a6c929d)
+- **markdown**: restore mobile edit preview controls (f5b623c)
+- **editor**: expose image transform actions in desktop toolbar (aee9a2b)
+- expand mobile markdown editing viewport (b25ad1a)
+- **ci**: make v1.4.10 metadata finalizer valid (5cf81ff)
+
+### ♻️ 重构
+
+- **图片**: 移除重复变换菜单 DOM 隐藏桥 (3cdebb1)
+- mount task entry ux bridge (681c265)
+- separate task search from quick add (564fbd5)
+- clarify task search and create hierarchy (5fa9ac2)
+
+### 📝 文档
+
+- **MCP**: 修正启动器路径配置说明 (20ba0f3)
+- **readme**: update v1.4.10 release highlights (9fede0a)
+
+### ✅ 测试
+
+- **remote-image**: align trashed note visibility with ACL (0ca26f9)
+- **knowledge-tree**: align sidebar move guard contract (fd20dad)
+- **菜单**: 补充保存模板菜单契约测试 (409834c)
+- **editor**: cover duplicate title caret visibility (5cd43e6)
+- **editor**: cover image transform menu dedupe (0051a02)
+- **publication**: guard shared notebook attachment access (ef09eba)
+- **markdown**: harden live preview control assertions (ca08529)
+- **markdown**: cover restored live preview controls (44ffa9b)
+- cover task entry visual hierarchy (d69f719)
+
+### 🤖 CI
+
+- **pg**: remove temporary safe sync fallback (882c79a)
+- **pg**: add safe main sync fallback (03e930e)
+
+### 🔧 其他
+
+- **markdown**: clean mobile view bridge import (795c1e2)
+- **version**: bump backend to v1.4.10 (ed94f30)
+- finalize v1.4.10 release metadata (98af79a)
+
 ## v1.4.10 - 2026-08-12
 
 ### ✨ 新增
