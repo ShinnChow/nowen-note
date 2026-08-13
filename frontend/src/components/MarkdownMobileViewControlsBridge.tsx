@@ -17,10 +17,20 @@ const HOST_ATTR = "data-nowen-markdown-mobile-view-controls";
 const ORIGINAL_GROUP_ATTR = "data-nowen-markdown-mobile-view-controls-source";
 const originalGroupDisplay = new WeakMap<HTMLElement, string>();
 
-function isCompactMarkdownViewport(): boolean {
+function matchesViewport(query: string): boolean {
   return typeof window !== "undefined"
     && typeof window.matchMedia === "function"
-    && window.matchMedia("(max-width: 767px)").matches;
+    && window.matchMedia(query).matches;
+}
+
+function isCompactMarkdownViewport(): boolean {
+  return matchesViewport("(max-width: 767px)");
+}
+
+function isPhoneMarkdownViewport(): boolean {
+  // Keep this threshold aligned with MarkdownEditorImpl.isMobileMarkdownViewport().
+  // Phones do not support split mode; 640–767px compact/tablet layouts may still use it.
+  return matchesViewport("(max-width: 639px)");
 }
 
 function findModeButton(
@@ -70,6 +80,18 @@ function resolveTarget(): MobileViewControlsTarget | null {
   const previewButton = findModeButton(expandedToolbar, "lucide-eye");
   if (!sourceButton || !previewButton) return null;
 
+  let sourceActive = sourceButton.getAttribute("aria-pressed") === "true";
+  const previewActive = previewButton.getAttribute("aria-pressed") === "true";
+
+  // MarkdownEditorImpl normalizes a desktop split preference on the first phone mount, but its
+  // note-switch effect historically wrote the raw preference back. In that state neither of
+  // the phone source/preview buttons is active. Route it through the canonical source button so
+  // the existing setter performs the same mobile normalization without duplicating editor state.
+  if (isPhoneMarkdownViewport() && !sourceActive && !previewActive) {
+    sourceButton.click();
+    sourceActive = true;
+  }
+
   // The canonical mobile buttons used to live inside the collapsed secondary toolbar.
   // Keep them as the single source of truth for handlers/state, but hide their old visual
   // container so expanding “more” does not show a duplicate pair.
@@ -87,8 +109,8 @@ function resolveTarget(): MobileViewControlsTarget | null {
     host,
     sourceButton,
     previewButton,
-    sourceActive: sourceButton.getAttribute("aria-pressed") === "true",
-    previewActive: previewButton.getAttribute("aria-pressed") === "true",
+    sourceActive,
+    previewActive,
     sourceLabel: sourceButton.getAttribute("aria-label") || sourceButton.title || "源码",
     previewLabel: previewButton.getAttribute("aria-label") || previewButton.title || "预览",
   };
