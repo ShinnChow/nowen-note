@@ -5126,9 +5126,17 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   // 移动端 header 顶部的搜索按钮通过派发自定义事件触发查找面板。
   // 用 CustomEvent 而不是把 setSearchOpen 提到外部，是为了避免改 TiptapEditor 的对外接口。
   useEffect(() => {
-    const onOpen = () => setSearchOpen(true);
+    const onOpen = () => {
+      setMobileToolbarExpanded(false);
+      setSearchOpen(true);
+    };
+    const onClose = () => setSearchOpen(false);
     window.addEventListener("nowen:open-search", onOpen);
-    return () => window.removeEventListener("nowen:open-search", onOpen);
+    window.addEventListener("nowen:close-search", onClose);
+    return () => {
+      window.removeEventListener("nowen:open-search", onOpen);
+      window.removeEventListener("nowen:close-search", onClose);
+    };
   }, []);
 
   if (!editor) return null;
@@ -5234,9 +5242,9 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
           ref={outlineToolbarRef}
           data-mobile-editor-toolbar="expanded"
           className={cn(
-            "editor-toolbar-scroll-fade hide-scrollbar z-30 flex-nowrap items-center gap-0.5 overflow-x-auto touch-pan-x border-b border-app-border bg-app-elevated/98 px-3 py-2 backdrop-blur transition-shadow duration-200 supports-[backdrop-filter]:bg-app-elevated/90 md:sticky md:top-0 md:z-20 md:flex md:flex-wrap md:overflow-visible md:touch-auto md:bg-app-surface/95 md:px-4 md:supports-[backdrop-filter]:bg-app-surface/70",
+            "editor-toolbar-scroll-fade hide-scrollbar z-30 flex-nowrap items-center gap-0.5 overflow-x-auto touch-pan-x border-b border-app-border bg-app-elevated px-3 py-2 transition-shadow duration-200 md:sticky md:top-0 md:z-20 md:flex md:flex-wrap md:overflow-visible md:touch-auto md:bg-app-surface/95 md:px-4 md:backdrop-blur md:supports-[backdrop-filter]:bg-app-surface/70",
             mobileToolbarExpanded
-              ? "flex max-md:absolute max-md:left-0 max-md:right-0 max-md:top-10 max-md:max-h-[38vh] max-md:flex-wrap max-md:overflow-y-auto max-md:shadow-xl"
+              ? "flex max-md:max-h-[38vh] max-md:flex-wrap max-md:overflow-y-auto max-md:shadow-xl"
               : "hidden md:flex",
             toolbarShadow && "shadow-[0_2px_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.4)]",
           )}

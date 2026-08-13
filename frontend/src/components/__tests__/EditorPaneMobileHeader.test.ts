@@ -59,6 +59,16 @@ describe("EditorPane mobile header", () => {
     expect(moreMenu).not.toContain("toggleLock()");
   });
 
+  it("closes the note search before opening the mobile more menu", () => {
+    const header = mobileHeaderSource();
+    const moreButton = header.slice(
+      header.indexOf('<div className="relative shrink-0" ref={mobileMenuRef}>'),
+      header.indexOf("<AnimatePresence>", header.indexOf('ref={mobileMenuRef}')),
+    );
+
+    expect(moreButton).toContain("nowen:close-search");
+  });
+
   it("keeps desktop action titles matched with their buttons", () => {
     const toolbar = desktopToolbarSource();
     const shareStart = toolbar.lastIndexOf("setShowShareModal(true)");

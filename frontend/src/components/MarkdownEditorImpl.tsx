@@ -45,6 +45,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import {
+  closeSearchPanel,
   search,
   searchKeymap,
   openSearchPanel,
@@ -1749,6 +1750,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
   }, []);
 
   const openMarkdownSearch = useCallback(() => {
+    setMobileToolbarExpanded(false);
     const revealSearch = () => {
       const view = viewRef.current;
       if (!view) return;
@@ -1763,11 +1765,20 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
     revealSearch();
   }, [setMarkdownViewMode]);
 
+  const closeMarkdownSearch = useCallback(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    closeSearchPanel(view);
+  }, []);
+
   useEffect(() => {
-    const handler = () => openMarkdownSearch();
-    window.addEventListener("nowen:open-search", handler);
-    return () => window.removeEventListener("nowen:open-search", handler);
-  }, [openMarkdownSearch]);
+    window.addEventListener("nowen:open-search", openMarkdownSearch);
+    window.addEventListener("nowen:close-search", closeMarkdownSearch);
+    return () => {
+      window.removeEventListener("nowen:open-search", openMarkdownSearch);
+      window.removeEventListener("nowen:close-search", closeMarkdownSearch);
+    };
+  }, [closeMarkdownSearch, openMarkdownSearch]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -1844,9 +1855,6 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
             <ToolbarButton onClick={() => withView((view) => redo(view))} title={tr("tiptap.redo") || "重做"}>
               <Redo size={16} />
             </ToolbarButton>
-            <ToolbarButton onClick={openMarkdownSearch} title="查找与替换">
-              <Search size={16} />
-            </ToolbarButton>
             <ToolbarDivider />
             <ToolbarButton onClick={() => withView((view) => toggleHeading(view, 1))} title={tr("tiptap.heading1") || "一级标题"}>
               <Heading1 size={16} />
@@ -1873,9 +1881,9 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
           <div
             data-markdown-mobile-toolbar="expanded"
             className={cn(
-              "z-30 items-center gap-0.5 overflow-x-auto border-b border-app-border bg-app-elevated/98 px-3 py-2 backdrop-blur hide-scrollbar touch-pan-x transition-colors md:sticky md:top-0 md:z-20 md:flex md:flex-wrap md:bg-app-surface/95 md:px-4 md:supports-[backdrop-filter]:bg-app-surface/70",
+              "z-30 items-center gap-0.5 overflow-x-auto border-b border-app-border bg-app-elevated px-3 py-2 hide-scrollbar touch-pan-x transition-colors md:sticky md:top-0 md:z-20 md:flex md:flex-wrap md:bg-app-surface/95 md:px-4 md:backdrop-blur md:supports-[backdrop-filter]:bg-app-surface/70",
               mobileToolbarExpanded
-                ? "flex max-md:absolute max-md:left-0 max-md:right-0 max-md:top-10 max-md:max-h-[38vh] max-md:flex-wrap max-md:overflow-y-auto max-md:shadow-xl"
+                ? "flex max-md:max-h-[38vh] max-md:flex-wrap max-md:overflow-y-auto max-md:shadow-xl"
                 : "hidden md:flex",
             )}
           >
@@ -1891,12 +1899,14 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
           >
             <Redo size={iconSize} />
           </ToolbarButton>
-          <ToolbarButton
-            onClick={openMarkdownSearch}
-            title="查找与替换"
-          >
-            <Search size={iconSize} />
-          </ToolbarButton>
+          <span className="hidden md:inline-flex">
+            <ToolbarButton
+              onClick={openMarkdownSearch}
+              title="查找与替换"
+            >
+              <Search size={iconSize} />
+            </ToolbarButton>
+          </span>
 
           {/* MARKDOWN-MOBILE-PREVIEW-01: 预览入口前置，避免被横向工具栏遮挡。 */}
           <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-app-border sm:hidden">

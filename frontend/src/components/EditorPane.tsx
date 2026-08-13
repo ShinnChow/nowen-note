@@ -2627,7 +2627,17 @@ const moveToTrash = useCallback(async () => {
           </Button>
           {/* ���������ť */}
           <div className="relative shrink-0" ref={mobileMenuRef}>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setShowMobileMenu(!showMobileMenu); setShowMobileMoveMenu(false); }}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => {
+                const nextOpen = !showMobileMenu;
+                if (nextOpen) window.dispatchEvent(new CustomEvent('nowen:close-search'));
+                setShowMobileMenu(nextOpen);
+                setShowMobileMoveMenu(false);
+              }}
+            >
               <MoreHorizontal size={16} />
             </Button>
             {/* ������������˵� */}
