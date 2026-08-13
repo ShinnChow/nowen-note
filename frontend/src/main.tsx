@@ -15,6 +15,7 @@ import NoteIconBridge from "./components/NoteIconBridge";
 import EmbedPasswordBridge from "./components/EmbedPasswordBridge";
 import MediaExperienceBridge from "./components/MediaExperienceBridge";
 import EditorImageTransformBridge from "./components/EditorImageTransformBridge";
+import MarkdownMobileViewControlsBridge from "./components/MarkdownMobileViewControlsBridge";
 import DesktopUpdateCenter from "./components/DesktopUpdateCenter";
 import DockerUpdateCenter from "./components/DockerUpdateCenter";
 import TwoFactorLoginChallengeCenter from "./components/TwoFactorLoginChallengeCenter";
@@ -156,6 +157,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <EmbedPasswordBridge />
             <MediaExperienceBridge />
             <EditorImageTransformBridge />
+            <MarkdownMobileViewControlsBridge />
             <DesktopUpdateCenter />
             <DockerUpdateCenter />
             <TwoFactorLoginChallengeCenter />
