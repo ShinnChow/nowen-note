@@ -1543,7 +1543,7 @@ ai.get("/knowledge-stats", (c) => {
   ).get(...userParams, ...wsParams) as { count: number }).count;
 
   const notebookCount = (db.prepare(
-    `SELECT COUNT(*) as count FROM notebooks WHERE ${userClause}${wsClause}`,
+    `SELECT COUNT(*) as count FROM notebooks WHERE ${userClause}${wsClause} AND isDeleted = 0`,
   ).get(...userParams, ...wsParams) as { count: number }).count;
 
   const tagCount = (db.prepare(

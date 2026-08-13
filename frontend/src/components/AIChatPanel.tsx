@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { confirm as confirmDialog } from "@/components/ui/confirm";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, resolveAttachmentUrl } from "@/lib/api";
 import { withAbortableAiFetch } from "@/lib/abortableAiAsk";
@@ -106,6 +106,21 @@ function mapHistoryMessage(message: {
     createdAt: message.createdAt,
   };
 }
+
+const aiChatMarkdownComponents: Components = {
+  pre: ({ children }) => (
+    <pre className="my-2 max-w-full overflow-x-auto rounded-lg bg-black/5 p-3 dark:bg-white/5">
+      {children}
+    </pre>
+  ),
+  table: ({ children }) => (
+    <div className="my-2 max-w-full overflow-x-auto">
+      <table className="my-0 w-max min-w-full border-collapse text-xs">
+        {children}
+      </table>
+    </div>
+  ),
+};
 
 export default function AIChatPanel({ onClose, onNavigateToNote }: {
   onClose: () => void;
@@ -675,7 +690,7 @@ export default function AIChatPanel({ onClose, onNavigateToNote }: {
   };
 
   return (
-    <div className="flex h-full bg-app-bg">
+    <div className="flex h-full min-w-0 max-w-full bg-app-bg">
       <aside className={cn(
         "flex shrink-0 flex-col overflow-hidden border-r border-app-border bg-app-surface/30 transition-[width] duration-150",
         sidebarOpen ? "w-52" : "w-0",
@@ -818,11 +833,11 @@ export default function AIChatPanel({ onClose, onNavigateToNote }: {
         </div>
 
         <ScrollArea
-          className="min-h-0 flex-1"
+          className="min-h-0 min-w-0 flex-1"
           scrollbarClassName="w-3 bg-app-surface/70"
           thumbClassName="bg-tx-tertiary/50 hover:bg-tx-secondary/70"
         >
-          <div className="space-y-4 px-4 py-4">
+          <div className="w-full min-w-0 max-w-full space-y-4 px-4 py-4">
             {historyLoading && !messages.length && (
               <div className="flex items-center justify-center py-8 text-tx-tertiary">
                 <Loader2 size={16} className="animate-spin" />
@@ -1027,7 +1042,7 @@ export default function AIChatPanel({ onClose, onNavigateToNote }: {
               return (
                 <div
                   key={message.id}
-                  className={cn("group/message flex gap-2.5", isUser && "flex-row-reverse")}
+                  className={cn("group/message flex w-full min-w-0 max-w-full gap-2.5", isUser && "flex-row-reverse")}
                 >
                   <div className={cn(
                     "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
@@ -1040,14 +1055,14 @@ export default function AIChatPanel({ onClose, onNavigateToNote }: {
 
                   <div className={cn("min-w-0 flex-1", isUser && "text-right")}>
                     <div className={cn(
-                      "inline-block max-w-[85%] rounded-xl px-3.5 py-2.5 text-left text-sm leading-relaxed",
+                      "inline-block min-w-0 max-w-[85%] rounded-xl px-3.5 py-2.5 text-left text-sm leading-relaxed [overflow-wrap:anywhere]",
                       isUser
                         ? "rounded-tr-md bg-accent-primary text-white selection:bg-white/35 selection:text-white"
                         : "rounded-tl-md border border-app-border bg-app-surface text-tx-primary selection:bg-accent-primary/25 selection:text-tx-primary",
                     )}>
                       {isUser ? (
                         editing ? (
-                          <div className="min-w-[220px] space-y-2">
+                          <div className="min-w-0 max-w-full space-y-2">
                             <textarea
                               autoFocus
                               value={editDraft}
@@ -1062,7 +1077,7 @@ export default function AIChatPanel({ onClose, onNavigateToNote }: {
                                 }
                               }}
                               rows={3}
-                              className="w-full resize-y rounded-lg border border-white/30 bg-white/10 px-2 py-1.5 text-sm text-white outline-none placeholder:text-white/60"
+                              className="w-full min-w-0 max-w-full resize-y rounded-lg border border-white/30 bg-white/10 px-2 py-1.5 text-sm text-white outline-none placeholder:text-white/60"
                             />
                             <div className="flex justify-end gap-1">
                               <button
@@ -1083,22 +1098,23 @@ export default function AIChatPanel({ onClose, onNavigateToNote }: {
                             </div>
                           </div>
                         ) : (
-                          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                          <div className="min-w-0 max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.content}</div>
                         )
                       ) : (
-                        <div className="markdown-body max-w-none break-words prose prose-sm dark:prose-invert
+                        <div className="markdown-body min-w-0 max-w-full break-words [overflow-wrap:anywhere] prose prose-sm dark:prose-invert
                           prose-p:my-1.5 prose-p:leading-relaxed
                           prose-headings:my-2 prose-headings:font-semibold
                           prose-h1:text-base prose-h2:text-sm prose-h3:text-sm
                           prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5
-                          prose-code:rounded-md prose-code:bg-black/5 prose-code:px-1.5 prose-code:py-0.5 prose-code:text-xs prose-code:before:content-none prose-code:after:content-none dark:prose-code:bg-white/10
-                          prose-pre:my-2 prose-pre:rounded-lg prose-pre:bg-black/5 prose-pre:p-3 dark:prose-pre:bg-white/5
+                          prose-code:break-words prose-code:rounded-md prose-code:bg-black/5 prose-code:px-1.5 prose-code:py-0.5 prose-code:text-xs prose-code:before:content-none prose-code:after:content-none dark:prose-code:bg-white/10
                           prose-blockquote:my-2 prose-blockquote:border-violet-400 prose-blockquote:text-tx-secondary
                           prose-hr:my-3 prose-a:text-accent-primary prose-a:no-underline hover:prose-a:underline
-                          prose-strong:text-tx-primary prose-table:text-xs prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1"
+                          prose-strong:text-tx-primary prose-th:px-2 prose-th:py-1 prose-td:px-2 prose-td:py-1
+                          [&_a]:[overflow-wrap:anywhere] [&_code]:[overflow-wrap:anywhere]
+                          [&_p]:max-w-full [&_pre]:max-w-full [&_pre_code]:whitespace-pre [&_pre_code]:break-normal [&_pre_code]:[overflow-wrap:normal]"
                         >
                           {message.content && (
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={aiChatMarkdownComponents}>{message.content}</ReactMarkdown>
                           )}
                           {message.isStreaming && !message.content && (
                             <div className="flex items-center gap-2 py-0.5 text-xs text-tx-tertiary">
@@ -1121,24 +1137,24 @@ export default function AIChatPanel({ onClose, onNavigateToNote }: {
                     </div>
 
                     {!!message.references?.length && (
-                      <div className={cn("mt-2 max-w-[85%]", isUser && "ml-auto")}>
+                      <div className={cn("mt-2 min-w-0 max-w-[85%]", isUser && "ml-auto")}>
                         <p className="mb-1 flex items-center gap-1 text-[10px] text-tx-tertiary">
                           <FileText size={10} />
                           {t("aiChat.references")}
                         </p>
-                        <ol className="space-y-1">
+                        <ol className="min-w-0 max-w-full space-y-1">
                           {message.references.map((reference, index) => {
                             const isAttachment = reference.kind === "attachment" && reference.attachmentId;
                             const clickable = !!isAttachment || !!onNavigateToNote;
                             return (
-                              <li key={`${reference.kind || "note"}-${reference.attachmentId || reference.id}-${index}`}>
+                              <li className="min-w-0 max-w-full" key={`${reference.kind || "note"}-${reference.attachmentId || reference.id}-${index}`}>
                                 <button
                                   type="button"
                                   disabled={!clickable}
                                   onClick={() => handleReferenceClick(reference)}
                                   title={isAttachment ? reference.attachmentFilename || reference.title : reference.title}
                                   className={cn(
-                                    "flex w-full items-center gap-2 rounded-lg border border-app-border bg-app-surface px-2.5 py-1.5 text-left text-[11px] transition-colors",
+                                    "flex w-full min-w-0 max-w-full items-center gap-2 rounded-lg border border-app-border bg-app-surface px-2.5 py-1.5 text-left text-[11px] transition-colors",
                                     clickable ? "cursor-pointer hover:border-accent-primary/40 hover:bg-accent-primary/5" : "cursor-default",
                                   )}
                                 >
