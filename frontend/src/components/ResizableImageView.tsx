@@ -1,36 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
-import { Capacitor } from "@capacitor/core";
-import { resolveAttachmentUrl, getServerUrl } from "@/lib/api";
-import {
-  acquireAttachmentRenderUrl,
-  getAttachmentRenderSource,
-  getAttachmentAccessSnapshot,
-  invalidateOfflineAttachmentRenderUrl,
-  subscribeAttachmentAccess,
-} from "@/lib/noteAttachmentAccessBridge";
 import {
   getPersistentImageTransform,
   normalizeImageFlipX,
   normalizeImageRotation,
 } from "@/lib/imageNodeTransformBootstrap";
+import { useAttachmentImageRenderSource } from "@/hooks/useAttachmentImageRenderSource";
 import { useLazyNodeView } from "@/hooks/useLazyNodeView";
-
-/** 判断是否为本应用的附件路径（/api/attachments/xxx）。 */
-function isAttachmentPath(src: string): boolean {
-  if (!src) return false;
-  return /^\/?api\/attachments\//.test(src) || src.includes("/api/attachments/");
-}
-
-/**
- * 通过 fetch 下载图片并生成 blob URL，绕过 Android WebView 的混合内容限制。
- */
-async function fetchImageAsBlob(url: string): Promise<string> {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`fetch image failed: ${resp.status}`);
-  const blob = await resp.blob();
-  return URL.createObjectURL(blob);
-}
 
 /**
  * Tiptap Image 扩展的自定义 NodeView。
@@ -198,68 +174,9 @@ export function ResizableImageView(props: NodeViewProps) {
     dragStateRef.current = null;
   }, [handleMouseMove, handleMouseUp, handleTouchMove, handleTouchEnd]);
 
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const [blobSrc, setBlobSrc] = useState<string | null>(null);
-  const accessStateRevision = useSyncExternalStore(
-    subscribeAttachmentAccess,
-    getAttachmentAccessSnapshot,
-    getAttachmentAccessSnapshot,
-  );
-  const renderSource = getAttachmentRenderSource(src);
-  const resolvedSrc = resolveAttachmentUrl(renderSource.persistentSrc);
-
-  useEffect(() => acquireAttachmentRenderUrl(resolvedSrc), [resolvedSrc]);
-
-  // In progressive modes an offscreen attachment image must not start a fetch/blob conversion.
-  useEffect(() => {
-    setFailedSrc(null);
-    setBlobSrc(null);
-    if (!src || !shouldRenderHeavyContent) return;
-
-    const serverUrl = getServerUrl();
-    const needsAndroidBlobFallback = Capacitor.getPlatform() === "android";
-    if (needsAndroidBlobFallback && serverUrl && isAttachmentPath(src) && /^https?:/i.test(resolvedSrc)) {
-      let cancelled = false;
-      fetchImageAsBlob(resolvedSrc)
-        .then((url) => {
-          if (!cancelled) setBlobSrc(url);
-        })
-        .catch((err) => {
-          console.error("[ResizableImageView] blob fetch failed:", {
-            attachmentId: renderSource.attachmentId,
-            originalSrc: src,
-            resolvedSrc,
-            finalSrc: resolvedSrc,
-            offlineObjectUrlHit: renderSource.offlineObjectUrlHit,
-            signedUrlPresent: renderSource.signedUrlPresent,
-            accessStateRevision,
-            error: err,
-          });
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-  }, [
-    accessStateRevision,
-    renderSource.attachmentId,
-    renderSource.offlineObjectUrlHit,
-    renderSource.signedUrlPresent,
-    resolvedSrc,
-    shouldRenderHeavyContent,
-    src,
-  ]);
-
-  useEffect(() => () => {
-    if (blobSrc) URL.revokeObjectURL(blobSrc);
-  }, [blobSrc]);
-
-  const finalSrc = blobSrc || resolvedSrc;
-  useEffect(() => {
-    // 当前渲染地址变化时，上一地址的失败状态不能污染新的加载结果。
-    setFailedSrc(null);
-  }, [finalSrc]);
-  const imgError = !!finalSrc && failedSrc === finalSrc;
+  const imageRender = useAttachmentImageRenderSource(src, { enabled: shouldRenderHeavyContent });
+  const finalSrc = imageRender.renderSrc;
+  const imgError = !!imageRender.error;
   const displayWidth = draftWidth ?? (typeof initialWidth === "number" ? initialWidth : null);
   const placeholderWidth = Math.max(120, Math.min(displayWidth || 320, 640));
   const placeholderHeight = Math.max(96, Math.min(Math.round(placeholderWidth * 0.56), 360));
@@ -308,7 +225,7 @@ export function ResizableImageView(props: NodeViewProps) {
     >
       {shouldRenderHeavyContent ? (
         <img
-          key={finalSrc}
+          key={imageRender.renderKey}
           ref={imgRef}
           src={finalSrc}
           alt={alt ?? ""}
@@ -326,29 +243,8 @@ export function ResizableImageView(props: NodeViewProps) {
             outlineOffset: 0,
           }}
           draggable={false}
-          onLoad={() => {
-            // 只有最终交给 img 的地址成功加载，才确认清除失败状态。
-            setFailedSrc((current) => current === finalSrc ? null : current);
-          }}
-          onError={() => {
-            const recoveredFromOfflineObjectUrl = invalidateOfflineAttachmentRenderUrl(finalSrc);
-            console.error("[ResizableImageView] img load failed:", {
-              attachmentId: renderSource.attachmentId,
-              originalSrc: src,
-              resolvedSrc,
-              finalSrc,
-              offlineObjectUrlHit: renderSource.offlineObjectUrlHit,
-              signedUrlPresent: renderSource.signedUrlPresent,
-              accessStateRevision,
-              recoveredFromOfflineObjectUrl,
-            });
-            if (recoveredFromOfflineObjectUrl) {
-              setFailedSrc(null);
-              return;
-            }
-            // 错误状态绑定到触发失败的地址，不能覆盖随后切换成功的新地址。
-            setFailedSrc(finalSrc);
-          }}
+          onLoad={imageRender.onLoad}
+          onError={imageRender.onError}
         />
       ) : (
         <span
@@ -393,7 +289,7 @@ export function ResizableImageView(props: NodeViewProps) {
         >
           图片加载失败
           <br />
-          <span style={{ fontSize: 10, opacity: 0.7 }}>{resolvedSrc?.slice(0, 80)}</span>
+          <span style={{ fontSize: 10, opacity: 0.7 }}>{imageRender.resolvedSrc.slice(0, 80)}</span>
         </span>
       )}
 
