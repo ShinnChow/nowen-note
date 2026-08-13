@@ -1,4 +1,5 @@
 import { getServerUrl } from "@/lib/api";
+import { registerAttachmentAccessUrls } from "@/lib/noteAttachmentAccessBridge";
 import { normalizeShareCommentTimestamp } from "@/lib/shareCommentTime";
 
 export type NotebookPublicationAccessMode = "public" | "link" | "code" | "password";
@@ -275,11 +276,18 @@ export const notebookPublicationApi = {
   },
 
   async getPublicNote(token: string, noteId: string, accessToken?: string) {
+    const path = `/shared/notebook-public/${encodeURIComponent(token)}/notes/${encodeURIComponent(noteId)}`;
     const note = await request<PublicNoteContent>(
-      `/shared/notebook-public/${encodeURIComponent(token)}/notes/${encodeURIComponent(noteId)}`,
+      path,
       {},
       { accessToken },
     );
+    // Public notebook responses already contain publication-scoped signed attachment URLs.
+    // Register them with the same bridge used by normal notes/single-note shares before Tiptap
+    // normalizes transient signed src values back to persistent `/api/attachments/<id>` nodes.
+    // The source request URL is important for NAS/reverse-proxy deployments because it lets the
+    // bridge move any backend-generated loopback absolute URL onto the browser-reachable origin.
+    registerAttachmentAccessUrls(note.attachmentUrls, `${apiBase()}${path}`);
     return { ...note, contentFormat: normalizeContentFormat(note.contentFormat) };
   },
 
