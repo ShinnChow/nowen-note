@@ -96,7 +96,7 @@ import {
   FileType, Check, AlertCircle, Info, ArrowUp, Copy, Link as LinkIcon,
   ExternalLink, Unlink2, Workflow, Sigma, BookOpen, Download, Phone,
   Type, Palette, Eraser, Paintbrush, ChevronDown, Search, Upload, FolderSearch, ClipboardPlus,
-  FlipHorizontal, MoreHorizontal, RotateCcw, RotateCw, Scan,
+  MoreHorizontal,
   // 表格气泡菜单图标
   Rows3, Columns3, Merge, Split, Heading, Network,
 } from "lucide-react";
@@ -3748,27 +3748,6 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     });
   }, [editor, openImageEditorTarget]);
 
-  const handleRotateSelectedImage = useCallback((delta: -90 | 90) => {
-    if (!editor) return;
-    const attrs = getSelectedImageAttrs();
-    editor.chain().focus().updateAttributes("image", {
-      rotation: normalizeImageRotation(normalizeImageRotation(attrs?.rotation) + delta),
-    }).run();
-  }, [editor, getSelectedImageAttrs]);
-
-  const handleFlipSelectedImage = useCallback(() => {
-    if (!editor) return;
-    const attrs = getSelectedImageAttrs();
-    editor.chain().focus().updateAttributes("image", {
-      flipX: !normalizeImageFlipX(attrs?.flipX),
-    }).run();
-  }, [editor, getSelectedImageAttrs]);
-
-  const handleResetSelectedImageTransform = useCallback(() => {
-    if (!editor) return;
-    editor.chain().focus().updateAttributes("image", { rotation: 0, flipX: false }).run();
-  }, [editor]);
-
   const handleSaveEditedImage = useCallback(async (blob: Blob) => {
     if (!editor || !imageEditDialog) return false;
     const currentNote = noteRef.current;
@@ -5916,46 +5895,6 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
                 className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl border border-app-border bg-app-elevated p-1.5 shadow-xl"
                 data-popover
               >
-                <div className="px-2 pb-1 pt-0.5 text-[10px] font-medium text-tx-tertiary">图片变换（写入笔记）</div>
-                <div className="grid grid-cols-4 gap-1">
-                  <button
-                    type="button"
-                    title="向左旋转 90°"
-                    aria-label="向左旋转 90°"
-                    className="flex h-9 items-center justify-center rounded-lg text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
-                    onClick={() => handleRotateSelectedImage(-90)}
-                  >
-                    <RotateCcw size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    title="向右旋转 90°"
-                    aria-label="向右旋转 90°"
-                    className="flex h-9 items-center justify-center rounded-lg text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
-                    onClick={() => handleRotateSelectedImage(90)}
-                  >
-                    <RotateCw size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    title="水平翻转"
-                    aria-label="水平翻转"
-                    className="flex h-9 items-center justify-center rounded-lg text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
-                    onClick={handleFlipSelectedImage}
-                  >
-                    <FlipHorizontal size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    title="恢复图片变换"
-                    aria-label="恢复图片变换"
-                    className="flex h-9 items-center justify-center rounded-lg text-tx-secondary hover:bg-app-hover hover:text-tx-primary"
-                    onClick={handleResetSelectedImageTransform}
-                  >
-                    <Scan size={15} />
-                  </button>
-                </div>
-                <div className="my-1 h-px bg-app-border" />
                 {IMAGE_SIZE_PRESETS.map((s) => (
                   <button
                     key={s.key}
