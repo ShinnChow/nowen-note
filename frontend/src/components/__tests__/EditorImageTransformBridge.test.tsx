@@ -7,6 +7,7 @@ import {
   allowImageResizeThroughMobileBackdrop,
   applyImageTransformLayout,
   findImageTransformWrapper,
+  suppressLegacyDesktopImageTransformMenu,
   updateImageAttributesAt,
 } from "@/components/EditorImageTransformBridge";
 
@@ -89,6 +90,30 @@ describe("EditorImageTransformBridge", () => {
       expect(button.style.pointerEvents).toBe("none");
       expect(button.dataset.nowenImageBackdropPassthrough).toBe("true");
     });
+  });
+
+  it("hides the duplicated legacy transform block but keeps overflow size actions visible", () => {
+    document.body.innerHTML = `
+      <div id="toolbar">
+        <div data-popover>
+          <div id="legacy-heading">图片变换（写入笔记）</div>
+          <div id="legacy-grid" class="grid grid-cols-4 gap-1">
+            <button></button><button></button><button></button><button></button>
+          </div>
+          <div id="legacy-divider" class="my-1 h-px bg-app-border"></div>
+          <button id="size-25">25%</button>
+          <button id="size-50">50%</button>
+        </div>
+      </div>
+    `;
+    const toolbar = document.querySelector<HTMLElement>("#toolbar")!;
+
+    expect(suppressLegacyDesktopImageTransformMenu(toolbar)).toBe(true);
+    expect(document.querySelector<HTMLElement>("#legacy-heading")!.hidden).toBe(true);
+    expect(document.querySelector<HTMLElement>("#legacy-grid")!.hidden).toBe(true);
+    expect(document.querySelector<HTMLElement>("#legacy-divider")!.hidden).toBe(true);
+    expect(document.querySelector<HTMLElement>("#size-25")!.hidden).toBe(false);
+    expect(document.querySelector<HTMLElement>("#size-50")!.hidden).toBe(false);
   });
 
   it("updates a selected inline image without dispatching a focus transaction", () => {
