@@ -46,7 +46,7 @@ function node(overrides: Partial<KnowledgeTreeNode> = {}): KnowledgeTreeNode {
 }
 
 function ids(items: ReturnType<typeof buildKnowledgeTreeNodeMenuItems>): string[] {
-  return items.flatMap((item) => [item.id, ...(item.children || []).map((child) => child.id)]);
+  return items.flatMap((item) => [item.id, ...ids(item.children || [])]);
 }
 
 describe("knowledge tree node menu", () => {
@@ -70,7 +70,7 @@ describe("knowledge tree node menu", () => {
   });
 
   it("restores personal document flags and export formats", () => {
-    const actions = ids(buildKnowledgeTreeNodeMenuItems(node({
+    const items = buildKnowledgeTreeNodeMenuItems(node({
       id: "note:n1",
       nodeType: "note",
       resourceType: "note",
@@ -80,7 +80,23 @@ describe("knowledge tree node menu", () => {
       isPinned: 1,
       isFavorite: 0,
       isLocked: 0,
-    } as any));
+    } as any);
+    const actions = ids(items);
+    expect(items.map((item) => item.id)).toEqual([
+      "open",
+      "note_split_menu",
+      "duplicate",
+      "note_create_menu",
+      "sep-note-primary",
+      "toggle_pin",
+      "toggle_favorite",
+      "rename",
+      "move",
+      "share_note",
+      "note_more_menu",
+      "sep-note-danger",
+      "delete",
+    ]);
     expect(actions).toEqual(expect.arrayContaining([
       "open",
       "split_right",

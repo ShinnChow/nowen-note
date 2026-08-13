@@ -1,10 +1,13 @@
 import React, { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Pin, PinOff, Star, StarOff, Clock, FileText, FileCode, FileType2, Trash2, ArchiveRestore, Menu, FolderInput, ChevronRight, ChevronDown, ChevronLeft, Folder, X, Check, Lock, Unlock, CalendarDays, RefreshCw, Share2, GripVertical, Download, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Printer, User as UserIcon, Sparkles, Tag as TagIcon, Loader2, FileUp, PanelLeftClose, AlertTriangle, Copy } from "lucide-react";
+import { Plus, Pin, PinOff, Star, StarOff, Clock, FileText, FileCode, FileType2, Trash2, ArchiveRestore, Menu, FolderInput, ChevronRight, ChevronDown, ChevronLeft, Folder, X, Check, Lock, Unlock, CalendarDays, RefreshCw, Share2, GripVertical, Download, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Printer, User as UserIcon, Sparkles, Tag as TagIcon, Loader2, FileUp, PanelLeftClose, AlertTriangle, Copy, LayoutTemplate, SplitSquareHorizontal, SplitSquareVertical, ArrowLeftRight, Pencil, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ContextMenu, { ContextMenuItem } from "@/components/ContextMenu";
+import KnowledgeTreePermissionsDialog from "@/components/KnowledgeTreePermissionsDialog";
+import ShareModal from "@/components/ShareModal";
+import { buildNoteContextMenuLayout } from "@/components/noteContextMenuLayout";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useNoteLoader } from "@/hooks/useNoteLoader";
@@ -20,7 +23,7 @@ import { exportSingleNote, exportSingleNoteAsPDF, exportSingleNoteAsImage, expor
 import { realtime } from "@/lib/realtime"
 import { syncNow } from "@/lib/syncEngine"
 import { deleteNote as deleteLocalNote, getNote as getLocalNote, putNote as putLocalNote } from "@/lib/localStore"
-import { confirm } from "@/components/ui/confirm";
+import { confirm, prompt } from "@/components/ui/confirm";
 import { highlightTextNode, sanitizeSearchHtml, stripSearchMarks } from "@/lib/searchHighlight";
 import { getNoteListDragHint, reorderNotesWithinNotebook, shouldUseHtmlNoteDragging } from "@/lib/noteManualSort";
 import { sortNotesPinnedFirst } from "@/lib/notePinnedOrder";
@@ -46,6 +49,12 @@ import {
   type ThreeColumnFolderScopeMode,
 } from "@/lib/threeColumnFolderContents";
 import { isRootDocumentNotebookId } from "@/lib/rootDocumentCreatePolicy";
+import { noteTemplatesApi } from "@/lib/noteTemplatesApi";
+import {
+  convertNoteContent,
+  getNoteFormatConversionTarget,
+  requestActiveNoteFormatConversion,
+} from "@/lib/noteFormatConversion";
 import { revealCreatedKnowledgeTreeNote } from "@/lib/knowledgeTreeCreateVisibility";
 import { emitKnowledgeTreeRefresh } from "@/lib/workspaceRefreshBridge";
 // "导入 Word 文档" 走 dynamic import（见 createNoteInNotebook），减少首屏 bundle 体积。
@@ -1472,6 +1481,8 @@ export default function NoteList() {
 
   const { loadNote, cancelNoteLoad } = useNoteLoader();
   const { menu, menuRef, openMenu, closeMenu } = useContextMenu();
+  const [contextShareNote, setContextShareNote] = useState<{ id: string; title: string } | null>(null);
+  const [contextPermissionsNode, setContextPermissionsNode] = useState<KnowledgeTreeNode | null>(null);
   // moveModal 新增 sourceWorkspaceId：源笔记所在工作区（null = 个人空间）。
   // 后端已强制"源/目标同 workspace"，这里把 UI 候选也按同一规则过滤，避免让用户
   // 选到必然会被 400 拒绝的跨空间笔记本。
@@ -2469,69 +2480,209 @@ export default function NoteList() {
       ];
     }
 
-    return [
-      ...(bulkMode
-        ? []
-        : [
-            {
-              id: "duplicate",
-              label: "创建副本",
-              icon: <Copy size={14} />,
-              disabled: targetNote.isLocked === 1,
-            },
-            { id: "sep-duplicate", label: "", separator: true },
-          ] as ContextMenuItem[]),
-      {
-        id: "toggle_pin",
-        label: targetNote.isPinned === 1 ? t('noteList.unpin') : t('noteList.pin'),
-        icon: targetNote.isPinned === 1 ? <PinOff size={14} /> : <Pin size={14} />,
+    if (bulkMode) {
+      return [
+        {
+          id: "toggle_pin",
+          label: targetNote.isPinned === 1 ? t('noteList.unpin') : t('noteList.pin'),
+          icon: targetNote.isPinned === 1 ? <PinOff size={14} /> : <Pin size={14} />,
+        },
+        {
+          id: "toggle_fav",
+          label: targetNote.isFavorite === 1 ? t('noteList.unfavorite') : t('noteList.favorite'),
+          icon: targetNote.isFavorite === 1 ? <StarOff size={14} /> : <Star size={14} />,
+        },
+        {
+          id: "toggle_lock",
+          label: targetNote.isLocked === 1 ? t('noteList.unlock') : t('noteList.lock'),
+          icon: targetNote.isLocked === 1 ? <Unlock size={14} /> : <Lock size={14} />,
+        },
+        { id: "sep1", label: "", separator: true },
+        {
+          id: "move",
+          label: t('noteList.moveNotesTitle', { count: bulkCount }),
+          icon: <FolderInput size={14} />,
+        },
+        { id: "sep2", label: "", separator: true },
+        {
+          id: "trash",
+          label: `${t('noteList.moveToTrash')} (${bulkCount})`,
+          icon: <Trash2 size={14} />,
+          danger: true,
+        },
+      ];
+    }
+
+    return buildNoteContextMenuLayout({
+      open: { id: "open", label: "打开", icon: <FileText size={14} /> },
+      split: [
+        { id: "split_right", label: "在右侧分屏打开", icon: <SplitSquareHorizontal size={14} /> },
+        { id: "split_down", label: "在下方分屏打开", icon: <SplitSquareVertical size={14} /> },
+      ],
+      duplicate: {
+        id: "duplicate",
+        label: "创建副本",
+        icon: <Copy size={14} />,
+        disabled: targetNote.isLocked === 1,
       },
-      {
-        id: "toggle_fav",
-        label: targetNote.isFavorite === 1 ? t('noteList.unfavorite') : t('noteList.favorite'),
-        icon: targetNote.isFavorite === 1 ? <StarOff size={14} /> : <Star size={14} />,
-      },
-      {
-        id: "toggle_lock",
-        label: targetNote.isLocked === 1 ? t('noteList.unlock') : t('noteList.lock'),
-        icon: targetNote.isLocked === 1 ? <Unlock size={14} /> : <Lock size={14} />,
-      },
-      { id: "sep1", label: "", separator: true },
-      {
-        id: "move",
-        label: bulkMode ? t('noteList.moveNotesTitle', { count: bulkCount }) : t('noteList.moveTo'),
-        icon: <FolderInput size={14} />,
-        disabled: !bulkMode && !!targetNote.isLocked,
-      },
-      // 单笔记导出：批量模式暂不提供子菜单，避免一次触发 N 个下载弹窗。
-      ...(bulkMode
-        ? []
-        : [
-            {
-              id: "export_submenu",
-              label: t("noteList.export") || "导出...",
-              icon: <Download size={14} />,
-              children: [
-                { id: "export_md", label: t("noteList.exportAsMarkdown") || "Markdown", icon: <Download size={14} /> },
-                { id: "export_md_zip", label: t("noteList.exportAsMarkdownZip") || "Markdown + 附件（ZIP）", icon: <Download size={14} /> },
-                { id: "export_pdf", label: t("noteList.exportAsPDF") || "PDF", icon: <Printer size={14} /> },
-                { id: "export_png", label: t("note.exportAsPng") || "图片 PNG", icon: <ImageIcon size={14} /> },
-                { id: "export_jpg", label: t("note.exportAsJpg") || "图片 JPG", icon: <ImageIcon size={14} /> },
-                { id: "export_word", label: t("noteList.exportAsWord") || "Word", icon: <FileType2 size={14} /> },
-              ],
-            } as ContextMenuItem,
-          ]),
-      { id: "sep2", label: "", separator: true },
-      {
+      create: [
+        { id: "new_note", label: "文档", icon: <FileText size={14} /> },
+        { id: "new_markdown", label: "Markdown 文档", icon: <FileCode size={14} /> },
+        { id: "new_folder", label: "文件夹", icon: <Folder size={14} /> },
+      ],
+      flags: [
+        {
+          id: "toggle_pin",
+          label: targetNote.isPinned === 1 ? t('noteList.unpin') : t('noteList.pin'),
+          icon: targetNote.isPinned === 1 ? <PinOff size={14} /> : <Pin size={14} />,
+        },
+        {
+          id: "toggle_fav",
+          label: targetNote.isFavorite === 1 ? t('noteList.unfavorite') : t('noteList.favorite'),
+          icon: targetNote.isFavorite === 1 ? <StarOff size={14} /> : <Star size={14} />,
+        },
+      ],
+      management: [
+        { id: "rename_note", label: "重命名", icon: <Pencil size={14} />, disabled: targetNote.isLocked === 1 },
+        { id: "move", label: t('noteList.moveTo'), icon: <FolderInput size={14} />, disabled: targetNote.isLocked === 1 },
+        { id: "share_note", label: "分享", icon: <Share2 size={14} /> },
+      ],
+      more: [
+        {
+          id: "toggle_lock",
+          label: targetNote.isLocked === 1 ? t('noteList.unlock') : t('noteList.lock'),
+          icon: targetNote.isLocked === 1 ? <Unlock size={14} /> : <Lock size={14} />,
+        },
+        {
+          id: "convert_format",
+          label: targetNote.contentFormat === "markdown" ? "转换为富文本" : "转换为 Markdown",
+          icon: <ArrowLeftRight size={14} />,
+          disabled: targetNote.isLocked === 1,
+        },
+        {
+          id: "save_as_template",
+          label: "保存为模板",
+          icon: <LayoutTemplate size={14} />,
+          disabled: targetNote.isLocked === 1
+            || (targetNote.contentFormat !== "markdown" && targetNote.contentFormat !== "tiptap-json"),
+        },
+        { id: "permissions", label: "成员与权限", icon: <ShieldCheck size={14} /> },
+        {
+          id: "export_submenu",
+          label: t("noteList.export") || "导出",
+          icon: <Download size={14} />,
+          children: [
+            { id: "export_md", label: t("noteList.exportAsMarkdown") || "Markdown", icon: <Download size={14} /> },
+            { id: "export_md_zip", label: t("noteList.exportAsMarkdownZip") || "Markdown + 附件（ZIP）", icon: <Download size={14} /> },
+            { id: "export_pdf", label: t("noteList.exportAsPDF") || "PDF", icon: <Printer size={14} /> },
+            { id: "export_png", label: t("note.exportAsPng") || "图片 PNG", icon: <ImageIcon size={14} /> },
+            { id: "export_jpg", label: t("note.exportAsJpg") || "图片 JPG", icon: <ImageIcon size={14} /> },
+            { id: "export_word", label: t("noteList.exportAsWord") || "Word", icon: <FileType2 size={14} /> },
+          ],
+        },
+      ],
+      trash: {
         id: "trash",
-        label: bulkMode
-          ? `${t('noteList.moveToTrash')} (${bulkCount})`
-          : t('noteList.moveToTrash'),
+        label: t('noteList.moveToTrash'),
         icon: <Trash2 size={14} />,
         danger: true,
-        disabled: !bulkMode && !!targetNote.isLocked,
+        disabled: targetNote.isLocked === 1,
       },
+    });
+  };
+
+  const loadContextTreeNode = async (noteId: string): Promise<KnowledgeTreeNode> => {
+    const cached = folderTreeNodes.find((node) => (
+      node.resourceType === "note" && node.resourceId === noteId && node.isDeleted !== 1
+    ));
+    if (cached) return cached;
+
+    const [ownedResult, sharedResult] = await Promise.allSettled([
+      knowledgeTreeApi.list(),
+      knowledgeTreeApi.listShared(),
+    ]);
+    const nodes = [
+      ...(ownedResult.status === "fulfilled" ? ownedResult.value.nodes : []),
+      ...(sharedResult.status === "fulfilled" ? sharedResult.value.nodes : []),
     ];
+    const found = nodes.find((node) => (
+      node.resourceType === "note" && node.resourceId === noteId && node.isDeleted !== 1
+    ));
+    if (!found) throw new Error("未找到笔记对应的知识树节点");
+    return found;
+  };
+
+  const createFromContextNote = async (
+    noteId: string,
+    nodeType: "note" | "markdown" | "folder",
+  ) => {
+    const sourceNode = await loadContextTreeNode(noteId);
+    const title = nodeType === "markdown"
+      ? "无标题 Markdown"
+      : nodeType === "folder"
+        ? "新建文件夹"
+        : t('common.untitledNote');
+    const created = sourceNode.workspaceId
+      ? await knowledgeTreeApi.createForWorkspace(sourceNode.workspaceId, {
+          parentId: sourceNode.id,
+          nodeType,
+          title,
+        })
+      : await knowledgeTreeApi.create({ parentId: sourceNode.id, nodeType, title });
+
+    actions.setSelectedKnowledgeTreeParent(sourceNode.id);
+    revealCreatedKnowledgeTreeNote(sourceNode.id);
+    emitKnowledgeTreeRefresh("note-context-menu-created");
+    actions.refreshNotes();
+    actions.refreshNotebooks();
+
+    if (created.resourceType === "note") {
+      await handleSelectNote(created.resourceId);
+    } else {
+      toast.success("文件夹已创建");
+    }
+  };
+
+  const convertContextNote = async (noteId: string) => {
+    const current = await api.getNote(noteId);
+    const targetFormat = getNoteFormatConversionTarget(current.contentFormat);
+    const targetLabel = targetFormat === "markdown" ? "Markdown" : "富文本";
+    const accepted = await confirm({
+      title: `转换为${targetLabel}？`,
+      description: "笔记会在原位置切换编辑器。复杂排版在两种格式之间转换时可能略有差异。",
+      confirmText: "转换",
+    });
+    if (!accepted) return;
+
+    if (state.activeNote?.id === current.id) {
+      requestActiveNoteFormatConversion({ noteId: current.id, targetFormat });
+      return;
+    }
+
+    const converted = convertNoteContent(current.content, current.contentText, targetFormat);
+    const updated = await api.updateNoteConfirmed(current.id, {
+      ...converted,
+      version: current.version,
+      ...(targetFormat === "markdown" ? { syncToYjs: true } : {}),
+    } as any);
+    if (targetFormat === "tiptap-json") {
+      try { await api.releaseYjsRoom(current.id); } catch { /* 下次打开时会重新建立房间 */ }
+    }
+    actions.updateNoteInList({
+      id: updated.id,
+      contentText: updated.contentText,
+      contentFormat: updated.contentFormat,
+      updatedAt: updated.updatedAt,
+      version: updated.version,
+    });
+    actions.updateNoteTab({
+      id: updated.id,
+      contentFormat: updated.contentFormat,
+      updatedAt: updated.updatedAt,
+    });
+    actions.refreshNotes();
+    emitKnowledgeTreeRefresh("note-format-converted-from-note-list");
+    toast.success(`已转换为${targetLabel}`);
   };
 
   const handleMenuAction = async (actionId: string) => {
@@ -2543,6 +2694,57 @@ export default function NoteList() {
     if (!targetNote) return;
 
     switch (actionId) {
+      case "open": {
+        await handleSelectNote(targetId);
+        break;
+      }
+      case "split_right":
+      case "split_down": {
+        haptic.light();
+        actions.splitEditor({
+          noteId: targetId,
+          direction: actionId === "split_right" ? "right" : "down",
+        });
+        actions.setMobileView("editor");
+        break;
+      }
+      case "new_note":
+      case "new_markdown":
+      case "new_folder": {
+        haptic.light();
+        try {
+          await createFromContextNote(
+            targetId,
+            actionId === "new_markdown" ? "markdown" : actionId === "new_folder" ? "folder" : "note",
+          );
+        } catch (error: any) {
+          toast.error(error?.message || "新建失败");
+        }
+        break;
+      }
+      case "share_note": {
+        haptic.light();
+        setContextShareNote({ id: targetId, title: targetNote.title });
+        break;
+      }
+      case "permissions": {
+        haptic.light();
+        try {
+          setContextPermissionsNode(await loadContextTreeNode(targetId));
+        } catch (error: any) {
+          toast.error(error?.message || "读取成员与权限失败");
+        }
+        break;
+      }
+      case "convert_format": {
+        haptic.light();
+        try {
+          await convertContextNote(targetId);
+        } catch (error: any) {
+          toast.error(error?.message || "转换格式失败");
+        }
+        break;
+      }
       case "duplicate": {
         haptic.light();
         try {
@@ -2590,6 +2792,28 @@ export default function NoteList() {
           toast.success("副本已创建");
         } catch (error: any) {
           toast.error(error?.message || "创建副本失败");
+        }
+        break;
+      }
+      case "save_as_template": {
+        haptic.light();
+        const name = await prompt({
+          title: "保存为模板",
+          description: "模板会保存当前笔记内容和本地附件的独立快照。",
+          defaultValue: targetNote.title,
+          confirmText: "保存",
+          validate: (value) => {
+            const length = value.trim().length;
+            if (length === 0) return "模板名称不能为空";
+            return length > 200 ? "模板名称不能超过 200 个字符" : null;
+          },
+        });
+        if (name == null) break;
+        try {
+          await noteTemplatesApi.createFromNote(targetId, name.trim());
+          toast.success("已保存为模板");
+        } catch (error: any) {
+          toast.error(error?.message || "保存模板失败");
         }
         break;
       }
@@ -3993,6 +4217,26 @@ export default function NoteList() {
         onAction={handleMenuAction}
         header={state.notes.find((n) => n.id === menu.targetId)?.title || t('noteList.note')}
       />
+
+      {contextShareNote && (
+        <ShareModal
+          noteId={contextShareNote.id}
+          noteTitle={contextShareNote.title}
+          onClose={() => setContextShareNote(null)}
+        />
+      )}
+
+      {contextPermissionsNode && (
+        <KnowledgeTreePermissionsDialog
+          node={contextPermissionsNode}
+          onClose={() => setContextPermissionsNode(null)}
+          onChanged={(reason) => {
+            emitKnowledgeTreeRefresh(reason);
+            actions.refreshNotes();
+            actions.refreshNotebooks();
+          }}
+        />
+      )}
 
       {/* Move Note Modal */}
       <MoveNoteModal

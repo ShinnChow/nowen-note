@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 
 import ContextMenu, { type ContextMenuItem } from "@/components/ContextMenu";
+import { buildNoteContextMenuLayout } from "@/components/noteContextMenuLayout";
 import EmojiIconPicker from "@/components/EmojiPicker";
 import NotebookShareDialog from "@/components/NotebookShareDialog";
 import ShareModal from "@/components/ShareModal";
@@ -124,75 +125,107 @@ export function buildKnowledgeTreeNodeMenuItems(
   node: KnowledgeTreeNode,
   note: LoadedNote | null,
 ): ContextMenuItem[] {
-  const items: ContextMenuItem[] = [];
   const capabilities = node.access.capabilities;
   const isDocument = node.resourceType === "note";
   const isNotebook = node.resourceType === "notebook";
   const isOwned = !node.sharedRootId;
 
   if (isDocument) {
-    items.push(
-      { id: "open", label: "打开", icon: <FileText size={14} /> },
-      { id: "split_right", label: "在右侧分屏打开", icon: <SplitSquareHorizontal size={14} /> },
-      { id: "split_down", label: "在下方分屏打开", icon: <SplitSquareVertical size={14} /> },
-      separator("sep-duplicate"),
-      {
+    const flags: ContextMenuItem[] = [];
+    const management: ContextMenuItem[] = [];
+    const more: ContextMenuItem[] = [];
+
+    if (isOwned && capabilities.canEdit) {
+      flags.push(
+        {
+          id: "toggle_pin",
+          label: note?.isPinned === 1 ? "取消置顶" : "置顶",
+          icon: note?.isPinned === 1 ? <PinOff size={14} /> : <Pin size={14} />,
+          disabled: !note,
+        },
+        {
+          id: "toggle_favorite",
+          label: note?.isFavorite === 1 ? "取消收藏" : "收藏",
+          icon: note?.isFavorite === 1 ? <StarOff size={14} /> : <Star size={14} />,
+          disabled: !note,
+        },
+      );
+      more.push(
+        {
+          id: "toggle_lock",
+          label: note?.isLocked === 1 ? "解锁" : "锁定",
+          icon: note?.isLocked === 1 ? <Unlock size={14} /> : <Lock size={14} />,
+          disabled: !note,
+        },
+        {
+          id: "convert_format",
+          label: note?.contentFormat === "markdown" ? "转换为富文本" : "转换为 Markdown",
+          icon: <ArrowLeftRight size={14} />,
+          disabled: !note || note.isLocked === 1,
+        },
+      );
+    }
+
+    if (capabilities.canEdit) {
+      management.push({ id: "rename", label: "重命名", icon: <Pencil size={14} /> });
+    }
+    if (capabilities.canMove && isOwned) {
+      management.push({ id: "move", label: "移动", icon: <FolderInput size={14} /> });
+    }
+    if (isOwned || capabilities.canReshare) {
+      management.push({ id: "share_note", label: "分享", icon: <Share2 size={14} /> });
+    }
+
+    if (capabilities.canEdit) {
+      more.push({
+        id: "save_as_template",
+        label: "保存为模板",
+        icon: <LayoutTemplate size={14} />,
+        disabled: !note
+          || note.isLocked === 1
+          || (note.contentFormat !== "markdown" && note.contentFormat !== "tiptap-json"),
+      });
+    }
+    if (capabilities.canManageMembers) {
+      more.push({ id: "permissions", label: "成员与权限", icon: <ShieldCheck size={14} /> });
+    }
+    if (capabilities.canDownload) {
+      more.push({ id: "export_note", label: "导出", icon: <Download size={14} />, children: exportChildren() });
+    }
+
+    return buildNoteContextMenuLayout({
+      open: { id: "open", label: "打开", icon: <FileText size={14} /> },
+      split: [
+        { id: "split_right", label: "在右侧分屏打开", icon: <SplitSquareHorizontal size={14} /> },
+        { id: "split_down", label: "在下方分屏打开", icon: <SplitSquareVertical size={14} /> },
+      ],
+      duplicate: {
         id: "duplicate",
         label: "创建副本",
         icon: <Copy size={14} />,
-        disabled: !note || note.isLocked === 1 || note.isTrashed === 1,
+        disabled: !capabilities.canCreate || !note || note.isLocked === 1 || note.isTrashed === 1,
       },
-    );
+      create: capabilities.canCreate ? createChildren() : undefined,
+      flags,
+      management,
+      more,
+      trash: capabilities.canDelete ? {
+        id: "delete",
+        label: "移到回收站",
+        icon: <Trash2 size={14} />,
+        danger: true,
+        disabled: !note || note.isLocked === 1,
+      } : undefined,
+    });
   }
 
+  const items: ContextMenuItem[] = [];
+
   if (capabilities.canCreate) {
-    if (items.length) items.push(separator("sep-create"));
     items.push(
       { id: "create", label: "新建", icon: <Plus size={14} />, children: createChildren() },
       { id: "import", label: "导入", icon: <Upload size={14} />, children: importChildren() },
     );
-  }
-
-  if (isDocument && isOwned && capabilities.canEdit) {
-    items.push(separator("sep-note-flags"));
-    items.push(
-      {
-        id: "toggle_pin",
-        label: note?.isPinned === 1 ? "取消置顶" : "置顶",
-        icon: note?.isPinned === 1 ? <PinOff size={14} /> : <Pin size={14} />,
-        disabled: !note,
-      },
-      {
-        id: "toggle_favorite",
-        label: note?.isFavorite === 1 ? "取消收藏" : "收藏",
-        icon: note?.isFavorite === 1 ? <StarOff size={14} /> : <Star size={14} />,
-        disabled: !note,
-      },
-      {
-        id: "toggle_lock",
-        label: note?.isLocked === 1 ? "解锁" : "锁定",
-        icon: note?.isLocked === 1 ? <Unlock size={14} /> : <Lock size={14} />,
-        disabled: !note,
-      },
-      {
-        id: "convert_format",
-        label: note?.contentFormat === "markdown" ? "转换为富文本" : "转换为 Markdown",
-        icon: <ArrowLeftRight size={14} />,
-        disabled: !note || note.isLocked === 1,
-      },
-    );
-  }
-
-  if (isDocument && capabilities.canEdit) {
-    if (!isOwned) items.push(separator("sep-note-template"));
-    items.push({
-      id: "save_as_template",
-      label: "保存为模板",
-      icon: <LayoutTemplate size={14} />,
-      disabled: !note
-        || note.isLocked === 1
-        || (note.contentFormat !== "markdown" && note.contentFormat !== "tiptap-json"),
-    });
   }
 
   const management: ContextMenuItem[] = [];
@@ -207,9 +240,6 @@ export function buildKnowledgeTreeNodeMenuItems(
     });
   }
   if (capabilities.canEdit) management.push({ id: "rename", label: "重命名", icon: <Pencil size={14} /> });
-  if (isDocument && (isOwned || capabilities.canReshare)) {
-    management.push({ id: "share_note", label: "分享", icon: <Share2 size={14} /> });
-  }
   if (isNotebook && (capabilities.canReshare || capabilities.canManageMembers)) {
     management.push({ id: "share", label: "分享与发布", icon: <Link2 size={14} /> });
   }
@@ -228,8 +258,6 @@ export function buildKnowledgeTreeNodeMenuItems(
     if (items.length) items.push(separator("sep-export"));
     if (isNotebook) {
       items.push({ id: "export_folder", label: "导出目录为 Markdown", icon: <Download size={14} /> });
-    } else if (isDocument) {
-      items.push({ id: "export_note", label: "导出", icon: <Download size={14} />, children: exportChildren() });
     }
   }
 
@@ -240,7 +268,6 @@ export function buildKnowledgeTreeNodeMenuItems(
       label: "移到回收站",
       icon: <Trash2 size={14} />,
       danger: true,
-      disabled: isDocument && (!note || note.isLocked === 1),
     });
   }
 
