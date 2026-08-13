@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Pin, PinOff, Star, StarOff, Clock, FileText, FileCode, FileType2, Trash2, ArchiveRestore, Menu, FolderInput, ChevronRight, ChevronDown, ChevronLeft, Folder, X, Check, Lock, Unlock, CalendarDays, RefreshCw, Share2, GripVertical, Download, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Printer, User as UserIcon, Sparkles, Tag as TagIcon, Loader2, FileUp, PanelLeftClose, AlertTriangle } from "lucide-react";
+import { Plus, Pin, PinOff, Star, StarOff, Clock, FileText, FileCode, FileType2, Trash2, ArchiveRestore, Menu, FolderInput, ChevronRight, ChevronDown, ChevronLeft, Folder, X, Check, Lock, Unlock, CalendarDays, RefreshCw, Share2, GripVertical, Download, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Printer, User as UserIcon, Sparkles, Tag as TagIcon, Loader2, FileUp, PanelLeftClose, AlertTriangle, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ContextMenu, { ContextMenuItem } from "@/components/ContextMenu";
@@ -46,6 +46,8 @@ import {
   type ThreeColumnFolderScopeMode,
 } from "@/lib/threeColumnFolderContents";
 import { isRootDocumentNotebookId } from "@/lib/rootDocumentCreatePolicy";
+import { revealCreatedKnowledgeTreeNote } from "@/lib/knowledgeTreeCreateVisibility";
+import { emitKnowledgeTreeRefresh } from "@/lib/workspaceRefreshBridge";
 // "导入 Word 文档" 走 dynamic import（见 createNoteInNotebook），减少首屏 bundle 体积。
 
 /* ===== 排序模式 ===== */
@@ -2466,6 +2468,17 @@ export default function NoteList() {
     }
 
     return [
+      ...(bulkMode
+        ? []
+        : [
+            {
+              id: "duplicate",
+              label: "创建副本",
+              icon: <Copy size={14} />,
+              disabled: targetNote.isLocked === 1,
+            },
+            { id: "sep-duplicate", label: "", separator: true },
+          ] as ContextMenuItem[]),
       {
         id: "toggle_pin",
         label: targetNote.isPinned === 1 ? t('noteList.unpin') : t('noteList.pin'),
@@ -2528,6 +2541,56 @@ export default function NoteList() {
     if (!targetNote) return;
 
     switch (actionId) {
+      case "duplicate": {
+        haptic.light();
+        try {
+          const duplicated = await api.duplicateNote(targetId);
+          actions.setSelectedNotebook(duplicated.notebookId);
+          actions.setSelectedKnowledgeTreeParent(duplicated.treeParentId);
+          actions.clearSelectedTags();
+          actions.setViewMode("notebook");
+          actions.setActiveNote(duplicated);
+          actions.addNoteToList({
+            id: duplicated.id,
+            userId: duplicated.userId,
+            title: duplicated.title,
+            contentText: duplicated.contentText || "",
+            notebookId: duplicated.notebookId,
+            workspaceId: duplicated.workspaceId ?? null,
+            isPinned: duplicated.isPinned || 0,
+            isFavorite: duplicated.isFavorite || 0,
+            isLocked: duplicated.isLocked || 0,
+            isArchived: duplicated.isArchived || 0,
+            isTrashed: duplicated.isTrashed || 0,
+            version: duplicated.version || 1,
+            sortOrder: duplicated.sortOrder || 0,
+            updatedAt: duplicated.updatedAt,
+            createdAt: duplicated.createdAt,
+            contentFormat: duplicated.contentFormat,
+          } as NoteListItem);
+          if (userPrefs.prefs.enableNoteTabs) {
+            actions.openNoteTab({
+              id: duplicated.id,
+              title: duplicated.title,
+              notebookId: duplicated.notebookId,
+              workspaceId: duplicated.workspaceId,
+              contentFormat: duplicated.contentFormat,
+              isLocked: duplicated.isLocked,
+              isTrashed: duplicated.isTrashed,
+              updatedAt: duplicated.updatedAt,
+            });
+          }
+          actions.setMobileView("editor");
+          window.requestAnimationFrame(() => revealCreatedKnowledgeTreeNote(duplicated.treeParentId));
+          emitKnowledgeTreeRefresh("note-duplicated-from-note-list");
+          actions.refreshNotes();
+          actions.refreshNotebooks();
+          toast.success("副本已创建");
+        } catch (error: any) {
+          toast.error(error?.message || "创建副本失败");
+        }
+        break;
+      }
       case "toggle_pin": {
         haptic.light();
         const newVal = targetNote.isPinned === 1 ? 0 : 1;

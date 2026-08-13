@@ -54,6 +54,7 @@ import {
   stabilizePersistedNoteContent,
   TransientPersistedImageSourceError,
 } from "../lib/noteContentAttachmentIdentity";
+import { duplicateNote, DuplicateNoteError } from "../services/noteDuplicates";
 
 const app = new Hono();
 
@@ -562,6 +563,33 @@ app.get("/:id", (c) => {
 
   const responseNote = presentNoteForResponse(db, c, note);
   return c.json({ ...responseNote as any, tags, permission });
+});
+
+// 创建完整独立副本：正文、标签和本地附件由服务端统一复制。
+app.post("/:id/duplicate", async (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  const sourceNoteId = c.req.param("id");
+  try {
+    const result = await duplicateNote({ userId, noteId: sourceNoteId });
+    const responseNote = presentNoteForResponse(db, c, result.note);
+    logAudit(userId, "note", "duplicate", {
+      sourceNoteId,
+      noteId: result.node.resourceId,
+    }, { targetType: "note", targetId: result.node.resourceId });
+    return c.json({
+      ...responseNote as any,
+      tags: result.tags,
+      treeNodeId: result.node.id,
+      treeParentId: result.node.parentId,
+    }, 201);
+  } catch (error) {
+    if (error instanceof DuplicateNoteError) {
+      return c.json({ error: error.message, code: error.code }, error.status);
+    }
+    console.error("[notes.duplicate] failed:", error);
+    return c.json({ error: "创建副本失败", code: "NOTE_DUPLICATE_FAILED" }, 500);
+  }
 });
 
 // 创建笔记

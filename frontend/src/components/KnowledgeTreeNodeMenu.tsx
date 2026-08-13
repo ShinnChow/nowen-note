@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import {
   ArrowLeftRight,
+  Copy,
   Download,
   FileArchive,
   FileCode,
@@ -58,6 +59,7 @@ import {
   requestActiveNoteFormatConversion,
 } from "@/lib/noteFormatConversion";
 import { noteTemplatesApi } from "@/lib/noteTemplatesApi";
+import { revealCreatedKnowledgeTreeNote } from "@/lib/knowledgeTreeCreateVisibility";
 import { toast } from "@/lib/toast";
 import { useApp, useAppActions } from "@/store/AppContext";
 import type { Notebook } from "@/types";
@@ -133,6 +135,13 @@ export function buildKnowledgeTreeNodeMenuItems(
       { id: "open", label: "打开", icon: <FileText size={14} /> },
       { id: "split_right", label: "在右侧分屏打开", icon: <SplitSquareHorizontal size={14} /> },
       { id: "split_down", label: "在下方分屏打开", icon: <SplitSquareVertical size={14} /> },
+      separator("sep-duplicate"),
+      {
+        id: "duplicate",
+        label: "创建副本",
+        icon: <Copy size={14} />,
+        disabled: !note || note.isLocked === 1 || note.isTrashed === 1,
+      },
     );
   }
 
@@ -404,6 +413,18 @@ export default function KnowledgeTreeNodeMenu({
     actions.refreshNotes();
   };
 
+  const duplicateCurrentNote = async () => {
+    if (!node || node.resourceType !== "note") return;
+    const duplicated = await api.duplicateNote(node.resourceId);
+    revealCreatedKnowledgeTreeNote(duplicated.treeParentId);
+    openLoadedNote(duplicated);
+    actions.setSelectedKnowledgeTreeParent(duplicated.treeParentId);
+    await onReload();
+    actions.refreshNotes();
+    actions.refreshNotebooks();
+    toast.success("副本已创建");
+  };
+
   const convertFormat = async () => {
     if (!node || node.resourceType !== "note") return;
     const current = note || await api.getNote(node.resourceId);
@@ -554,6 +575,7 @@ export default function KnowledgeTreeNodeMenu({
         case "open": await onOpen(node); break;
         case "split_right": onSplit(node, "right"); break;
         case "split_down": onSplit(node, "down"); break;
+        case "duplicate": await duplicateCurrentNote(); break;
         case "new_note": onCreate(node, "note"); break;
         case "new_markdown": onCreate(node, "markdown"); break;
         case "new_folder": onCreate(node, "folder"); break;
