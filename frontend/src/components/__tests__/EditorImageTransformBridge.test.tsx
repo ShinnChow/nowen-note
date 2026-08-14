@@ -78,6 +78,37 @@ describe("EditorImageTransformBridge", () => {
     expect(badge.style.transform).toBe("");
   });
 
+  it("keeps quarter-turn images on their own line and restores inline flow after reset", () => {
+    document.body.innerHTML = `
+      <p id="parent">
+        before
+        <span class="react-renderer node-image">
+          <span class="resizable-image-wrapper" style="margin: 0">
+            <img src="/image.png" width="600">
+          </span>
+        </span>
+        after
+      </p>
+    `;
+    const parent = document.querySelector<HTMLElement>("#parent")!;
+    const nodeView = document.querySelector<HTMLElement>(".react-renderer.node-image")!;
+    const wrapper = document.querySelector<HTMLElement>(".resizable-image-wrapper")!;
+    const image = wrapper.querySelector<HTMLImageElement>("img")!;
+    Object.defineProperty(parent, "clientWidth", { value: 800, configurable: true });
+    Object.defineProperties(image, {
+      naturalWidth: { value: 1200, configurable: true },
+      naturalHeight: { value: 600, configurable: true },
+      offsetWidth: { value: 600, configurable: true },
+      offsetHeight: { value: 300, configurable: true },
+    });
+
+    expect(applyImageTransformLayout(wrapper, 90, false)).toBe(true);
+    expect(nodeView.style.display).toBe("block");
+
+    expect(applyImageTransformLayout(wrapper, 0, false)).toBe(true);
+    expect(nodeView.style.display).toBe("inline");
+  });
+
   it("lets the first resize gesture pass through the compact mobile sheet backdrop", () => {
     document.body.innerHTML = `
       <button aria-label="关闭图片操作" style="pointer-events:auto"></button>

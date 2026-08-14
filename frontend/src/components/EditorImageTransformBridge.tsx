@@ -186,6 +186,14 @@ export function applyImageTransformLayout(
   setStyle(wrapper, "overflow", "visible");
   setStyle(wrapper, "verticalAlign", "middle");
 
+  // 图片节点在 ProseMirror 模型中保持 inline，以免破坏有序列表结构；但横图旋转为
+  // 竖图后占位宽度会明显变窄，外层若继续参与行内排版就会被塞进上一行的剩余空间。
+  // 仅在 90°/270° 时让 React NodeView 独占一行，复原后恢复原有行内语义。
+  const flowHost = wrapper.closest<HTMLElement>(".react-renderer.node-image") || wrapper;
+  setStyle(flowHost, "display", layout.sideways
+    ? "block"
+    : flowHost === wrapper ? "inline-block" : "inline");
+
   const persistentTransform = getPersistentImageTransform(rotation, flipX);
   const visualTransform = `translate(-50%, -50%)${persistentTransform ? ` ${persistentTransform}` : ""}`;
   image.dataset.nowenImageVisual = "true";
