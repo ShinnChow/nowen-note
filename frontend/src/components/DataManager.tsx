@@ -56,6 +56,7 @@ import {
 } from "@/lib/importHub";
 import type { Workspace } from "@/types";
 import { openTaskDataTransfer } from "@/lib/taskDataTransferBridge";
+import { runFullBackupJob } from "@/lib/fullBackupJobClient";
 
 // ============================================================================
 // 一级 Tab：scope —— 个人空间 / 工作区 / 系统
@@ -3520,7 +3521,7 @@ function BackupSection() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<"db-only" | "full" | null>(null);
-  const [createMsg, setCreateMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [createMsg, setCreateMsg] = useState<{ type: "ok" | "err" | "progress"; text: string } | null>(null);
 
   // 「导入外部 .bak/.zip」状态独立于 create：它不生成新备份，而是把用户硬盘上
   // 的文件搬进 backupDir 再补 .meta.json。独立 importing 让按钮 loading 态
@@ -3638,8 +3639,18 @@ function BackupSection() {
     setCreating(type);
     setCreateMsg(null);
     try {
-      const out = await withSudo(
-        (tk) => api.backup.create(type, tk),
+      const out = await withSudo<{ filename: string; size: number }>(
+        async (tk) => {
+          if (type === "full") {
+            return runFullBackupJob(
+              api.backup.fullJobs,
+              tk,
+              "数据管理：手动全量备份",
+              { onStatus: (text) => setCreateMsg({ type: "progress", text }) },
+            );
+          }
+          return api.backup.create(type, tk);
+        },
         askPassword,
         sudoTokenRef.current,
       );
@@ -4151,8 +4162,19 @@ function BackupSection() {
         </div>
 
         {createMsg && (
-          <div className={`text-xs flex items-start gap-1 ${createMsg.type === "ok" ? "text-green-600" : "text-red-500"}`}>
-            {createMsg.type === "ok" ? <CheckCircle size={12} className="mt-0.5" /> : <AlertCircle size={12} className="mt-0.5" />}
+          <div className={`text-xs flex items-start gap-1 ${createMsg.type === "ok"
+            ? "text-green-600"
+            : createMsg.type === "progress"
+              ? "text-blue-600 dark:text-blue-400"
+              : "text-red-500"
+            }`}>
+            {createMsg.type === "ok" ? (
+              <CheckCircle size={12} className="mt-0.5" />
+            ) : createMsg.type === "progress" ? (
+              <Loader2 size={12} className="mt-0.5 animate-spin" />
+            ) : (
+              <AlertCircle size={12} className="mt-0.5" />
+            )}
             <span>{createMsg.text}</span>
           </div>
         )}
