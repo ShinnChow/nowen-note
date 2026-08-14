@@ -4107,6 +4107,32 @@ export const api = {
         size: number;
       }>("/backups", { method: "POST", body: JSON.stringify({ type, description }), sudoToken }),
 
+    /** 完整备份后台任务：创建请求立即返回，前端通过 get 轮询直到可下载。 */
+    fullJobs: {
+      start: (sudoToken?: string, description?: string) =>
+        request<{
+          id: string;
+          state: "queued" | "running" | "ready" | "error";
+          message: string;
+          backup?: { filename: string; size: number };
+          downloadToken?: string;
+          error?: string;
+        }>("/backups/full-jobs", {
+          method: "POST",
+          body: JSON.stringify({ description }),
+          sudoToken,
+        }),
+      get: (jobId: string) =>
+        request<{
+          id: string;
+          state: "queued" | "running" | "ready" | "error";
+          message: string;
+          backup?: { filename: string; size: number };
+          downloadToken?: string;
+          error?: string;
+        }>(`/backups/full-jobs/${encodeURIComponent(jobId)}`),
+    },
+
     /**
      * 导入外部备份文件（.bak / .zip）到当前实例的备份仓库（管理员 + sudo）。
      *
