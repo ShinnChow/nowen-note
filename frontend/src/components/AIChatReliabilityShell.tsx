@@ -180,7 +180,7 @@ export default function AIChatReliabilityShell(props: Props) {
   }, [status]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-app-bg">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-app-bg">
       <section className="shrink-0 border-b border-app-border bg-app-surface/95 px-3 py-2 backdrop-blur md:px-5">
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="mr-1 flex min-w-0 items-center gap-2">

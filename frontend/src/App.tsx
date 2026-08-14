@@ -768,7 +768,7 @@ function AppLayout() {
           <MindMapCenter />
         </div>
       ) : isAIChatView ? (
-        <div className="flex-1 flex flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <MobileTopBar />
           <AIChatPanel
             onClose={() => actions.setViewMode("all")}
