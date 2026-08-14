@@ -87,6 +87,7 @@ import {
 import {
   normalizeLegacyFontColors,
 } from "@/lib/pasteForegroundColor";
+import { shouldHandleAsMarkdownPaste } from "@/lib/pasteRouting";
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6,
@@ -2536,7 +2537,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
 
           // 4) Markdown 纯文本：不自动转换，先原样插入纯文本并弹 confirm toast，
           //    用户点击"立即转换样式"时再用原始文本替换刚插入的那段范围。
-          if (text && looksLikeMarkdown(text)) {
+          if (text && shouldHandleAsMarkdownPaste(html, looksLikeMarkdown(text))) {
             console.log("[paste-diag] PATH=markdown (insertText + confirm toast)");
             const { state } = view;
             // 记录插入起点，用于后续按 from..to 范围替换
@@ -2579,7 +2580,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
             return true;
           }
 
-          // 5) 只有 HTML 没有多行纯文本（如从网页复制的富文本片段）：解析插入
+          // 5) 存在可用 HTML（如从网页或办公文档复制的富文本片段）：解析插入
           //    先归一化：把 <div>/<br> 伪多行段落拆成真正的多个 <p>，
           //    避免后续块级操作（toggleHeading 等）误把整段转换。
           if (html && html.trim().length > 0) {

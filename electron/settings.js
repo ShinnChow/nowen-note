@@ -12,6 +12,7 @@
 //   hideMenuBar: boolean                   // Windows/Linux 是否隐藏原生菜单栏（Alt 可临时唤出）
 //   offlineCacheDir: string                // 自定义 renderer 离线缓存目录；空字符串表示默认目录
 //   offlineCacheMigrationSource: string    // 更换目录后，仅供下一次启动迁移使用
+//   windowState: object | null              // 主窗口正常坐标、尺寸和最大化状态
 //
 // 设计：
 //   - 读：失败/字段缺失 → 默认值 { mode: "full", remoteUrl: "" }，永远不抛
@@ -22,6 +23,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { normalizeStoredWindowState } = require("./window-state");
 
 const DEFAULT_SETTINGS = Object.freeze({
   mode: "full",
@@ -29,6 +31,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   hideMenuBar: true,
   offlineCacheDir: "",
   offlineCacheMigrationSource: "",
+  windowState: null,
 });
 
 const VALID_MODES = new Set(["full", "lite"]);
@@ -67,6 +70,7 @@ function normalize(raw) {
     if (typeof raw.offlineCacheMigrationSource === "string" && path.isAbsolute(raw.offlineCacheMigrationSource)) {
       out.offlineCacheMigrationSource = path.resolve(raw.offlineCacheMigrationSource);
     }
+    out.windowState = normalizeStoredWindowState(raw.windowState);
   }
   // 一致性：lite 模式但 url 为空 → 退回 full（防止用户手编 settings.json 出错卡死）
   if (out.mode === "lite" && !out.remoteUrl) {
