@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-08-14T04:18:46.129Z",
+  "generatedAt": "2026-08-14T04:41:27.271Z",
   "entries": [
     {
       "version": "1.4.12",
       "date": "2026-08-14",
-      "body": "### 🐛 修复\n\n- **AI问答**: 补齐主内容收缩边界 (7a4be43)\n- **AI问答**: 优化会话侧栏与知识库范围交互 (5cfdd78)\n- **备份**: 修复全量备份超时与高资源占用 (945d819)\n- **export**: scope team single-note zip jobs (ff6f33d)\n- **export**: resolve single-note workspace scope (27fca21)\n- **编辑器与桌面端**: 修复富文本粘贴并记住窗口状态 (76f685c)\n\n### 📝 文档\n\n- **readme**: 更新 v1.4.11 发版亮点 (08d1e5d)\n- **readme**: update v1.4.11 release highlights (f00359e)\n\n### ✅ 测试\n\n- **export**: cover team single-note workspace scope (00a06c9)"
+      "body": "### 🐛 修复\n\n- **AI问答**: 补齐主内容收缩边界 (7a4be43)\n- **AI问答**: 优化会话侧栏与知识库范围交互 (5cfdd78)\n- **备份**: 修复全量备份超时与高资源占用 (945d819)\n- **export**: scope team single-note zip jobs (ff6f33d)\n- **export**: resolve single-note workspace scope (27fca21)\n- **编辑器与桌面端**: 修复富文本粘贴并记住窗口状态 (76f685c)\n\n### 📝 文档\n\n- **readme**: 更新 v1.4.11 发版亮点 (08d1e5d)\n- **readme**: update v1.4.11 release highlights (f00359e)\n\n### ✅ 测试\n\n- **export**: cover team single-note workspace scope (00a06c9)\n\n### 🔧 其他\n\n- **发布**: 收口 v1.4.12 版本元数据 (c12c75e)\n\n\n### 🐛 修复\n\n- **AI问答**: 补齐主内容收缩边界 (7a4be43)\n- **AI问答**: 优化会话侧栏与知识库范围交互 (5cfdd78)\n- **备份**: 修复全量备份超时与高资源占用 (945d819)\n- **export**: scope team single-note zip jobs (ff6f33d)\n- **export**: resolve single-note workspace scope (27fca21)\n- **编辑器与桌面端**: 修复富文本粘贴并记住窗口状态 (76f685c)\n\n### 📝 文档\n\n- **readme**: 更新 v1.4.11 发版亮点 (08d1e5d)\n- **readme**: update v1.4.11 release highlights (f00359e)\n\n### ✅ 测试\n\n- **export**: cover team single-note workspace scope (00a06c9)"
     },
     {
       "version": "1.4.11",

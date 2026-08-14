@@ -32,6 +32,29 @@
 
 - **export**: cover team single-note workspace scope (00a06c9)
 
+### 🔧 其他
+
+- **发布**: 收口 v1.4.12 版本元数据 (c12c75e)
+
+
+### 🐛 修复
+
+- **AI问答**: 补齐主内容收缩边界 (7a4be43)
+- **AI问答**: 优化会话侧栏与知识库范围交互 (5cfdd78)
+- **备份**: 修复全量备份超时与高资源占用 (945d819)
+- **export**: scope team single-note zip jobs (ff6f33d)
+- **export**: resolve single-note workspace scope (27fca21)
+- **编辑器与桌面端**: 修复富文本粘贴并记住窗口状态 (76f685c)
+
+### 📝 文档
+
+- **readme**: 更新 v1.4.11 发版亮点 (08d1e5d)
+- **readme**: update v1.4.11 release highlights (f00359e)
+
+### ✅ 测试
+
+- **export**: cover team single-note workspace scope (00a06c9)
+
 ## v1.4.11 - 2026-08-13
 
 ### ✨ 新增
