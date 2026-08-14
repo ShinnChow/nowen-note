@@ -5,6 +5,7 @@ import { Palette, Shield, Database, X, Settings, Camera, Save, Loader2, Trash2, 
 import { useTranslation } from "react-i18next";
 import wechatSponsorQr from "@/assets/sponsor/weixin.jpg";
 import alipaySponsorQr from "@/assets/sponsor/zhifubao.png";
+import qqGroupQr from "@/assets/feedback/qq-group.jpg";
 import ThemeToggle from "@/components/ThemeToggle";
 import SkinSwitcher from "@/components/SkinSwitcher";
 import SecuritySettings from "@/components/SecuritySettings";
@@ -398,12 +399,14 @@ function AboutPanel() {
   const { t } = useTranslation();
   const feedbackEmail = "nowenlab@qq.com";
   const feedbackMailto = `mailto:${feedbackEmail}?subject=${encodeURIComponent("[Nowen Note 反馈]")}`;
+  const feedbackQqGroupNumber = "1093473044";
   const [showSponsor, setShowSponsor] = useState(false);
   const [sponsorMethod, setSponsorMethod] = useState<"wechat" | "alipay">("wechat");
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [showAuthorStory, setShowAuthorStory] = useState(false);
   // 赞赏码大图预览：点击赞赏码缩略图时弹起 Lightbox
   const [sponsorPreviewOpen, setSponsorPreviewOpen] = useState(false);
+  const [feedbackQqPreviewOpen, setFeedbackQqPreviewOpen] = useState(false);
   const sponsorImage = sponsorMethod === "wechat" ? wechatSponsorQr : alipaySponsorQr;
   const sponsorLabel = sponsorMethod === "wechat"
     ? t('about.sponsorWechat')
@@ -540,6 +543,43 @@ function AboutPanel() {
         </div>
       </a>
 
+      {/* QQ 群反馈 */}
+      <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 p-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-sky-500/10 text-sky-500 shrink-0">
+              <Users size={16} />
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                {t('about.feedbackQqGroup')}
+              </div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                {t('about.feedbackQqGroupDesc')}
+              </div>
+              <div className="text-xs font-medium text-zinc-600 dark:text-zinc-300 mt-1">
+                {t('about.feedbackQqGroupNumber', { number: feedbackQqGroupNumber })}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFeedbackQqPreviewOpen(true)}
+            className="shrink-0 rounded-lg overflow-hidden cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            title={t('about.feedbackQqGroup')}
+            aria-label={t('about.feedbackQqGroup')}
+          >
+            <img
+              src={qqGroupQr}
+              alt={t('about.feedbackQqGroupNumber', { number: feedbackQqGroupNumber })}
+              className="w-16 h-16 object-cover bg-white p-1"
+              loading="lazy"
+              draggable={false}
+            />
+          </button>
+        </div>
+      </div>
+
       {/* 支持作者 / 打赏 */}
       <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 overflow-hidden">
         <button
@@ -658,6 +698,14 @@ function AboutPanel() {
         open={showAuthorStory}
         onClose={() => setShowAuthorStory(false)}
       />
+
+      {feedbackQqPreviewOpen && (
+        <ImageLightbox
+          src={qqGroupQr}
+          alt={t('about.feedbackQqGroupNumber', { number: feedbackQqGroupNumber })}
+          onClose={() => setFeedbackQqPreviewOpen(false)}
+        />
+      )}
 
       {/* 赞赏码大图预览 Lightbox */}
       {sponsorPreviewOpen && (

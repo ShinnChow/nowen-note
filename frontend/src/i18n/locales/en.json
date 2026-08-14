@@ -2294,7 +2294,10 @@
     "authorStoryViewOnGithub": "Read on GitHub",
     "feedback": "Feedback & Bug Reports",
     "feedbackDesc": "Found an issue or have a feature request? Contact us by email.",
-    "feedbackAction": "Send email"
+    "feedbackAction": "Send email",
+    "feedbackQqGroup": "Join the QQ feedback group",
+    "feedbackQqGroupDesc": "Scan to join the nowen development group, or search by group number.",
+    "feedbackQqGroupNumber": "QQ group: {{number}}"
   },
   "whatsNew": {
     "title": "What's New",
