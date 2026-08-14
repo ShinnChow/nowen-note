@@ -30,6 +30,7 @@ import JSZip from "jszip";
 import Database from "better-sqlite3";
 import { closeDb, getDb, getDbSchemaVersion } from "../db/schema.js";
 import { noteVersionsRepository } from "../repositories";
+import { createBackupFilename, createFullBackupArchive, hashFileSha256 } from "./backup-archive.js";
 
 // ===== 常量 =====
 
@@ -202,6 +203,14 @@ export interface BackupOptions {
   description?: string;
 }
 
+export class BackupBusyError extends Error {
+  readonly code = "BACKUP_BUSY";
+
+  constructor() {
+    super("已有备份任务正在运行，请等待当前任务完成");
+  }
+}
+
 export interface BackupHealth {
   /** 上次成功备份时间（ISO） */
   lastSuccessAt: string | null;
@@ -277,39 +286,6 @@ function listAllTables(db: ReturnType<typeof getDb>): string[] {
   return rows
     .map((r) => r.name)
     .filter((n) => !n.endsWith("_data") && !n.endsWith("_idx") && !n.endsWith("_content") && !n.endsWith("_docsize") && !n.endsWith("_config"));
-}
-
-/** 递归把目录里的文件全部塞进 zip 的某个子目录。空目录会写一个 .keep 占位。 */
-function addDirToZip(zip: JSZip, srcDir: string, zipFolder: string): { count: number; bytes: number } {
-  let count = 0;
-  let bytes = 0;
-  if (!fs.existsSync(srcDir)) {
-    zip.folder(zipFolder)?.file(".keep", "");
-    return { count, bytes };
-  }
-  const folder = zip.folder(zipFolder);
-  if (!folder) return { count, bytes };
-
-  const walk = (cur: string, relBase: string) => {
-    const entries = fs.readdirSync(cur, { withFileTypes: true });
-    for (const ent of entries) {
-      const abs = path.join(cur, ent.name);
-      const rel = path.posix.join(relBase, ent.name);
-      if (ent.isDirectory()) {
-        walk(abs, rel);
-      } else if (ent.isFile()) {
-        const buf = fs.readFileSync(abs);
-        folder.file(rel, buf);
-        count++;
-        bytes += buf.length;
-      }
-    }
-  };
-  walk(srcDir, "");
-  if (count === 0) {
-    folder.file(".keep", "");
-  }
-  return { count, bytes };
 }
 
 /** 从 zip 把某个子目录释放到磁盘目标路径。释放前清空目标目录（仅文件，不动外部）。 */
@@ -523,6 +499,7 @@ function replaceDirectoriesFromStaging(
 export class BackupManager {
   private backupDir: string;
   private dataDir: string;
+  private backupInProgress = false;
   private autoBackupTimer: NodeJS.Timeout | null = null;
   private autoBackupIntervalHours = 24;
   /** 当前生效的完整自动备份配置，tick 时按它工作；运行期变更必须先 stop 再 start。 */
@@ -852,12 +829,14 @@ export class BackupManager {
 
   /** 创建备份。db-only 仍然产出单 .db 快照；full 产出 zip 包。 */
   async createBackup(options: BackupOptions = {}): Promise<BackupInfo> {
+    if (this.backupInProgress) throw new BackupBusyError();
+    this.backupInProgress = true;
     const type = options.type || "db-only";
     const id = crypto.randomUUID();
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const ext = type === "full" ? ".zip" : ".bak";
-    const filename = `nowen-backup-${type}-${timestamp}${ext}`;
+    // 秒级时间戳不足以保证唯一；短 UUID 同时避免多进程或快速重启后撞名。
+    const filename = createBackupFilename(type, id);
     const backupPath = path.join(this.backupDir, filename);
+    const backupPathExisted = fs.existsSync(backupPath);
 
     try {
       const db = getDb();
@@ -871,10 +850,8 @@ export class BackupManager {
         await this.createFullBackup(backupPath, db, options.description);
       }
 
-      const content = fs.readFileSync(backupPath);
-      // **完整 sha256**（之前只截 16 字符，碰撞空间大幅缩小，无意义）
-      const checksum = crypto.createHash("sha256").update(content).digest("hex");
-      const size = content.length;
+      // 完整 sha256 使用流式读取，避免大备份完成后再次分配等体积 Buffer。
+      const { checksum, size } = await hashFileSha256(backupPath);
 
       const info: BackupInfo = {
         id,
@@ -926,11 +903,14 @@ export class BackupManager {
       }
       // 失败时清理半成品，避免 listBackups 看到坏文件
       try {
-        if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+        // 若极端情况下目标在本次操作前就存在，绝不能误删已有成功备份。
+        if (!backupPathExisted && fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
       } catch {
         /* ignore */
       }
       throw err;
+    } finally {
+      this.backupInProgress = false;
     }
   }
 
@@ -943,13 +923,37 @@ export class BackupManager {
    *   4) 删除临时 .db
    */
   private async createFullBackup(zipPath: string, db: ReturnType<typeof getDb>, description?: string): Promise<void> {
-    const zip = new JSZip();
-
     // 1) 临时 .db 快照
     const tmpDb = path.join(os.tmpdir(), `nowen-fullbk-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.db`);
     try {
       await db.backup(tmpDb);
-      zip.file("db.sqlite", fs.readFileSync(tmpDb));
+      // 2) 表行数（动态枚举，不再写死）
+      const tables = listAllTables(db);
+      const tableRowCounts: Record<string, number> = {};
+      for (const t of tables) {
+        try {
+          tableRowCounts[t] = (db.prepare(`SELECT COUNT(*) as c FROM ${t}`).get() as { c: number }).c;
+        } catch {
+          tableRowCounts[t] = -1;
+        }
+      }
+
+      // 3) 数据库、附件、字体、插件和密钥均通过文件流直接写入 ZIP。
+      await createFullBackupArchive({
+        zipPath,
+        dbPath: tmpDb,
+        dataDir: this.dataDir,
+        buildMeta: (files, hasSecret) => ({
+          formatVersion: BACKUP_FORMAT_VERSION,
+          schemaVersion: getDbSchemaVersion(),
+          type: "full" as const,
+          createdAt: new Date().toISOString(),
+          description: description || "",
+          tables: tableRowCounts,
+          files,
+          hasSecret,
+        }),
+      });
     } finally {
       try {
         if (fs.existsSync(tmpDb)) fs.unlinkSync(tmpDb);
@@ -957,59 +961,6 @@ export class BackupManager {
         /* ignore */
       }
     }
-
-    // 2) 各业务目录
-    const attDir = path.join(this.dataDir, "attachments");
-    const fontsDir = path.join(this.dataDir, "fonts");
-    const pluginsDir = path.join(this.dataDir, "plugins");
-    const att = addDirToZip(zip, attDir, "attachments");
-    const fnt = addDirToZip(zip, fontsDir, "fonts");
-    const plg = addDirToZip(zip, pluginsDir, "plugins");
-
-    // 3) 密钥（恢复后老 token 不失效；不存在就跳过）
-    const secretFile = path.join(this.dataDir, ".jwt_secret");
-    if (fs.existsSync(secretFile)) {
-      try {
-        zip.file(".jwt_secret", fs.readFileSync(secretFile));
-      } catch {
-        /* 权限不足时忽略，meta 里会标记 hasSecret: false */
-      }
-    }
-
-    // 4) 表行数（动态枚举，不再写死）
-    const tables = listAllTables(db);
-    const tableRowCounts: Record<string, number> = {};
-    for (const t of tables) {
-      try {
-        tableRowCounts[t] = (db.prepare(`SELECT COUNT(*) as c FROM ${t}`).get() as { c: number }).c;
-      } catch {
-        tableRowCounts[t] = -1;
-      }
-    }
-
-    const meta = {
-      formatVersion: BACKUP_FORMAT_VERSION,
-      schemaVersion: getDbSchemaVersion(),
-      type: "full" as const,
-      createdAt: new Date().toISOString(),
-      description: description || "",
-      tables: tableRowCounts,
-      files: {
-        attachments: { count: att.count, bytes: att.bytes },
-        fonts: { count: fnt.count, bytes: fnt.bytes },
-        plugins: { count: plg.count, bytes: plg.bytes },
-      },
-      hasSecret: fs.existsSync(secretFile),
-    };
-    zip.file("meta.json", JSON.stringify(meta, null, 2));
-
-    // 5) 输出 zip
-    const buf = await zip.generateAsync({
-      type: "nodebuffer",
-      compression: "DEFLATE",
-      compressionOptions: { level: 6 },
-    });
-    fs.writeFileSync(zipPath, buf);
   }
 
   /** 列出所有备份。 */

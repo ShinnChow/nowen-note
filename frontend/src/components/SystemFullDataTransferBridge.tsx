@@ -15,6 +15,7 @@ import {
 import { api, getBaseUrl, withSudo } from "@/lib/api";
 import { confirm as confirmDialog, prompt as promptDialog } from "@/components/ui/confirm";
 import { toast } from "@/lib/toast";
+import { runFullBackupJob } from "@/lib/fullBackupJobClient";
 
 const MAX_ARCHIVE_BYTES = 500 * 1024 * 1024;
 const HOST_ATTR = "data-nowen-full-data-transfer-host";
@@ -61,7 +62,22 @@ function extractDownloadFilename(response: Response, fallback: string): string {
   return disposition.match(/filename="?([^";]+)"?/i)?.[1] || fallback;
 }
 
-async function downloadBackup(filename: string): Promise<{ filename: string; size: number }> {
+async function downloadBackup(
+  filename: string,
+  downloadToken?: string,
+  knownSize?: number,
+): Promise<{ filename: string; size: number; completed: boolean }> {
+  if (downloadToken) {
+    const anchor = document.createElement("a");
+    anchor.href = `${getBaseUrl()}/backups/full-download/${encodeURIComponent(downloadToken)}`;
+    anchor.download = filename;
+    anchor.rel = "noopener";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    return { filename, size: knownSize || 0, completed: false };
+  }
+
   const token = localStorage.getItem("nowen-token");
   const response = await fetch(`${getBaseUrl()}/backups/${encodeURIComponent(filename)}/download`, {
     method: "GET",
@@ -86,7 +102,7 @@ async function downloadBackup(filename: string): Promise<{ filename: string; siz
   } finally {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  return { filename: downloadName, size: blob.size };
+  return { filename: downloadName, size: blob.size, completed: true };
 }
 
 function findLegacyTransferSections(): {
@@ -214,7 +230,12 @@ function FullDataTransferPanel() {
     setNotice({ type: "info", text: "正在创建数据库一致性快照并收集全部图片、附件、字体和插件…" });
     try {
       const out = await withSudo(
-        (sudoToken) => api.backup.create("full", sudoToken, "数据管理：完整数据手动导出"),
+        (sudoToken) => runFullBackupJob(
+          api.backup.fullJobs,
+          sudoToken,
+          "数据管理：完整数据手动导出",
+          { onStatus: (text) => setNotice({ type: "info", text }) },
+        ),
         askPassword,
         sudoTokenRef.current,
       );
@@ -223,9 +244,15 @@ function FullDataTransferPanel() {
         return;
       }
       sudoTokenRef.current = out.sudoToken;
-      const downloaded = await downloadBackup(out.result.filename);
-      const text = `完整备份已下载：${downloaded.filename}（${formatBytes(downloaded.size)}）`;
-      setNotice({ type: "success", text });
+      const downloaded = await downloadBackup(
+        out.result.filename,
+        out.result.downloadToken,
+        out.result.size,
+      );
+      const text = downloaded.completed
+        ? `完整备份已下载：${downloaded.filename}（${formatBytes(downloaded.size)}）`
+        : `完整备份已开始下载：${downloaded.filename}（${formatBytes(downloaded.size)}），请在浏览器下载列表中确认完成。`;
+      setNotice({ type: downloaded.completed ? "success" : "info", text });
       toast.success(text, 5000);
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
@@ -306,22 +333,38 @@ function FullDataTransferPanel() {
       }
 
       setNotice({ type: "info", text: "正在创建恢复前完整安全备份，请不要关闭页面…" });
-      const restored = await withSudo(
-        async (sudoToken) => {
-          const safety = await api.backup.create("full", sudoToken, `恢复 ${imported.filename} 前的自动安全备份`);
-          const result = await api.backup.restore(imported.filename, false, sudoToken);
-          return { safety, result };
-        },
+      const safety = await withSudo(
+        (sudoToken) => runFullBackupJob(
+          api.backup.fullJobs,
+          sudoToken,
+          `恢复 ${imported.filename} 前的自动安全备份`,
+          { onStatus: (text) => setNotice({ type: "info", text }) },
+        ),
         askPassword,
         sudoTokenRef.current,
       );
-      if (!restored) return;
+      if (!safety) {
+        setNotice(null);
+        return;
+      }
+      sudoTokenRef.current = safety.sudoToken;
+
+      setNotice({ type: "info", text: "恢复前安全备份已完成，正在恢复全部数据…" });
+      const restored = await withSudo(
+        (sudoToken) => api.backup.restore(imported.filename, false, sudoToken),
+        askPassword,
+        sudoTokenRef.current,
+      );
+      if (!restored) {
+        setNotice({ type: "info", text: `恢复已取消；安全备份已保留：${safety.result.filename}` });
+        return;
+      }
       sudoTokenRef.current = restored.sudoToken;
-      if (!restored.result.result.success) {
-        throw new Error(restored.result.result.error || "完整数据恢复失败");
+      if (!restored.result.success) {
+        throw new Error(restored.result.error || "完整数据恢复失败");
       }
 
-      const successText = `完整数据恢复完成；恢复前安全备份为 ${restored.result.safety.filename}。请立即重启后端或桌面客户端。`;
+      const successText = `完整数据恢复完成；恢复前安全备份为 ${safety.result.filename}。请立即重启后端或桌面客户端。`;
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setNotice({ type: "success", text: successText });

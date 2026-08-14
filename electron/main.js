@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, dialog, ipcMain, Menu, session } = require("electron");
+const { app, BrowserWindow, shell, dialog, ipcMain, Menu, screen, session } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -17,6 +17,7 @@ const { setSettingsPath, readSettings, writeSettings } = require("./settings");
 const { openSetupWindow } = require("./setupWindow");
 const { openLocalAttachmentWithSystem } = require("./attachment-open");
 const { registerTextContextMenu } = require("./text-context-menu");
+const { attachWindowStatePersistence, resolveWindowBounds } = require("./window-state");
 const {
   setCredentialsPath,
   registerCredentialsIpc,
@@ -898,6 +899,11 @@ function createWindow() {
   const isMac = process.platform === "darwin";
   const hideMenuBar = !isMac && !!currentHideMenuBar;
   const preloadPath = path.join(__dirname, "preload.js");
+  const restoredWindowState = resolveWindowBounds(
+    readSettings().windowState,
+    screen.getAllDisplays().map((display) => display.workArea),
+    screen.getPrimaryDisplay().workArea,
+  );
 
   // macOS 原生观感：
   //   - hiddenInset 把 Traffic Light 嵌入工具栏，不占独立标题栏；
@@ -916,8 +922,7 @@ function createWindow() {
     : {};
 
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    ...restoredWindowState.bounds,
     minWidth: 900,
     minHeight: 600,
     title: "Nowen Note",
@@ -941,6 +946,14 @@ function createWindow() {
   // SEC-ELECTRON-01-B-RV1: 注册主窗口 webContents.id 用于 IPC sender 校验
   setTrustedMainWindowId(mainWindow.webContents.id);
   registerTextContextMenu(mainWindow, Menu);
+  if (restoredWindowState.maximized) mainWindow.maximize();
+  attachWindowStatePersistence(mainWindow, (windowState) => {
+    try {
+      writeSettings({ windowState });
+    } catch (error) {
+      console.warn("[window-state] persist failed:", error?.message || error);
+    }
+  });
   let hasShownMainWindow = false;
   let loadingErrorPage = false;
   let recoveringRenderer = false;

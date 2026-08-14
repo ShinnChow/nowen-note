@@ -6,6 +6,9 @@
  * - GET    /api/backups/dir                   — 当前备份目录 + 数据目录（管理员）
  * - POST   /api/backups/dir                   — 切换备份目录（管理员 + sudo；?dryRun=1 仅校验）
  * - POST   /api/backups                       — 创建备份（管理员 + sudo）
+ * - POST   /api/backups/full-jobs             — 启动后台完整备份（管理员 + sudo）
+ * - GET    /api/backups/full-jobs/:jobId      — 查询后台完整备份状态（管理员）
+ * - GET    /api/backups/full-download/:token  — 使用临时能力令牌流式下载完整备份
  * - POST   /api/backups/upload                — 导入外部 .bak/.zip 备份（管理员 + sudo）
  * - GET    /api/backups/:filename/download    — 下载备份（管理员）
  * - POST   /api/backups/:filename/restore     — 从备份恢复（管理员 + sudo；支持 ?dryRun=1）
@@ -29,7 +32,9 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import fs from "fs";
 import path from "path";
-import { getBackupManager } from "../services/backup.js";
+import { Readable } from "stream";
+import { BackupBusyError, getBackupManager } from "../services/backup.js";
+import { FullBackupJobBusyError, FullBackupJobStore } from "../services/full-backup-jobs.js";
 import { requireAdmin } from "../middleware/acl.js";
 import { getDb } from "../db/schema.js";
 import { verifySudoFromRequest } from "../lib/auth-security.js";
@@ -37,6 +42,36 @@ import { sendMail, EMAIL_ATTACHMENT_LIMIT, readSmtpConfig } from "../services/em
 import { logAudit } from "../services/audit.js";
 
 const backupsRouter = new Hono();
+const fullBackupJobs = new FullBackupJobStore((description) =>
+  getBackupManager().createBackup({ type: "full", description }),
+);
+
+/** 使用 256-bit 临时能力令牌下载完整备份，供浏览器原生流式下载调用。 */
+export function handleFullBackupJobDownload(c: Context): Response {
+  const job = fullBackupJobs.getByDownloadToken(c.req.param("token"));
+  const filePath = job?.backup?.filename
+    ? getBackupManager().getBackupPath(job.backup.filename)
+    : null;
+  if (!job?.backup || !filePath) {
+    return new Response(JSON.stringify({ error: "下载链接无效或已过期" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  }
+
+  const stat = fs.statSync(filePath);
+  const fileStream = fs.createReadStream(filePath);
+  return new Response(Readable.toWeb(fileStream) as ReadableStream, {
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Content-Length": stat.size.toString(),
+      "Content-Encoding": "identity",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(job.backup.filename)}`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
 
 // ============================================================================
 // 全路由守门：必须是系统管理员
@@ -169,8 +204,44 @@ backupsRouter.post("/", async (c) => {
     return c.json(info, 201);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: `备份失败: ${msg}` }, 500);
+    const busy = err instanceof BackupBusyError;
+    return c.json(
+      { error: `备份失败: ${msg}`, code: busy ? err.code : undefined },
+      busy ? 409 : 500,
+    );
   }
+});
+
+// ===== POST /api/backups/full-jobs =====
+// 完整备份可能持续数分钟。此入口立即返回任务 ID，避免浏览器、WebView 或反向代理
+// 因长时间没有响应而中止请求；实际生成过程继续在后端运行。
+backupsRouter.post("/full-jobs", async (c) => {
+  const userId = c.req.header("X-User-Id") || "";
+  const denied = requireBackupSudo(c);
+  if (denied) return denied;
+
+  const body = (await c.req.json().catch(() => ({}))) as { description?: string };
+  let job;
+  try {
+    job = fullBackupJobs.start(body.description);
+  } catch (error) {
+    if (error instanceof FullBackupJobBusyError) {
+      return c.json({ error: error.message, code: error.code }, 409);
+    }
+    throw error;
+  }
+  logAudit(userId, "system", "backup_create_start", {
+    jobId: job.id,
+    type: "full",
+  }, { targetType: "backup-job", targetId: job.id });
+  return c.json(job, 202);
+});
+
+// ===== GET /api/backups/full-jobs/:jobId =====
+backupsRouter.get("/full-jobs/:jobId", (c) => {
+  const job = fullBackupJobs.get(c.req.param("jobId"));
+  if (!job) return c.json({ error: "完整备份任务不存在或已过期" }, 404);
+  return c.json(job);
 });
 
 // ===== POST /api/backups/upload =====
@@ -233,12 +304,13 @@ backupsRouter.get("/:filename/download", (c) => {
 
   if (!filePath) return c.json({ error: "备份不存在" }, 404);
 
-  const content = fs.readFileSync(filePath);
-  return new Response(content, {
+  const stat = fs.statSync(filePath);
+  const fileStream = fs.createReadStream(filePath);
+  return new Response(Readable.toWeb(fileStream) as ReadableStream, {
     headers: {
       "Content-Type": "application/octet-stream",
       "Content-Disposition": `attachment; filename="${filename}"`,
-      "Content-Length": content.length.toString(),
+      "Content-Length": stat.size.toString(),
     },
   });
 });
@@ -466,7 +538,11 @@ backupsRouter.post("/:filename/send-email", async (c) => {
       generatedNew = true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return c.json({ error: `生成备份失败: ${msg}` }, 500);
+      const busy = err instanceof BackupBusyError;
+      return c.json(
+        { error: `生成备份失败: ${msg}`, code: busy ? err.code : undefined },
+        busy ? 409 : 500,
+      );
     }
   }
 

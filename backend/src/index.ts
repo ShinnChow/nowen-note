@@ -48,7 +48,7 @@ import aiRouter from "./routes/ai";
 import pluginsRouter from "./routes/plugins";
 import webhooksRouter from "./routes/webhooks";
 import auditRouter from "./routes/audit";
-import backupsRouter from "./routes/backups";
+import backupsRouter, { handleFullBackupJobDownload } from "./routes/backups";
 import emailRouter from "./routes/email";
 import { sharesRouter, sharedRouter } from "./routes/shares";
 import workspacesRouter from "./routes/workspaces";
@@ -318,6 +318,9 @@ app.get("/api/attachments/:id", handleDownloadAttachment);
 // 浏览器原生下载请求无法携带 localStorage 中的 Authorization header，因此必须在
 // JWT 中间件之前注册；token 不可枚举、30 分钟过期，且响应禁止缓存。
 app.get("/api/export/download/:token", handleMarkdownExportDownload);
+
+// 完整系统备份使用同款随机能力令牌，避免 response.blob() 再占用一份浏览器内存。
+app.get("/api/backups/full-download/:token", handleFullBackupJobDownload);
 
 // 任务附件下载（无需 JWT），与 attachments 同款"id 不可枚举"授权模型。
 // 任务列表里的图片缩略图通过 <img src="/api/task-attachments/<id>"> 拉取。
