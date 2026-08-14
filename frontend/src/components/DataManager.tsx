@@ -777,7 +777,7 @@ export default function DataManager() {
           setImportProgress({
             phase: "uploading",
             current: 0,
-            total: 1,
+            total: 0,
             message: t("dataManager.uploadingProgress"),
           });
           const imported = await api.importSiyuanPackage(serverSiyuanFile, {
@@ -785,9 +785,13 @@ export default function DataManager() {
             workspaceId: effectiveWorkspaceId,
             contentFormat: siyuanImportContentFormat,
             onProgress: (job) => setImportProgress({
-              phase: "uploading",
-              current: job.status === "completed" ? 1 : 0,
-              total: 1,
+              phase: job.status === "completed"
+                ? "done"
+                : job.status === "failed"
+                  ? "error"
+                  : "uploading",
+              current: job.progressCurrent ?? 0,
+              total: job.progressTotal ?? 0,
               message: job.message,
             }),
           });
@@ -1807,18 +1811,77 @@ export default function DataManager() {
                       </div>
 
                       {importProgress && (
-                        <div className="mt-3 flex items-center gap-2">
-                          {importProgress.phase === "error" ? (
-                            <AlertCircle size={14} className="text-red-500" />
-                          ) : importProgress.phase === "done" ? (
-                            <CheckCircle size={14} className="text-green-500" />
-                          ) : (
-                            <Loader2 size={14} className="text-indigo-500 animate-spin" />
-                          )}
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                            {importProgress.message}
-                          </span>
-                        </div>
+                        serverSiyuanFile ? (
+                          <div
+                            className={`mt-3 rounded-xl border p-3 ${importProgress.phase === "error"
+                              ? "border-red-200/70 bg-red-50/50 dark:border-red-900/50 dark:bg-red-500/5"
+                              : "border-emerald-200/70 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-500/5"
+                              }`}
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <div className="flex items-start gap-3">
+                              {importProgress.phase === "error" ? (
+                                <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
+                              ) : importProgress.phase === "done" ? (
+                                <CheckCircle size={18} className="mt-0.5 shrink-0 text-emerald-500" />
+                              ) : (
+                                <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin text-emerald-500" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                                    {importProgress.message}
+                                  </span>
+                                  {importProgress.total > 0 && (
+                                    <span className="shrink-0 text-xs font-medium tabular-nums text-zinc-500 dark:text-zinc-400">
+                                      {importProgress.current} / {importProgress.total}
+                                    </span>
+                                  )}
+                                </div>
+                                <div
+                                  className="mt-3 h-2 overflow-hidden rounded-full bg-white/80 dark:bg-zinc-800"
+                                  role="progressbar"
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-valuenow={importProgress.total > 0
+                                    ? Math.min(100, Math.round((importProgress.current / importProgress.total) * 100))
+                                    : undefined}
+                                >
+                                  {importProgress.total > 0 ? (
+                                    <div
+                                      className={`h-full rounded-full transition-[width] duration-300 ${importProgress.phase === "error" ? "bg-red-500" : "bg-emerald-500"
+                                        }`}
+                                      style={{
+                                        width: `${Math.min(100, Math.round((importProgress.current / importProgress.total) * 100))}%`,
+                                      }}
+                                    />
+                                  ) : (
+                                    <motion.div
+                                      className="h-full w-2/5 rounded-full bg-emerald-500"
+                                      initial={{ x: "-120%" }}
+                                      animate={{ x: "300%" }}
+                                      transition={{ duration: 1.25, ease: "easeInOut", repeat: Infinity }}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-3 flex items-center gap-2">
+                            {importProgress.phase === "error" ? (
+                              <AlertCircle size={14} className="text-red-500" />
+                            ) : importProgress.phase === "done" ? (
+                              <CheckCircle size={14} className="text-green-500" />
+                            ) : (
+                              <Loader2 size={14} className="animate-spin text-indigo-500" />
+                            )}
+                            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                              {importProgress.message}
+                            </span>
+                          </div>
+                        )
                       )}
 
                       {lastImportTarget && (

@@ -1092,6 +1092,8 @@ type SiyuanImportJob = {
   status: "queued" | "running" | "completed" | "failed";
   phase: string;
   message: string;
+  progressCurrent: number | null;
+  progressTotal: number | null;
   result: SiyuanImportResult | null;
   error: string | null;
   updatedAt: string;
