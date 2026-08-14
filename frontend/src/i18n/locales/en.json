@@ -213,6 +213,8 @@
     "exportAsImage": "Export as Image",
     "exportAsWord": "Export as Word",
     "moveToTrash": "Move to Trash",
+    "noteMovedToTrash": "This note was moved to Trash",
+    "noteDeleted": "This note was deleted",
     "allNotes": "All Notes",
     "notebook": "Notebook",
     "search": "Search: {{query}}",

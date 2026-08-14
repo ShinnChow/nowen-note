@@ -218,6 +218,8 @@
     "exportAsImage": "导出为图片",
     "exportAsWord": "导出为 Word",
     "moveToTrash": "移入回收站",
+    "noteMovedToTrash": "该笔记已被移入回收站",
+    "noteDeleted": "该笔记已被删除",
     "allNotes": "所有笔记",
     "notebook": "笔记本",
     "search": "搜索: {{query}}",

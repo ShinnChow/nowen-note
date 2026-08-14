@@ -224,4 +224,11 @@ describe("release i18n coverage", () => {
       expect(getPath(en, `sidebar.${key}`), `en sidebar.${key}`).toBeTypeOf("string");
     }
   });
+
+  it("defines realtime note deletion notices in both languages", () => {
+    expect(getPath(zh, "noteList.noteMovedToTrash")).toBe("该笔记已被移入回收站");
+    expect(getPath(en, "noteList.noteMovedToTrash")).toBe("This note was moved to Trash");
+    expect(getPath(zh, "noteList.noteDeleted")).toBe("该笔记已被删除");
+    expect(getPath(en, "noteList.noteDeleted")).toBe("This note was deleted");
+  });
 });
