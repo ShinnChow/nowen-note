@@ -30,18 +30,18 @@
 
 > **Remote NAS connection and sign-in:** Nowen Note supports deployment on **UGREEN NAS (UGOS / UGOS Pro)** and **Feiniu NAS (fnOS)**. After deployment, connect and sign in from the web, desktop, or Android client using a LAN IP address, an IPv6 address, or a public domain secured with HTTPS.
 
-## v1.4.11 is available
+## v1.4.12 is available
 
-v1.4.11 focuses on **note duplication, search correctness, mobile Markdown editing, collaboration media stability, and everyday UI polish**, while tightening AI, backup, shared-attachment, and release workflows.
+v1.4.12 focuses on **AI Q&A usability, full-backup reliability, team-workspace exports, rich-text paste fidelity, and desktop ergonomics**, making Nowen Note more dependable for long-running NAS/server deployments and everyday desktop use.
 
-- Notes can now be duplicated as independent copies, making it easier to reuse content without affecting the original.
-- Search once again uses indexed note content as its source, while creating a document during knowledge-tree search now keeps the new item visible instead of appearing to lose it.
-- Note context menus are more consistent, export submenus render correctly, duplicate-title assistance keeps the caret visible, and desktop image transform actions no longer expose duplicate menus.
-- Mobile Markdown editing restores live-preview controls and mode switching, expands the usable editing viewport, and fixes the mobile editor action panel.
-- Fixed fullscreen image preview in collaborative notes on mobile, and restored attachment access for published/shared notebooks.
-- AI knowledge-base statistics and chat layout are more reliable, automatic full-backup retention cleanup is restored, iOS/TestFlight builds inherit release-tag versions, and the MCP launcher-path documentation has been corrected.
+- **AI Q&A UX improvements:** conversation history now has search, resizable/persistent width, a clearer knowledge-scope picker, and improved context diagnostics. The layout no longer pushes the main app content out of the window.
+- **Full backups scale better:** full ZIP creation now runs as a background job, ZIP packaging and SHA256 verification are streamed, and a short-lived download capability lets the browser download the archive natively with lower timeout and memory risk.
+- **Team-workspace single-note export fixed:** Markdown/attachment ZIP exports now use the note's real workspace scope, so members with download permission are no longer rejected as if the note belonged to personal space.
+- **More faithful rich-text paste:** when sources such as DingTalk provide both HTML and plain text, valid rich HTML is preferred so numbered lists and structured content are not misclassified as Markdown.
+- **Desktop window state is remembered:** Electron persists the main window position, size, and maximized state, and brings the window back into a visible work area when monitor layouts change.
+- Root, backend, Android, and changelog metadata are aligned to **v1.4.12**.
 
-See the [v1.4.11 Release](https://github.com/cropflre/nowen-note/releases/tag/v1.4.11) and the [full changelog](./CHANGELOG.md).
+See the [v1.4.12 Release](https://github.com/cropflre/nowen-note/releases/tag/v1.4.12) and the [full changelog](./CHANGELOG.md).
 
 ## Connect AI clients to Nowen Note
 
@@ -51,7 +51,7 @@ Nowen Note includes a supported MCP Server. Claude Code, Cursor, VS Code, and ot
 - [中文安装教程](./docs/tutorials/mcp.md)
 - [Standalone nowen-mcp package README](./packages/nowen-mcp/README.md)
 
-The currently supported distribution is a source build: install Node.js 20+, build `packages/nowen-mcp`, create a restricted Personal API Token in Nowen Note, and configure the absolute path to `dist/scoped-entry.js` in your client. The guide covers Windows, macOS, Linux/WSL, NAS addresses, Claude Code, Cursor, VS Code, verification, updates, and troubleshooting.
+The currently supported distribution is a source build: install Node.js 20+, build `packages/nowen-mcp`, create a restricted Personal API Token in Nowen Note, and configure the absolute path to `packages/nowen-mcp/bin/nowen-mcp.mjs` in your client. `dist/scoped-entry.js` is an internal build entry used by the launcher and should not be configured directly. The guide covers Windows, macOS, Linux/WSL, NAS addresses, Claude Code, Cursor, VS Code, verification, updates, and troubleshooting.
 
 ## Why Nowen Note
 
@@ -77,43 +77,43 @@ The currently supported distribution is a source build: install Node.js 20+, bui
 | **Tasks and visualization** | Hierarchical tasks, lists, Kanban, calendar, Gantt/timeline, dependencies, recurrence, reminders, templates, AI task breakdown, My Day, Inbox, time planning, offline tasks/habits, native Android reminder scheduling with creator-timezone/date-only deadline consistency, and mind maps. |
 | **Collaboration, permissions, and sharing** | Yjs + WebSocket collaboration, workspaces and roles, directory ACLs, Restricted access, explicit allow/deny policies, ownership transfer, centralized share management, passwords and expiration, guest comments, public knowledge spaces, and rich-text/Markdown inline comments. |
 | **Sync and edit protection** | Incremental sync, persistence acknowledgements, draft recovery, and version checks. Offline attachment validation, quarantine, and recovery signaling keep broken cached blobs away from online rendering while serial saves and Yjs state protection guard Markdown/rich-text transitions. |
-| **Import, export, and migration** | Import Markdown, Word/DOCX, web URLs, WeChat articles, SingleFile HTML, SiYuan ZIP archives, Obsidian, Xiaomi Notes, and other supported sources. Export Markdown, PDF, Word, images, or full ZIP packages with permission mapping, conflict preview, reports, controlled rollback, image access preparation, and footnote handling. |
+| **Import, export, and migration** | Import Markdown, Word/DOCX, web URLs, WeChat articles, SingleFile HTML, SiYuan ZIP archives, Obsidian, Xiaomi Notes, and other supported sources. Export Markdown, PDF, Word, images, or full ZIP packages with permission mapping, conflict preview, reports, controlled rollback, image access preparation, and footnote handling. Team single-note ZIP export resolves the note's real workspace scope. |
 | **Attachments and storage** | Local attachments organized under `YYYY/MM`; reusable attachment-library insertion, thumbnails, note ownership, reference checks, orphan rescans and cleanup, protected manual uploads, local disk or S3/R2/MinIO storage, plus hardened mobile image/video file identity and multipart uploads. |
 | **Accounts and security** | Multiple-account history, remembered accounts, auto-login, remote server connections, session validation and revocation, 2FA, scoped Personal API Tokens, audit logs, protected attachment access, and concealment of restricted-resource existence. |
-| **Backups, automation, and developer APIs** | Local backups, full ZIP backups, email backup, encrypted WebDAV backup credentials, managed Docker updates and rollback checks, webhooks, plugins, OpenAPI, TypeScript SDK, CLI, [MCP Server](./docs/tutorials/mcp.en.md), and a browser clipper. |
+| **Backups, automation, and developer APIs** | Local backups, background full-ZIP jobs, streamed archive/hash processing, native browser downloads, email backup, encrypted WebDAV backup credentials, managed Docker updates and rollback checks, webhooks, plugins, OpenAPI, TypeScript SDK, CLI, [MCP Server](./docs/tutorials/mcp.en.md), and a browser clipper. |
 | **Cross-platform access** | Web, Electron for Windows/macOS/Linux, Android, iOS project, HarmonyOS project, and Docker/NAS deployment. UGREEN UGOS and Feiniu fnOS are supported, and clients can connect through IPv4, IPv6, or a domain name. Android includes in-app gesture image preview and native task notifications. |
 
 ## Recent highlights
 
-### v1.4.11 · 2026-08-13
+### v1.4.12 · 2026-08-14
 
-#### Notes and search
+#### AI knowledge Q&A
 
-- Added **independent note duplication**, so an existing note can be reused as a new standalone copy without changing the source note.
-- Restored indexed note content as the search source to keep search results aligned with the current index.
-- Fixed knowledge-tree search mode so newly created documents remain visible immediately instead of disappearing from the filtered tree.
+- Reworked the conversation sidebar with search, drag-to-resize, persistent width, improved long-title handling, and cleaner rename/delete actions.
+- Added a clearer knowledge-scope picker for switching between all knowledge and a specific notebook.
+- Improved context-source, index-status, and retrieval-diagnostics presentation so RAG behavior is easier to understand and troubleshoot.
+- Fixed the outer Flex constraints that could let AI Q&A push the application's main content out of narrow desktop windows.
 
-#### Editor and Markdown
+#### Backup and recovery
 
-- Unified note context-menu behavior and fixed export submenu rendering.
-- Duplicate-title assistance now keeps the text caret visible throughout editing.
-- Desktop image transform actions are exposed from the correct toolbar without duplicating the transform menu.
-- Mobile Markdown restores edit/live-preview controls, preserves mode switching across note changes, and expands the usable editing viewport.
+- Full backups now run as background jobs instead of keeping one long HTTP request open.
+- ZIP archive creation and SHA256 verification are streamed to reduce peak memory and resource usage on large datasets.
+- Completed full backups use a short-lived capability token for native browser downloads, avoiding an additional browser-side `response.blob()` copy.
+- Full backups continue to include the SQLite online snapshot, attachments, fonts, plugins, and secret material required by the existing recovery flow.
 
-#### Mobile, collaboration, and sharing
+#### Team workspaces and export
 
-- Fixed the black screen that could appear when opening fullscreen images in collaborative notes on mobile.
-- Fixed the mobile editor action panel and related compact-layout regressions.
-- Published/shared notebooks can once again resolve attachment access correctly.
+- Fixed single-note Markdown/attachment ZIP export in team workspaces by resolving the note's real `workspaceId`.
+- Personal-space exports preserve their existing behavior, while older backends without a workspace field retain a compatibility fallback.
+- Team members with download permission are no longer rejected simply because they are not the note owner.
 
-#### AI, backup, and release delivery
+#### Editor and desktop
 
-- Fixed AI knowledge-base statistics and improved the chat-content layout.
-- Restored retention cleanup for automatic full backups.
-- iOS/TestFlight builds now derive their version from release tags for more consistent release metadata.
-- Corrected MCP launcher-path documentation so client configuration points to the supported entry path.
+- Valid rich HTML from DingTalk and similar clipboard sources now takes precedence over plain-text Markdown detection.
+- Electron persists window position, size, and maximized state.
+- When a monitor disappears or the display layout changes, saved windows are kept inside a visible work area.
 
-See [CHANGELOG.md](./CHANGELOG.md) and the [v1.4.11 Release](https://github.com/cropflre/nowen-note/releases/tag/v1.4.11) for complete details.
+See [CHANGELOG.md](./CHANGELOG.md) and the [v1.4.12 Release](https://github.com/cropflre/nowen-note/releases/tag/v1.4.12) for complete details.
 
 ## Screenshots
 
@@ -192,10 +192,10 @@ docker compose up -d
 To pin the current stable release:
 
 ```bash
-NOWEN_IMAGE_TAG=v1.4.11 docker compose up -d
+NOWEN_IMAGE_TAG=v1.4.12 docker compose up -d
 ```
 
-> v1.4.11 focuses on independent note copies, search correctness, editor/menu polish, mobile Markdown controls, collaborative image preview, shared attachment access, AI layout fixes, and backup retention. After upgrading, verify sign-in, note duplication, search, editing, mobile Markdown preview, shared attachments, image preview, and backups. Rolling back an image does not roll back the database.
+> v1.4.12 focuses on AI Q&A, full-backup reliability, team-workspace single-note export, rich-text paste fidelity, and Electron window-state persistence. After upgrading, verify AI conversations and scope selection, full ZIP backup/download, team Markdown + attachment ZIP export, rich-text paste from DingTalk or similar apps, and desktop window restore behavior. Rolling back an image does not roll back the database.
 
 ### Managed Docker updates (optional)
 
@@ -204,7 +204,7 @@ Managed updates only support the official [`docker-compose.yml`](./docker-compos
 ```bash
 cp .env.example .env
 printf '\nNOWEN_UPDATER_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-NOWEN_IMAGE_TAG=v1.4.11 docker compose --profile updater up -d
+NOWEN_IMAGE_TAG=v1.4.12 docker compose --profile updater up -d
 ```
 
 Administrators can then run preflight checks, create a full backup, update, verify health, and roll back the image from Settings → About → Version.
@@ -222,7 +222,7 @@ docker run -d \
   -p 3001:3001 \
   -e TZ=Asia/Shanghai \
   -v /opt/nowen-note/data:/app/data \
-  cropflre/nowen-note:v1.4.11
+  cropflre/nowen-note:v1.4.12
 ```
 
 ## Data, backups, and configuration
