@@ -34,6 +34,7 @@ import ShareModal from "@/components/ShareModal";
 import VersionHistoryPanel from "@/components/VersionHistoryPanel";
 import CommentPanel from "@/components/CommentPanel";
 import NoteAttachmentsPanel from "@/components/NoteAttachmentsPanel";
+import FolderSyncAttachmentPreviewPane, { isFolderSyncAttachmentNote } from "@/components/FolderSyncAttachmentPreviewPane";
 import BacklinksPanel from "@/components/BacklinksPanel";
 import MermaidView from "@/components/MermaidView";
 import {
@@ -3472,8 +3473,16 @@ const moveToTrash = useCallback(async () => {
           {/* ErrorBoundary �������ֱ༭�����бʼ�Ϊ key���������Զ����ã�
               �ײ㻹�ܴ� console �� [EditorErrorBoundary] ��־�� window.__lastDirtyDoc */}
           <EditorErrorBoundary resetKey={activeNote.id}>
-          {/* 原生 Markdown 笔记：contentFormat === "markdown" 时始终用 MarkdownEditor */}
-          {activeNote.contentFormat === "markdown" ? (
+          {/* 文件夹同步的 PDF / DOCX 笔记默认直接显示原文件，并隐藏内部同步元数据。 */}
+          {isFolderSyncAttachmentNote(activeNote.content) ? (
+            <FolderSyncAttachmentPreviewPane
+              key={`folder-sync-attachment-${activeNote.id}-${activeNote.version}`}
+              noteId={activeNote.id}
+              revision={activeNote.version}
+              content={activeNote.content}
+              onOpenAttachmentDirectory={() => setShowAttachmentsPanel(true)}
+            />
+          ) : activeNote.contentFormat === "markdown" ? (
             <MarkdownEditor
               // useYDoc only exposes the document after y:sync. Remount at that point so
               // CodeMirror gains yCollab without disabling normal saves while unsynced.

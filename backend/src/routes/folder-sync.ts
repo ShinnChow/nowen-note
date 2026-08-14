@@ -8,6 +8,8 @@ import { resolveNotebookPermission, hasPermission } from "../middleware/acl";
 import { broadcastNoteUpdated } from "../services/realtime";
 import { extractAttachmentText } from "../services/attachment-indexer";
 import { folderSyncFilesRepository } from "../repositories";
+import { syncReferences } from "../lib/attachmentRefs";
+import { buildFolderSyncAttachmentBaseContent } from "../lib/folderSyncAttachmentContent";
 
 const app = new Hono();
 const MAX_TEXT_CHARS = 2 * 1024 * 1024;
@@ -325,15 +327,14 @@ app.post("/import-attachment", async (c) => {
   if (actualSha !== sourceSha.toLowerCase()) return c.json({ error: "文件 SHA-256 不匹配", code: "HASH_MISMATCH" }, 400);
 
   const title = filenameToTitle(filename);
-  const baseContent = [
-    `# ${title}`,
-    "",
-    "此文件来自桌面端文件夹同步。",
-    "",
-    `- 文件名：${filename}`,
-    `- 相对路径：${relativePath}`,
-    `- SHA-256：${sourceSha}`,
-  ].join("\n");
+  const attachmentId = uuid();
+  const baseContent = buildFolderSyncAttachmentBaseContent({
+    title,
+    filename,
+    relativePath,
+    sha256: sourceSha,
+    attachmentId,
+  });
   const content = buildManagedContent(baseContent, relativePath, sourceSha, sourcePathHash);
   const noteId = note?.id || uuid();
   let conflictCopyNoteId: string | undefined;
@@ -343,7 +344,6 @@ app.post("/import-attachment", async (c) => {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const directory = path.join(getAttachmentBaseDir(), "attachments", year, month);
   fs.mkdirSync(directory, { recursive: true });
-  const attachmentId = uuid();
   const fileNameOnDisk = `${attachmentId}${ext.replace(/[^a-z0-9.]/gi, "")}`;
   const fullPath = path.join(directory, fileNameOnDisk);
   const relativeAttachmentPath = `${year}/${month}/${fileNameOnDisk}`;
@@ -379,6 +379,7 @@ app.post("/import-attachment", async (c) => {
           "workspaceId", hash, "uploadSource"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'folder_sync')
       `).run(attachmentId, userId, noteId, filename, file.type || "application/octet-stream", fileBuffer.length, relativeAttachmentPath, notebook.workspaceId, actualSha);
+      syncReferences(getDb(), noteId, content);
       if (oldAttachments.length) {
         const placeholders = oldAttachments.map(() => "?").join(",");
         getDb().prepare(`DELETE FROM attachments WHERE id IN (${placeholders})`).run(...oldAttachments.map((item) => item.id));
