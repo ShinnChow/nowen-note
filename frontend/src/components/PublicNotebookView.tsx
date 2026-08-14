@@ -200,9 +200,12 @@ function PublicNotebookReader({ token }: { token: string }) {
     }
     let cancelled = false;
     setNoteLoading(true);
+    const commentsRequest = info && (info.allowComment || info.permission !== "read")
+      ? notebookPublicationApi.getComments(token, activeNoteId, accessToken || undefined).catch(() => [])
+      : Promise.resolve([] as PublicComment[]);
     Promise.all([
       notebookPublicationApi.getPublicNote(token, activeNoteId, accessToken || undefined),
-      notebookPublicationApi.getComments(token, activeNoteId, accessToken || undefined).catch(() => []),
+      commentsRequest,
     ])
       .then(([note, nextComments]) => {
         if (cancelled) return;
@@ -216,7 +219,7 @@ function PublicNotebookReader({ token }: { token: string }) {
         if (!cancelled) setNoteLoading(false);
       });
     return () => { cancelled = true; };
-  }, [token, activeNoteId, accessToken, needsSecret]);
+  }, [token, activeNoteId, accessToken, needsSecret, info]);
 
   useEffect(() => {
     const host = contentRef.current;

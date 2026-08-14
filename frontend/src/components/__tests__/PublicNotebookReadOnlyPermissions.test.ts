@@ -45,4 +45,26 @@ describe("shared note read-only permissions", () => {
     expect(tiptapSource).toContain("{!presentationMode && (");
     expect(tiptapSource).toContain("editor && !presentationMode");
   });
+
+  it("does not bind format painter DOM listeners for an unmounted read-only guest editor", () => {
+    expect(tiptapSource).toContain(
+      "if (!editor || !editable || isGuest || editor.isDestroyed || !editor.isInitialized) return;",
+    );
+    expect(tiptapSource).toContain("const editorDom = editor.view.dom;");
+    expect(tiptapSource).toContain(
+      'editorDom.removeEventListener("pointerdown", handlePointerDown);',
+    );
+  });
+
+  it("registers underline only once", () => {
+    expect(tiptapSource).toContain("underline: false,");
+    expect(tiptapSource).toContain("      Underline,");
+  });
+
+  it("does not request comments when the publication is read-only with comments disabled", () => {
+    expect(publicViewSource).toContain(
+      "info.allowComment || info.permission !== \"read\"",
+    );
+    expect(publicViewSource).toContain("Promise.resolve([] as PublicComment[])");
+  });
 });

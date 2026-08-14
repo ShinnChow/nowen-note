@@ -1910,6 +1910,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       keyboardExtension.current,
       StarterKit.configure({
         codeBlock: false,
+        underline: false,
         // 行内代码（inline code）使用 StarterKit 默认实现：
         //   - 反引号 `text` 触发 input rule 自动转 code mark
         //   - 快捷键 Mod-E（StarterKit 默认）切换
@@ -3054,7 +3055,9 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
   }, [cancelFormatPainter, editable, editor, isGuest, note.id, t]);
 
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || !editable || isGuest || editor.isDestroyed || !editor.isInitialized) return;
+
+    const editorDom = editor.view.dom;
 
     const attemptApply = () => {
       const format = formatPainterRef.current;
@@ -3130,7 +3133,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
     editor.on("selectionUpdate", handleSelectionUpdate);
     editor.on("transaction", handleTransaction);
     editor.on("blur", handleBlur);
-    editor.view.dom.addEventListener("pointerdown", handlePointerDown, { passive: true });
+    editorDom.addEventListener("pointerdown", handlePointerDown, { passive: true });
     window.addEventListener("pointerup", handlePointerUp, { passive: true });
     window.addEventListener("pointercancel", handlePointerUp, { passive: true });
 
@@ -3138,12 +3141,12 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       editor.off("selectionUpdate", handleSelectionUpdate);
       editor.off("transaction", handleTransaction);
       editor.off("blur", handleBlur);
-      editor.view.dom.removeEventListener("pointerdown", handlePointerDown);
+      editorDom.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
       if (formatPainterApplyTimerRef.current) clearTimeout(formatPainterApplyTimerRef.current);
     };
-  }, [cancelFormatPainter, editor, t]);
+  }, [cancelFormatPainter, editable, editor, isGuest, t]);
 
   useEffect(() => {
     cancelFormatPainter();
