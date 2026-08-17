@@ -467,7 +467,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const noteActivationGuard = useMemo(() => new NoteActivationGuard(), []);
   const profiledDispatch = useCallback<React.Dispatch<Action>>((action) => {
     if (action.type === "BEGIN_NOTE_LOAD") {
-      noteActivationGuard.begin(action.payload);
+      noteActivationGuard.begin(action.payload, stateRef.current.activeNote?.id ?? null);
     } else if (action.type === "FAIL_NOTE_LOAD") {
       noteActivationGuard.fail(action.payload.requestId);
     } else if (action.type === "FINISH_NOTE_LOAD") {
