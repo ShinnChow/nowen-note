@@ -13,18 +13,30 @@ export interface NoteActivationIntent {
  * dispatch boundary without cancelling the old note's actual persistence request.
  */
 export class NoteActivationGuard {
-  private intent: (NoteActivationIntent & { targetDispatched: boolean }) | null = null;
+  private intent: (NoteActivationIntent & {
+    sourceNoteId: string | null;
+    targetDispatched: boolean;
+  }) | null = null;
 
-  begin(intent: NoteActivationIntent): void {
-    this.intent = { ...intent, targetDispatched: false };
+  begin(intent: NoteActivationIntent, sourceNoteId: string | null): void {
+    this.intent = { ...intent, sourceNoteId, targetDispatched: false };
   }
 
   allowActiveNote(noteId: string | null): boolean {
     const intent = this.intent;
     if (!intent || noteId === null) return true;
-    if (noteId !== intent.noteId) return false;
-    intent.targetDispatched = true;
-    return true;
+
+    if (noteId === intent.noteId) {
+      intent.targetDispatched = true;
+      return true;
+    }
+
+    // While the target is still loading, the source note remains the visible/authoritative note.
+    // Its save acknowledgements are safe and must keep updating version/sync metadata. Once the
+    // target activation has been dispatched, however, the source is stale until React commits it.
+    if (!intent.targetDispatched && noteId === intent.sourceNoteId) return true;
+
+    return false;
   }
 
   fail(requestId: number): void {
