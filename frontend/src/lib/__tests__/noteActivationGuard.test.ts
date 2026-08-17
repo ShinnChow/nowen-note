@@ -3,11 +3,14 @@ import { describe, expect, it } from "vitest";
 import { NoteActivationGuard } from "@/lib/noteActivationGuard";
 
 describe("NoteActivationGuard", () => {
-  it("blocks the previous note until the requested note is committed", () => {
+  it("allows source saves while loading, then blocks them after target activation dispatch", () => {
     const guard = new NoteActivationGuard();
-    guard.begin({ requestId: 1, noteId: "note-b" });
+    guard.begin({ requestId: 1, noteId: "note-b" }, "note-a");
 
-    expect(guard.allowActiveNote("note-a")).toBe(false);
+    // A stays authoritative while B is still loading, so normal save/version acknowledgements
+    // must not be lost if B eventually fails.
+    expect(guard.allowActiveNote("note-a")).toBe(true);
+
     expect(guard.allowActiveNote("note-b")).toBe(true);
 
     // NoteLoadCoordinator finishes in the same async turn as SET_ACTIVE_NOTE. Keep guarding until
@@ -19,28 +22,35 @@ describe("NoteActivationGuard", () => {
     expect(guard.allowActiveNote("note-a")).toBe(true);
   });
 
+  it("blocks unrelated note activations while the requested target is loading", () => {
+    const guard = new NoteActivationGuard();
+    guard.begin({ requestId: 2, noteId: "note-b" }, "note-a");
+
+    expect(guard.allowActiveNote("note-c")).toBe(false);
+  });
+
   it("releases the guard when a load is cancelled before the target is activated", () => {
     const guard = new NoteActivationGuard();
-    guard.begin({ requestId: 2, noteId: "note-b" });
+    guard.begin({ requestId: 3, noteId: "note-b" }, "note-a");
 
-    guard.finish(2);
+    guard.finish(3);
 
-    expect(guard.allowActiveNote("note-a")).toBe(true);
+    expect(guard.allowActiveNote("note-c")).toBe(true);
   });
 
   it("releases the guard when a load fails", () => {
     const guard = new NoteActivationGuard();
-    guard.begin({ requestId: 3, noteId: "note-b" });
+    guard.begin({ requestId: 4, noteId: "note-b" }, "note-a");
 
-    guard.fail(3);
+    guard.fail(4);
 
-    expect(guard.allowActiveNote("note-a")).toBe(true);
+    expect(guard.allowActiveNote("note-c")).toBe(true);
   });
 
   it("keeps the newest load intent authoritative", () => {
     const guard = new NoteActivationGuard();
-    guard.begin({ requestId: 4, noteId: "note-b" });
-    guard.begin({ requestId: 5, noteId: "note-c" });
+    guard.begin({ requestId: 5, noteId: "note-b" }, "note-a");
+    guard.begin({ requestId: 6, noteId: "note-c" }, "note-a");
 
     expect(guard.allowActiveNote("note-b")).toBe(false);
     expect(guard.allowActiveNote("note-c")).toBe(true);
