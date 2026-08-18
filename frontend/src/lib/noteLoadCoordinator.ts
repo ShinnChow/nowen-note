@@ -9,19 +9,19 @@ export interface NoteLoadSummary {
   contentFormat?: string;
 }
 
+export interface NoteLoadBeginPayload {
+  requestId: number;
+  noteId: string;
+  summary: NoteLoadSummary;
+  startedAt: number;
+}
+
 export interface NoteLoadSink {
   begin(payload: NoteLoadBeginPayload): void;
   show(requestId: number): void;
   markSlow(requestId: number): void;
   finish(requestId: number): void;
   fail(requestId: number, error: string): void;
-}
-
-export interface NoteLoadBeginPayload {
-  requestId: number;
-  noteId: string;
-  summary: NoteLoadSummary;
-  startedAt: number;
 }
 
 export interface NoteLoadOptions<T> {
