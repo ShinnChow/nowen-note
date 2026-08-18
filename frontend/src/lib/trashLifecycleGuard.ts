@@ -146,7 +146,7 @@ export function installTrashLifecycleGuard(): void {
   installed = true;
 
   // NoteIconBridge 也会包装 getNotes；这里继续链式包装，不改变 API 返回值。
-  const apiAny = api as typeof api & { __trashLifecycleGuardInstalled?: boolean } & Record<string, any>;
+  const apiAny = api as any;
   if (!apiAny.__trashLifecycleGuardInstalled) {
     apiAny.__trashLifecycleGuardInstalled = true;
     const originalGetNotes = typeof apiAny.getNotes === "function" ? apiAny.getNotes.bind(apiAny) : null;
