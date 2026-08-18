@@ -15,6 +15,7 @@ import NoteIconBridge from "./components/NoteIconBridge";
 import EmbedPasswordBridge from "./components/EmbedPasswordBridge";
 import MediaExperienceBridge from "./components/MediaExperienceBridge";
 import EditorImageTransformBridge from "./components/EditorImageTransformBridge";
+import ImageClipboardBridge from "./components/ImageClipboardBridge";
 import MarkdownMobileViewControlsBridge from "./components/MarkdownMobileViewControlsBridge";
 import DesktopUpdateCenter from "./components/DesktopUpdateCenter";
 import DockerUpdateCenter from "./components/DockerUpdateCenter";
@@ -157,6 +158,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <EmbedPasswordBridge />
             <MediaExperienceBridge />
             <EditorImageTransformBridge />
+            <ImageClipboardBridge />
             <MarkdownMobileViewControlsBridge />
             <DesktopUpdateCenter />
             <DockerUpdateCenter />
