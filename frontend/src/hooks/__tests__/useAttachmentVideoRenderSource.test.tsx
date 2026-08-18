@@ -71,8 +71,8 @@ describe("useAttachmentVideoRenderSource", () => {
       root.render(<Probe />);
     });
 
-    const video = host.querySelector("video");
-    expect(video?.getAttribute("src")).toBe(`https://note.example.com${PERSISTED_SRC}`);
+    expect(host.querySelector("video")?.getAttribute("src"))
+      .toBe(`https://note.example.com${PERSISTED_SRC}`);
 
     fixture.signedUrl = `${PERSISTED_SRC}?exp=123&sig=signed&scope=user`;
     await act(async () => {
@@ -80,8 +80,9 @@ describe("useAttachmentVideoRenderSource", () => {
       fixture.listener?.();
     });
 
-    expect(video?.getAttribute("src")).toBe(fixture.signedUrl);
-    expect(video?.getAttribute("data-render-key")).toBe(fixture.signedUrl);
+    const refreshedVideo = host.querySelector("video");
+    expect(refreshedVideo?.getAttribute("src")).toBe(fixture.signedUrl);
+    expect(refreshedVideo?.getAttribute("data-render-key")).toBe(fixture.signedUrl);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
