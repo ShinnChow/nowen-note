@@ -66,7 +66,7 @@ function compactMimeLabel(mimeType: string): string {
     png: "PNG",
     webp: "WEBP",
     gif: "GIF",
-    svg+xml: "SVG",
+    "svg+xml": "SVG",
     pdf: "PDF",
     plain: "TXT",
     markdown: "MD",
