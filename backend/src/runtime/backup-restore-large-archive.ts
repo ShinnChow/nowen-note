@@ -495,6 +495,7 @@ function installLargeArchiveRestorePatch(): void {
 
   const nativeRestore = prototype.restoreFromBackup;
   prototype.restoreFromBackup = async function restoreFromBackupStreaming(
+    this: BackupManager,
     filename: string,
     opts: { dryRun?: boolean } = {},
   ): Promise<RestoreResult> {
@@ -510,7 +511,7 @@ function installLargeArchiveRestorePatch(): void {
     }
 
     if (!isZip) {
-      return nativeRestore.call(this as unknown as BackupManager, filename, opts);
+      return nativeRestore.call(this, filename, opts);
     }
 
     try {
