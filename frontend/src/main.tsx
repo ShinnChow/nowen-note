@@ -64,7 +64,6 @@ import { installInlineCommentTooltipMount } from "./lib/inlineCommentTooltipMoun
 import { resolveCurrentAppPathname } from "./lib/appPathNavigation";
 import { installUgreenCredentialedFetch } from "./lib/ugreenRemoteAccess";
 import { observeBootSplashReadiness } from "./lib/bootSplash";
-import { installTrashLifecycleGuard } from "./lib/trashLifecycleGuard";
 
 const App = React.lazy(() => import("./App"));
 const PublicNotebookView = React.lazy(() => import("./components/PublicNotebookView"));
@@ -113,7 +112,6 @@ installRoundTripPermissionExportBridge();
 installEditorPerformanceGlobal();
 installIssue210SignoffRuntime();
 installInlineCommentTooltipMount();
-installTrashLifecycleGuard();
 
 initCodeBlockTheme();
 
