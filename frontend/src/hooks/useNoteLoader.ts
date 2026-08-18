@@ -137,7 +137,13 @@ export function useNoteLoader() {
   }, [actions, sink]);
 
   const retryNoteLoad = useCallback(() => primaryNoteLoadCoordinator.retry(), []);
-  const cancelNoteLoad = useCallback(() => primaryNoteLoadCoordinator.cancel(), []);
+  const cancelNoteLoad = useCallback(() => {
+    primaryNoteLoadCoordinator.cancel();
+    // Failed requests are no longer "active" inside the coordinator, but the AppContext
+    // still keeps their visible error overlay. Clearing it here lets clicking the note
+    // that is still displayed behind the failure recover immediately without a full refresh.
+    actions.setNoteLoading(false);
+  }, [actions]);
 
   return { loadNote, retryNoteLoad, cancelNoteLoad };
 }
