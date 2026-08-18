@@ -93,6 +93,17 @@ export function buildImageClipboardPasteTransaction(
   const sourceFrom = payload.sourcePos;
   const sourceTo = sourceFrom + sourceNode.nodeSize;
 
+  if (payload.mode === "cut" && selection instanceof NodeSelection && selection.from === sourceFrom) {
+    return { status: "same-position" };
+  }
+  if (
+    payload.mode === "cut"
+    && !selection.empty
+    && rangesOverlap(selection.from, selection.to, sourceFrom, sourceTo)
+  ) {
+    return { status: "same-position" };
+  }
+
   let targetFrom = selection.from;
   let targetTo = selection.to;
   if (selection instanceof NodeSelection) {
@@ -100,13 +111,6 @@ export function buildImageClipboardPasteTransaction(
     // produces the intuitive "duplicate after current image" behavior instead of replacing it.
     targetFrom = selection.to;
     targetTo = selection.to;
-  }
-
-  if (payload.mode === "cut" && rangesOverlap(targetFrom, targetTo || targetFrom + 1, sourceFrom, sourceTo)) {
-    return { status: "same-position" };
-  }
-  if (payload.mode === "cut" && targetFrom === sourceFrom && targetTo === sourceTo) {
-    return { status: "same-position" };
   }
 
   let transaction = state.tr;
