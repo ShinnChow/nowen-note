@@ -6,8 +6,9 @@
 #   1. clean the output directory selected for this run, preventing stale output
 #      from winning the legacy candidate-order lookup;
 #   2. stage new GitHub Releases as drafts;
-#   3. download and verify remote updater metadata/assets before publishing;
-#   4. normalize release-only native/Android toolchains to supported baselines.
+#   3. collect CI-only macOS artifacts into that draft without letting Actions publish;
+#   4. download and verify remote updater metadata/assets before publishing;
+#   5. normalize release-only native/Android toolchains to supported baselines.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -150,7 +151,13 @@ if [ "$HELP_ONLY" = "1" ] || [ "$DRY_RUN" = "1" ] || [ "$BUILD_ONLY" = "1" ]; th
 fi
 
 LOG_FILE="$(mktemp "${TMPDIR:-/tmp}/nowen-release-guard.XXXXXX.log")"
-cleanup() { rm -f -- "$LOG_FILE"; }
+CI_ARTIFACT_DIR=""
+cleanup() {
+  rm -f -- "$LOG_FILE"
+  if [ -n "$CI_ARTIFACT_DIR" ]; then
+    rm -rf -- "$CI_ARTIFACT_DIR"
+  fi
+}
 trap cleanup EXIT
 
 set +e
@@ -170,6 +177,126 @@ command -v gh >/dev/null 2>&1 || { echo "[release-guard] gh is required for remo
 VERSION="$(cd "$REPO_ROOT" && node -p 'require("./package.json").version' 2>/dev/null || true)"
 [ -n "$VERSION" ] || { echo "[release-guard] unable to read package.json version" >&2; exit 1; }
 TAG="v${VERSION}"
+
+release_has_mac_assets() {
+  gh release view "$TAG" --repo "$GITHUB_REPO_SLUG" --json assets --jq '.assets[].name' 2>/dev/null \
+    | grep -Eq "^Nowen-Note-${VERSION}-(x64|arm64)\\.dmg$"
+}
+
+wait_for_tag_workflow_run() {
+  local tag_sha="$1"
+  local deadline="$2"
+  local run_id=""
+
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    run_id="$(gh run list \
+      --repo "$GITHUB_REPO_SLUG" \
+      --workflow release.yml \
+      --event push \
+      --commit "$tag_sha" \
+      --limit 10 \
+      --json databaseId,createdAt \
+      --jq 'sort_by(.createdAt) | last | .databaseId // empty' 2>/dev/null || true)"
+    if [ -n "$run_id" ]; then
+      printf '%s' "$run_id"
+      return 0
+    fi
+    sleep 5
+  done
+  return 1
+}
+
+collect_ci_mac_assets() {
+  local timeout_seconds="${NOWEN_RELEASE_CI_ARTIFACT_TIMEOUT_SECONDS:-2700}"
+  local deadline=$((SECONDS + timeout_seconds))
+  local tag_sha
+  local run_id
+  local artifact_id=""
+  local run_state=""
+
+  tag_sha="$(git -C "$REPO_ROOT" rev-list -n 1 "$TAG" 2>/dev/null || true)"
+  [ -n "$tag_sha" ] || { echo "[release-guard] cannot resolve ${TAG} commit" >&2; return 1; }
+
+  echo
+  echo "==== 汇总 GitHub Actions macOS 构建产物 ===="
+  echo "[release-guard] waiting for tag workflow: ${TAG} @ ${tag_sha:0:12}"
+
+  if ! run_id="$(wait_for_tag_workflow_run "$tag_sha" "$deadline")"; then
+    echo "[release-guard] tag workflow did not appear within ${timeout_seconds}s" >&2
+    return 1
+  fi
+  echo "[release-guard] workflow run: ${run_id}"
+
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    artifact_id="$(gh api \
+      "repos/${GITHUB_REPO_SLUG}/actions/runs/${run_id}/artifacts?per_page=100" \
+      --jq '.artifacts[] | select(.name == "nowen-note-mac" and .expired == false) | .id' \
+      2>/dev/null | head -n1 || true)"
+    if [ -n "$artifact_id" ]; then
+      break
+    fi
+
+    run_state="$(gh run view "$run_id" \
+      --repo "$GITHUB_REPO_SLUG" \
+      --json status,conclusion \
+      --jq '[.status, (.conclusion // "")] | join(":")' 2>/dev/null || true)"
+    if [[ "$run_state" == completed:* ]]; then
+      echo "[release-guard] macOS artifact missing after workflow completed (${run_state})" >&2
+      return 1
+    fi
+    sleep 10
+  done
+
+  if [ -z "$artifact_id" ]; then
+    echo "[release-guard] timed out waiting for nowen-note-mac artifact" >&2
+    return 1
+  fi
+
+  CI_ARTIFACT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/nowen-release-mac.XXXXXX")"
+  gh run download "$run_id" \
+    --repo "$GITHUB_REPO_SLUG" \
+    --name nowen-note-mac \
+    --dir "$CI_ARTIFACT_DIR"
+
+  local mac_assets=()
+  while IFS= read -r file; do
+    mac_assets+=("$file")
+  done < <(
+    find "$CI_ARTIFACT_DIR" -type f \( \
+      -name "Nowen-Note-${VERSION}-*.dmg" -o \
+      -name "Nowen-Note-${VERSION}-*.dmg.blockmap" -o \
+      -name "Nowen-Note-${VERSION}-*.zip" -o \
+      -name "Nowen-Note-${VERSION}-*.zip.blockmap" -o \
+      -name "latest-mac.yml" \
+    \) -print | sort
+  )
+
+  if [ "${#mac_assets[@]}" -eq 0 ]; then
+    echo "[release-guard] nowen-note-mac artifact contains no release assets for ${VERSION}" >&2
+    return 1
+  fi
+
+  echo "[release-guard] uploading ${#mac_assets[@]} macOS assets through the single local publisher"
+  for file in "${mac_assets[@]}"; do
+    echo "    - $(basename "$file")"
+  done
+  gh release upload "$TAG" \
+    --repo "$GITHUB_REPO_SLUG" \
+    --clobber \
+    "${mac_assets[@]}"
+}
+
+# Linux/Windows maintainers cannot build notarized macOS packages locally. Tag Actions now
+# only uploads workflow artifacts, so the local release guard is the sole component allowed
+# to copy those CI outputs into the Draft Release. Skip this wait when macOS assets already
+# exist (e.g. a release run started on macOS or an upload-only repair).
+if grep -q "PC 产物" "$LOG_FILE" && ! release_has_mac_assets; then
+  if ! collect_ci_mac_assets; then
+    echo "[release-guard] failed to collect CI macOS assets; keeping ${TAG} as draft" >&2
+    gh release edit "$TAG" --repo "$GITHUB_REPO_SLUG" --draft=true >/dev/null 2>&1 || true
+    exit 1
+  fi
+fi
 
 echo
 echo "==== 验证 GitHub Release 更新元数据与远端资产 ===="

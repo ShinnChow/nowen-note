@@ -1,21 +1,9 @@
-# 三平台打包 + 可选发布到 GitHub Release
+# 三平台构建工作流。
 #
-# 触发方式：
-#   1. push tag v*.*.*  → 自动打包并发布到对应 Release（草稿）
-#   2. workflow_dispatch → 手动触发，可选不发布
-#
-# 需配置的 Secrets（在仓库 Settings → Secrets and variables → Actions）：
-#   GH_TOKEN                      : 默认 ${{ secrets.GITHUB_TOKEN }} 即可
-#   # Windows 代码签名（可选）：
-#   WIN_CSC_LINK                  : 证书 .pfx 的 base64（或可访问的 URL）
-#   WIN_CSC_KEY_PASSWORD          : 证书密码
-#   # macOS 代码签名 + 公证（可选）：
-#   MAC_CSC_LINK 或 CSC_LINK      : .p12 证书 base64
-#   MAC_CSC_KEY_PASSWORD 或 CSC_KEY_PASSWORD : p12 密码
-#   APPLE_API_KEY                 : App Store Connect API Key 文件内容（base64 或 p8 原文）
-#   APPLE_API_KEY_ID              : Key ID
-#   APPLE_API_ISSUER              : Issuer ID
-#   或：APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+# 发布职责约束：
+#   - push tag v*.*.* 只触发 Windows/macOS/Linux 构建并上传 workflow artifacts；
+#   - GitHub Release 由本地 scripts/release.sh 唯一负责创建 Draft、上传资产、校验并转正式；
+#   - 本工作流禁止 electron-builder 直接发布 Release，避免与本地发布脚本并发写同一 Release。
 
 name: Build & Release
 
@@ -24,18 +12,9 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "发布到 GitHub Releases（always/never）"
-        required: false
-        default: "never"
-        type: choice
-        options:
-          - never
-          - always
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -60,16 +39,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
       # ---------------------------------------------------------------
       # 依赖安装
       # 关键点：
-      #   1. 不使用 --ignore-scripts。better-sqlite3 / sharp 等原生模块需要 postinstall
-      #      下载 prebuilt 或本地编译，跳过会导致后续 rebuild:native 找不到源。
-      #   2. backend 的 better-sqlite3 必须 rebuild 成 Electron ABI（见后续 step），
-      #      仅靠 npm ci 安装的是 Node ABI，运行时会 ERR_DLOPEN_FAILED。
+      #   1. 不使用 --ignore-scripts。better-sqlite3 / sharp 等原生模块需要 postinstall；
+      #   2. Capacitor 8 要求 Node.js >= 22，因此 CI 统一使用 Node 22；
+      #   3. backend 的 better-sqlite3 后续仍需 rebuild 成 Electron ABI。
       # ---------------------------------------------------------------
       - name: Install root deps
         run: npm ci
@@ -85,12 +63,6 @@ jobs:
         run: npm ci
         shell: bash
 
-      # ---------------------------------------------------------------
-      # Linux 上 electron 装包后跑 install-app-deps 时需要 build-essential 等；
-      # ubuntu-latest 镜像默认已带 gcc/make/python3，better-sqlite3 能直接编译。
-      # macOS / Windows 镜像也已自带相应工具链，无需额外 setup。
-      # ---------------------------------------------------------------
-
       - name: Fetch embedded Node binary
         run: npm run fetch:node
         shell: bash
@@ -100,10 +72,8 @@ jobs:
         shell: bash
 
       # ---------------------------------------------------------------
-      # 把 backend/node_modules/better-sqlite3 重编为当前 Electron ABI
-      # 等价于本地 release.sh 跑的 npm run rebuild:native（@electron/rebuild）
-      # 不做这步，builder.config.js 的 beforeBuild 校验会直接 throw：
-      #   [builder] better-sqlite3 原生模块不存在：.../better_sqlite3.node
+      # 把 backend/node_modules/better-sqlite3 重编为当前 Electron ABI。
+      # macOS 会按 x64 / arm64 分别重建，因此这里跳过 macOS。
       # ---------------------------------------------------------------
       - name: Rebuild native modules for Electron ABI
         if: matrix.os != 'macos-latest'
@@ -149,53 +119,44 @@ jobs:
         shell: bash
 
       # ========= 打包 =========
-      # 注意：electron-builder 这里不再让它自己 install-app-deps —— 我们已经在上面用
-      #       @electron/rebuild 把 backend 的 better-sqlite3 编好了，再让 builder
-      #       去 npm rebuild 反而会把它退回 Node ABI。所以加 --config.npmRebuild=false
-      #       不行（25.x 没这个 flag），我们改成依赖 builder.config.js 自身的 files 配置 +
-      #       extraResources 直接拷贝 backend/node_modules，不再二次重建。
+      # 这里显式使用 --publish never：即使由 tag push 触发，也绝不创建/修改 GitHub Release。
+      # Release 的唯一发布者是 scripts/release.sh。
       - name: Build Electron (Windows)
         if: matrix.os == 'windows-latest'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --config electron/builder.config.js --win --publish ${{ github.event_name == 'push' && 'always' || inputs.publish || 'never' }}
+        run: npx electron-builder --config electron/builder.config.js --win --publish never
         shell: bash
 
       - name: Build Electron (macOS x64 / Intel)
         if: matrix.os == 'macos-latest'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ env.CSC_LINK == '' && 'false' || 'true' }}
           NOWEN_MAC_ARCH: x64
           TARGET_ARCH: x64
           npm_config_target_arch: x64
         run: |
           npm run rebuild:native -- --target-platform=darwin --target-arch=x64
-          npx electron-builder --config electron/builder.config.js --mac --publish ${{ github.event_name == 'push' && 'always' || inputs.publish || 'never' }}
+          npx electron-builder --config electron/builder.config.js --mac --publish never
         shell: bash
 
       - name: Build Electron (macOS arm64 / Apple Silicon)
         if: matrix.os == 'macos-latest'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ env.CSC_LINK == '' && 'false' || 'true' }}
           NOWEN_MAC_ARCH: arm64
           TARGET_ARCH: arm64
           npm_config_target_arch: arm64
         run: |
           npm run rebuild:native -- --target-platform=darwin --target-arch=arm64
-          npx electron-builder --config electron/builder.config.js --mac --publish ${{ github.event_name == 'push' && 'always' || inputs.publish || 'never' }}
+          npx electron-builder --config electron/builder.config.js --mac --publish never
         shell: bash
 
       - name: Build Electron (Linux)
         if: matrix.os == 'ubuntu-latest'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --config electron/builder.config.js --linux --publish ${{ github.event_name == 'push' && 'always' || inputs.publish || 'never' }}
+        run: npx electron-builder --config electron/builder.config.js --linux --publish never
         shell: bash
 
-      # ========= 上传构建产物作为 workflow artifact（便于下载调试） =========
-      # builder.config.js 中 directories.output 默认为 dist-electron（CI 未设 NOWEN_BUILD_OUT）
+      # ========= 上传构建产物作为 workflow artifact =========
+      # 这里只保存 CI 构建结果，方便下载、比对和补包；不会写入 GitHub Release。
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
