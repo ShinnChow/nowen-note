@@ -67,6 +67,28 @@
         html[data-keyboard="open"] header[data-mobile-editor-compact="true"] > div:nth-of-type(2) > button.hidden {
           display: inline-flex !important;
         }
+
+        /* 展开的格式工具栏本身会换行并纵向溢出，但组件基础类带有 touch-pan-x，
+           会阻止手机端纵向拖动。展开态统一交回纵向滚动，同时禁止 flex 把面板
+           压到内容高度以下，确保被 max-height 收起的按钮仍可通过滚动访问。 */
+        [data-mobile-editor-toolbar="expanded"],
+        [data-markdown-mobile-toolbar="expanded"] {
+          flex-shrink: 0 !important;
+          touch-action: pan-y !important;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+          align-content: flex-start;
+        }
+
+        /* adjustNothing + Keyboard.resize:none 下 CSS 视口仍是全屏高度，因此键盘打开时
+           不能继续只用 vh 判断展开面板。减去原生上报的键盘高度和顶部区域预算，
+           让面板始终停留在输入法上方；空间不足时由面板自身纵向滚动。 */
+        html[data-keyboard="open"] [data-mobile-editor-toolbar="expanded"],
+        html[data-keyboard="open"] [data-markdown-mobile-toolbar="expanded"] {
+          max-height: max(8rem, calc(100dvh - var(--keyboard-height, 0px) - var(--safe-area-top, 0px) - 10rem)) !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+        }
       }
 
       @keyframes appBootSpin { to { transform: rotate(360deg); } }
