@@ -12,6 +12,59 @@
 
 <!-- ADD_NEW_HERE -->
 
+## v1.4.14 - 2026-08-18
+
+### ✨ 新增
+
+- **移动端**: 折叠文件详情辅助信息 (9f6a2ba)
+- **移动端图片**: 挂载图片剪贴操作桥 (6dd100b)
+- **移动端图片**: 增加复制剪切粘贴桥 (a1dae47)
+- **图片**: 增加富文本图片节点剪贴事务 (966d5d2)
+- **markdown**: 选中文字支持语法符号自动包裹 (#726) (55a78c5)
+
+### 🐛 修复
+
+- **备份**: 修复流式恢复 TypeScript this 类型 (b603421)
+- **移动端**: 修正文件类型摘要映射 (357a8bd)
+- **图片**: 剪切未选目标时保持待移动状态 (2ce8ae2)
+- **视频**: 签名刷新后自动恢复播放器 (268ab6e)
+- **视频**: 跟随附件签名地址刷新播放源 (aaf59c9)
+- **图片菜单**: 滚动时保持工具栏锚定图片 (0b164ad)
+- **图片**: 旋转后保持编辑菜单选中状态 (cb78ef8)
+- **备份**: 增加流式恢复启动守卫 (2a7d554)
+- **备份**: 校验大归档流式恢复启动 (84ac455)
+- **export**: include team root documents in note selection (9b7e4f2)
+- **mobile**: prevent note list text selection on long press (37726ea)
+- **mobile**: keep context menu inside viewport (171ddf4)
+- **android**: restore native text selection actions (787964e)
+- **notes**: preserve source note while target is loading (3670460)
+- **notes**: narrow stale activation guard to commit race (8af8074)
+- **notes**: prevent stale save ack from restoring previous note (52168b2)
+- **notes**: add active-note switch intent guard (95d30bc)
+- **export**: rasterize Mermaid before image capture (#728) (3846119)
+- **export**: render Mermaid diagrams in image exports (#728) (2c0c144)
+- **mobile**: 修复权限分享与公共空间导航 (00e41fc)
+- **浏览器插件**: 增加登录会话自动续期 (a242997)
+- enable streaming full backup restore (5775560)
+- stream large full backup restores (8835262)
+
+### ✅ 测试
+
+- **图片**: 覆盖移动端图片复制剪切粘贴 (11def44)
+- **视频**: 修正播放器重建后的断言 (2bbcd0a)
+- **视频**: 覆盖签名地址晚到后的播放源恢复 (fb98237)
+- **图片**: 覆盖旋转后保持节点选中 (92ad393)
+- **备份**: 锁定大归档恢复生产入口 (cdb23ec)
+- **export**: cover team root document markdown zip (792cf2e)
+- **notes**: cover source-note save during switch (2b37639)
+- **notes**: cover stale activation guard (527dbe5)
+- guard streaming large backup restore (4cb010d)
+
+### 📌 杂项
+
+- 修复(移动端)：确保展开工具栏可完整滚动 (63d2383)
+- 修复(移动端)：输入法弹出时保持顶部工具栏布局 (2783ba7)
+
 ## v1.4.13 - 2026-08-14
 
 ### ✨ 新增
