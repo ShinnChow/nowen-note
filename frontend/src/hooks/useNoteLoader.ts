@@ -11,6 +11,7 @@ import {
   loadNoteCacheFirst,
 } from "@/lib/noteLoadSource";
 import { loadDraft } from "@/lib/draftStorage";
+import { toast } from "@/lib/toast";
 import {
   getEditorRuntimeDecisionForNote,
   getLargeDocumentOriginalFormat,
@@ -84,6 +85,7 @@ export function useNoteLoader() {
       actions.setNoteLoading(false);
       actions.setActiveNote(null);
       actions.setMobileView("list");
+      toast.info("该笔记位于回收站，恢复后即可重新查看和编辑内容");
       return Promise.resolve(undefined);
     }
 
