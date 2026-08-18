@@ -44,11 +44,10 @@ function reconcileCards(): void {
 
     const card = findNoteCard(title);
     if (!card) continue;
-    card.dataset.nowenNoteId = noteId;
     if (trashedNoteIds.has(noteId)) {
-      card.dataset.nowenTrashedNote = "1";
+      card.dataset.nowenTrashedNoteId = noteId;
     } else {
-      delete card.dataset.nowenTrashedNote;
+      delete card.dataset.nowenTrashedNoteId;
       if (card.dataset.nowenTrashSelected === "1") {
         delete card.dataset.nowenTrashSelected;
         card.classList.remove("bg-accent-primary/10", "border-accent-primary/40", "shadow-sm");
@@ -106,10 +105,10 @@ function handleDocumentClick(event: MouseEvent): void {
   if (event.ctrlKey || event.metaKey || event.shiftKey) return;
   if (!(event.target instanceof Element)) return;
 
-  const card = event.target.closest<HTMLElement>("[data-nowen-trashed-note='1']");
+  const card = event.target.closest<HTMLElement>("[data-nowen-trashed-note-id]");
   if (!card) return;
 
-  const noteId = card.dataset.nowenNoteId || "";
+  const noteId = card.dataset.nowenTrashedNoteId || "";
   if (!noteId || !trashedNoteIds.has(noteId)) return;
 
   // 在 React NoteCard 的 onClick 之前阻断事件。这样不会进入 handleSelectNote，
@@ -125,7 +124,13 @@ function startDomGuard(): void {
   if (!document.body) return;
   document.addEventListener("click", handleDocumentClick, true);
   observer = new MutationObserver(scheduleReconcile);
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    // 只关注 NoteIconBridge 产生的稳定 noteId 身份；守卫自己的 data-* 不触发回调。
+    attributeFilter: ["data-nowen-note-id"],
+  });
   scheduleReconcile();
 }
 
