@@ -14,6 +14,9 @@ const {
   validateLocalMetadataFiles,
   verifyLocalDirectory,
 } = require("./lib/update-metadata-validator.cjs");
+const {
+  assertCompleteMacReleaseAssets,
+} = require("./lib/release-platform-assets.cjs");
 
 function die(message) {
   console.error(`[update-release] ${message}`);
@@ -70,6 +73,7 @@ function verifyRemoteRelease({ repo, tag, version }) {
     run("gh", ["release", "view", tag, "--repo", repo, "--json", "assets,isDraft,url"], { capture: true }),
   );
   const assets = Array.isArray(view.assets) ? view.assets : [];
+  const assetNames = assets.map((asset) => asset.name);
   const byName = new Map(assets.map((asset) => [asset.name, asset]));
   const metadataAssets = assets.filter((asset) => isUpdateMetadataName(asset.name));
   const hasDesktopAssets = assets.some((asset) => isDesktopUpdaterAsset(asset.name));
@@ -78,6 +82,16 @@ function verifyRemoteRelease({ repo, tag, version }) {
     if (hasDesktopAssets) throw new Error("desktop updater binaries were uploaded without update metadata");
     console.log(`[update-release] ${tag}: no desktop updater assets, remote metadata check skipped`);
     return { metadataFiles: [], assets: [] };
+  }
+
+  // A standard Nowen Note desktop release publishes the stable Windows and Linux
+  // updater channels together. When both are present, macOS is part of the same
+  // supported desktop matrix and must never silently disappear from the Release.
+  // This catches the v1.4.15 failure mode where Windows/Linux metadata was valid
+  // while every macOS asset was absent.
+  if (byName.has("latest.yml") && byName.has("latest-linux.yml")) {
+    const releaseVersion = String(version || tag || "").replace(/^v/, "");
+    assertCompleteMacReleaseAssets(assetNames, releaseVersion, `remote Release ${tag} macOS assets`);
   }
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nowen-release-verify-"));
