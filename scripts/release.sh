@@ -201,6 +201,26 @@ release_has_complete_mac_assets() {
   return 0
 }
 
+ensure_desktop_platform_notes() {
+  local body
+  local marker="### 桌面端支持"
+  body="$(gh release view "$TAG" --repo "$GITHUB_REPO_SLUG" --json body --jq '.body // ""' 2>/dev/null || true)"
+  if printf '%s\n' "$body" | grep -Fq "$marker"; then
+    return 0
+  fi
+
+  local platform_notes
+  platform_notes=$'### 桌面端支持\n- Windows x64\n- macOS Intel x64\n- macOS Apple Silicon arm64\n- Linux x64'
+  local updated_body="$platform_notes"
+  if [ -n "$body" ]; then
+    updated_body="${body}"$'\n\n'"${platform_notes}"
+  fi
+
+  gh release edit "$TAG" \
+    --repo "$GITHUB_REPO_SLUG" \
+    --notes "$updated_body" >/dev/null
+}
+
 wait_for_tag_workflow_run() {
   local tag_sha="$1"
   local deadline="$2"
@@ -329,6 +349,12 @@ if grep -q "PC 产物" "$LOG_FILE"; then
 
   if ! release_has_complete_mac_assets; then
     echo "[release-guard] macOS release assets are still incomplete after CI collection; keeping ${TAG} as draft" >&2
+    gh release edit "$TAG" --repo "$GITHUB_REPO_SLUG" --draft=true >/dev/null 2>&1 || true
+    exit 1
+  fi
+
+  if ! ensure_desktop_platform_notes; then
+    echo "[release-guard] failed to update desktop platform notes; keeping ${TAG} as draft" >&2
     gh release edit "$TAG" --repo "$GITHUB_REPO_SLUG" --draft=true >/dev/null 2>&1 || true
     exit 1
   fi
