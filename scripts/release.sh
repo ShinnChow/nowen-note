@@ -178,9 +178,27 @@ VERSION="$(cd "$REPO_ROOT" && node -p 'require("./package.json").version' 2>/dev
 [ -n "$VERSION" ] || { echo "[release-guard] unable to read package.json version" >&2; exit 1; }
 TAG="v${VERSION}"
 
-release_has_mac_assets() {
-  gh release view "$TAG" --repo "$GITHUB_REPO_SLUG" --json assets --jq '.assets[].name' 2>/dev/null \
-    | grep -Eq "^Nowen-Note-${VERSION}-(x64|arm64)\\.dmg$"
+required_mac_asset_names() {
+  cat <<EOF
+Nowen-Note-${VERSION}-x64.dmg
+Nowen-Note-${VERSION}-arm64.dmg
+Nowen-Note-${VERSION}-x64.zip
+Nowen-Note-${VERSION}-arm64.zip
+latest-mac.yml
+EOF
+}
+
+release_has_complete_mac_assets() {
+  local asset_names
+  asset_names="$(gh release view "$TAG" --repo "$GITHUB_REPO_SLUG" --json assets --jq '.assets[].name' 2>/dev/null || true)"
+  local required
+  while IFS= read -r required; do
+    [ -n "$required" ] || continue
+    if ! printf '%s\n' "$asset_names" | grep -Fxq "$required"; then
+      return 1
+    fi
+  done < <(required_mac_asset_names)
+  return 0
 }
 
 wait_for_tag_workflow_run() {
@@ -276,6 +294,15 @@ collect_ci_mac_assets() {
     return 1
   fi
 
+  local required
+  while IFS= read -r required; do
+    [ -n "$required" ] || continue
+    if ! find "$CI_ARTIFACT_DIR" -type f -name "$required" -print -quit | grep -q .; then
+      echo "[release-guard] nowen-note-mac artifact is incomplete; missing ${required}" >&2
+      return 1
+    fi
+  done < <(required_mac_asset_names)
+
   echo "[release-guard] uploading ${#mac_assets[@]} macOS assets through the single local publisher"
   for file in "${mac_assets[@]}"; do
     echo "    - $(basename "$file")"
@@ -288,11 +315,20 @@ collect_ci_mac_assets() {
 
 # Linux/Windows maintainers cannot build notarized macOS packages locally. Tag Actions now
 # only uploads workflow artifacts, so the local release guard is the sole component allowed
-# to copy those CI outputs into the Draft Release. Skip this wait when macOS assets already
-# exist (e.g. a release run started on macOS or an upload-only repair).
-if grep -q "PC 产物" "$LOG_FILE" && ! release_has_mac_assets; then
-  if ! collect_ci_mac_assets; then
-    echo "[release-guard] failed to collect CI macOS assets; keeping ${TAG} as draft" >&2
+# to copy those CI outputs into the Draft Release. A complete desktop release requires both
+# Intel and Apple Silicon DMG/ZIP packages plus latest-mac.yml. Any missing item keeps the
+# Release in Draft instead of publishing a partial desktop matrix.
+if grep -q "PC 产物" "$LOG_FILE"; then
+  if ! release_has_complete_mac_assets; then
+    if ! collect_ci_mac_assets; then
+      echo "[release-guard] failed to collect complete CI macOS assets; keeping ${TAG} as draft" >&2
+      gh release edit "$TAG" --repo "$GITHUB_REPO_SLUG" --draft=true >/dev/null 2>&1 || true
+      exit 1
+    fi
+  fi
+
+  if ! release_has_complete_mac_assets; then
+    echo "[release-guard] macOS release assets are still incomplete after CI collection; keeping ${TAG} as draft" >&2
     gh release edit "$TAG" --repo "$GITHUB_REPO_SLUG" --draft=true >/dev/null 2>&1 || true
     exit 1
   fi
