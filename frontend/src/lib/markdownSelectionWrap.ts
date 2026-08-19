@@ -2,6 +2,7 @@ import {
   EditorSelection,
   type EditorState,
   Prec,
+  Transaction,
   type Extension,
   type TransactionSpec,
 } from "@codemirror/state";
@@ -64,30 +65,26 @@ export function createMarkdownSelectionWrapSpec(
   });
 }
 
-function hasShortcutModifier(event: KeyboardEvent): boolean {
-  const altGraph = event.getModifierState?.("AltGraph") === true;
-  if (event.metaKey) return true;
-  if (altGraph) return false;
-  return event.ctrlKey || event.altKey;
-}
-
 /**
- * Highest-precedence key handler so Markdown delimiters get a chance to wrap selected
- * text before CodeMirror's close-brackets/default keymaps replace the selection.
+ * Highest-precedence CodeMirror input handler for Markdown selection wrapping.
+ *
+ * Using the editor's native text-input pipeline rather than a raw keydown listener keeps
+ * the behavior aligned with CodeMirror across keyboard layouts and IME/browser input.
+ * Clipboard paste/drop continue through CodeMirror's dedicated clipboard path and are
+ * therefore not treated as a typed delimiter.
  */
 export const markdownSelectionWrapExtension: Extension = Prec.highest(
-  EditorView.domEventHandlers({
-    keydown(event, view) {
-      if (event.isComposing || hasShortcutModifier(event)) return false;
-      if (!isMarkdownSelectionWrapDelimiter(event.key)) return false;
-      if (!view.state.facet(EditorView.editable)) return false;
+  EditorView.inputHandler.of((view, _from, _to, text) => {
+    if (!isMarkdownSelectionWrapDelimiter(text)) return false;
+    if (!view.state.facet(EditorView.editable)) return false;
 
-      const transaction = createMarkdownSelectionWrapSpec(view.state, event.key);
-      if (!transaction) return false;
+    const transaction = createMarkdownSelectionWrapSpec(view.state, text);
+    if (!transaction) return false;
 
-      event.preventDefault();
-      view.dispatch(transaction);
-      return true;
-    },
+    view.dispatch(transaction, {
+      annotations: Transaction.userEvent.of("input.type"),
+      scrollIntoView: true,
+    });
+    return true;
   }),
 );
