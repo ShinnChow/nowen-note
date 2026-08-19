@@ -21,6 +21,10 @@ function assertCommonContract(source) {
   assert.equal(count(source, /hash-algorithm="sha256"/g), 2);
   assert.equal(count(source, /product-version="\$\{version\}"/g), 2);
   assert.doesNotMatch(source, /path="[^\"]*\*/);
+  // SignPath OSS subscriptions enforce their own Authenticode watermark/description.
+  // Custom description fields are rejected by the service, so keep them absent.
+  assert.doesNotMatch(source, /authenticode-sign[^>]*\bdescription=/);
+  assert.doesNotMatch(source, /authenticode-sign[^>]*\bdescription-url=/);
 }
 
 test("Full Artifact Configuration only signs stable setup/portable executables", () => {
