@@ -53,6 +53,18 @@ test("本地发布守卫在正式校验前汇总完整 CI macOS 产物", async (
   assert.ok(verifyIndex > collectIndex, "必须先汇总并确认 macOS 产物完整，再执行远端 Release 校验");
 });
 
+test("完整桌面 Release 会写明四个平台支持情况", async () => {
+  const releaseGuard = await readRepoFile("scripts/release.sh");
+
+  assert.match(releaseGuard, /ensure_desktop_platform_notes/);
+  assert.match(releaseGuard, /### 桌面端支持/);
+  assert.match(releaseGuard, /Windows x64/);
+  assert.match(releaseGuard, /macOS Intel x64/);
+  assert.match(releaseGuard, /macOS Apple Silicon arm64/);
+  assert.match(releaseGuard, /Linux x64/);
+  assert.match(releaseGuard, /failed to update desktop platform notes; keeping \$\{TAG\} as draft/);
+});
+
 test("完整桌面 Release 的远端校验会阻止 macOS 平台整体缺失", async () => {
   const verifier = await readRepoFile("scripts/verify-release-update-assets.mjs");
 
