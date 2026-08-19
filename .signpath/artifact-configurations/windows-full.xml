@@ -8,19 +8,13 @@
       path="Nowen-Note-${version}-setup.exe"
       product-name="Nowen Note"
       product-version="${version}">
-      <authenticode-sign
-        hash-algorithm="sha256"
-        description="Nowen Note"
-        description-url="https://github.com/cropflre/nowen-note" />
+      <authenticode-sign hash-algorithm="sha256" />
     </pe-file>
     <pe-file
       path="Nowen-Note-${version}-portable.exe"
       product-name="Nowen Note"
       product-version="${version}">
-      <authenticode-sign
-        hash-algorithm="sha256"
-        description="Nowen Note"
-        description-url="https://github.com/cropflre/nowen-note" />
+      <authenticode-sign hash-algorithm="sha256" />
     </pe-file>
   </zip-file>
 </artifact-configuration>
