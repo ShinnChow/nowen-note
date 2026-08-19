@@ -27,8 +27,13 @@ function assertCompleteMacReleaseAssets(assetNames, version, source = "macOS rel
   return requiredMacReleaseAssets(version);
 }
 
+function isMacManualDownloadZip(name) {
+  return /^Nowen-Note-\d+\.\d+\.\d+(?:-[A-Za-z0-9._-]+)?-(?:x64|arm64)\.zip$/i.test(String(name || ""));
+}
+
 module.exports = {
   assertCompleteMacReleaseAssets,
   findMissingMacReleaseAssets,
+  isMacManualDownloadZip,
   requiredMacReleaseAssets,
 };
