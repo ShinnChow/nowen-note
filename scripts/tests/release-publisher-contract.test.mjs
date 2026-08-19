@@ -9,6 +9,7 @@ const require = createRequire(import.meta.url);
 const {
   assertCompleteMacReleaseAssets,
   findMissingMacReleaseAssets,
+  isMacManualDownloadZip,
   requiredMacReleaseAssets,
 } = require("../lib/release-platform-assets.cjs");
 
@@ -71,6 +72,7 @@ test("完整桌面 Release 的远端校验会阻止 macOS 平台整体缺失", a
   assert.match(verifier, /assertCompleteMacReleaseAssets/);
   assert.match(verifier, /byName\.has\("latest\.yml"\) && byName\.has\("latest-linux\.yml"\)/);
   assert.match(verifier, /remote Release \$\{tag\} macOS assets/);
+  assert.match(verifier, /!isMacManualDownloadZip\(name\)/);
 });
 
 test("macOS 发版资产必须同时包含 Intel、Apple Silicon 与更新元数据", () => {
@@ -93,6 +95,14 @@ test("macOS 发版资产必须同时包含 Intel、Apple Silicon 与更新元数
     () => assertCompleteMacReleaseAssets(incomplete, version),
     /missing: Nowen-Note-1\.4\.16-arm64\.dmg/,
   );
+});
+
+test("macOS 双架构 ZIP 按手动下载资产处理", () => {
+  assert.equal(isMacManualDownloadZip("Nowen-Note-1.4.16-x64.zip"), true);
+  assert.equal(isMacManualDownloadZip("Nowen-Note-1.4.16-arm64.zip"), true);
+  assert.equal(isMacManualDownloadZip("Nowen-Note-1.4.16-rc.1-arm64.zip"), true);
+  assert.equal(isMacManualDownloadZip("Nowen-Note-1.4.16-setup.exe"), false);
+  assert.equal(isMacManualDownloadZip("Nowen-Note-Lite-1.4.16-x64.zip"), false);
 });
 
 test("Windows Node ZIP 使用 PowerShell Expand-Archive 解压", async () => {
