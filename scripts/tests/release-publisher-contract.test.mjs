@@ -29,7 +29,7 @@ test("tag 构建工作流不让 electron-builder 直接发布 GitHub Release", a
   assert.doesNotMatch(workflow, /GH_TOKEN:/);
 });
 
-test("手动 workflow 只使用 SignPath test-signing 且不进入正式发布", async () => {
+test("手动 workflow 只使用 SignPath test-signing 且使用 Full Artifact Configuration", async () => {
   const workflow = await readRepoFile(".github/workflows/release.yml");
   const testBlock = workflow.slice(
     workflow.indexOf("- name: Stage Windows EXEs for SignPath test"),
@@ -37,8 +37,13 @@ test("手动 workflow 只使用 SignPath test-signing 且不进入正式发布",
   );
   assert.match(testBlock, /workflow_dispatch/);
   assert.match(testBlock, /signing-policy-slug:\s*["']test-signing["']/);
+  assert.match(testBlock, /artifact-configuration-slug:\s*\$\{\{ vars\.SIGNPATH_FULL_ARTIFACT_CONFIGURATION_SLUG \}\}/);
+  assert.match(testBlock, /version:\s*\$\{\{ toJSON\(steps\.package_version\.outputs\.version\) \}\}/);
+  assert.match(testBlock, /SIGNPATH_ORGANIZATION_ID/);
+  assert.match(testBlock, /SIGNPATH_PROJECT_SLUG/);
   assert.match(testBlock, /nowen-note-win-signpath-test/);
   assert.doesNotMatch(testBlock, /release-signing/);
+  assert.doesNotMatch(testBlock, /SIGNPATH_LITE_ARTIFACT_CONFIGURATION_SLUG/);
   assert.doesNotMatch(testBlock, /refs\/tags/);
 });
 
