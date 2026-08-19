@@ -58,4 +58,56 @@ describe("markdownSelectionWrap", () => {
     expect(createMarkdownSelectionWrapSpec(state, "(")).toBeNull();
     expect(createMarkdownSelectionWrapSpec(state, "'")).toBeNull();
   });
+
+  it("wraps every selected range in a multi-selection transaction", () => {
+    const state = EditorState.create({
+      doc: "hello world",
+      selection: EditorSelection.create([
+        EditorSelection.range(0, 5),
+        EditorSelection.range(6, 11),
+      ]),
+      extensions: [EditorState.allowMultipleSelections.of(true)],
+    });
+
+    const spec = createMarkdownSelectionWrapSpec(state, "*");
+    expect(spec).not.toBeNull();
+    const next = state.update(spec!).state;
+
+    expect(next.doc.toString()).toBe("*hello* *world*");
+    expect(next.selection.ranges).toHaveLength(2);
+    expect(next.selection.ranges[0].from).toBe(1);
+    expect(next.selection.ranges[0].to).toBe(6);
+    expect(next.selection.ranges[1].from).toBe(9);
+    expect(next.selection.ranges[1].to).toBe(14);
+  });
+
+  it("keeps typed delimiters literal at empty secondary cursors", () => {
+    const state = EditorState.create({
+      doc: "hello world",
+      selection: EditorSelection.create([
+        EditorSelection.range(0, 5),
+        EditorSelection.cursor(6),
+      ]),
+      extensions: [EditorState.allowMultipleSelections.of(true)],
+    });
+
+    const spec = createMarkdownSelectionWrapSpec(state, "$");
+    expect(spec).not.toBeNull();
+    const next = state.update(spec!).state;
+
+    expect(next.doc.toString()).toBe("$hello$ $world");
+    expect(next.selection.ranges).toHaveLength(2);
+    expect(next.selection.ranges[0].from).toBe(1);
+    expect(next.selection.ranges[0].to).toBe(6);
+    expect(next.selection.ranges[1].empty).toBe(true);
+    expect(next.selection.ranges[1].head).toBe(9);
+  });
+
+  it("wraps existing Markdown instead of toggling it off", () => {
+    const next = applyWrap("*hello*", 0, 7, "*");
+
+    expect(next?.doc.toString()).toBe("**hello**");
+    expect(next?.selection.main.from).toBe(1);
+    expect(next?.selection.main.to).toBe(8);
+  });
 });
