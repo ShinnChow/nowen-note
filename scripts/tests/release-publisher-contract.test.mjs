@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const {
+  assertCompleteMacReleaseAssets,
+  findMissingMacReleaseAssets,
+  requiredMacReleaseAssets,
+} = require("../lib/release-platform-assets.cjs");
 
 const __filename = fileURLToPath(import.meta.url);
 const rootDir = path.resolve(path.dirname(__filename), "../..");
@@ -23,19 +31,56 @@ test("tag 构建工作流只产出 artifacts，不直接发布 GitHub Release", 
   assert.match(workflow, /actions\/upload-artifact@v4/);
 });
 
-test("本地发布守卫在正式校验前汇总 CI macOS 产物", async () => {
+test("本地发布守卫在正式校验前汇总完整 CI macOS 产物", async () => {
   const releaseGuard = await readRepoFile("scripts/release.sh");
 
   assert.match(releaseGuard, /nowen-note-mac/);
   assert.match(releaseGuard, /gh run download/);
   assert.match(releaseGuard, /gh release upload/);
   assert.match(releaseGuard, /--clobber/);
-  assert.match(releaseGuard, /failed to collect CI macOS assets; keeping \$\{TAG\} as draft/);
+  assert.match(releaseGuard, /release_has_complete_mac_assets/);
+  assert.match(releaseGuard, /Nowen-Note-\$\{VERSION\}-x64\.dmg/);
+  assert.match(releaseGuard, /Nowen-Note-\$\{VERSION\}-arm64\.dmg/);
+  assert.match(releaseGuard, /Nowen-Note-\$\{VERSION\}-x64\.zip/);
+  assert.match(releaseGuard, /Nowen-Note-\$\{VERSION\}-arm64\.zip/);
+  assert.match(releaseGuard, /latest-mac\.yml/);
+  assert.match(releaseGuard, /failed to collect complete CI macOS assets; keeping \$\{TAG\} as draft/);
+  assert.match(releaseGuard, /macOS release assets are still incomplete after CI collection/);
 
   const collectIndex = releaseGuard.lastIndexOf("if ! collect_ci_mac_assets");
   const verifyIndex = releaseGuard.indexOf("==== 验证 GitHub Release 更新元数据与远端资产 ====", collectIndex);
   assert.ok(collectIndex >= 0, "缺少 CI macOS 产物汇总调用");
-  assert.ok(verifyIndex > collectIndex, "必须先汇总 CI macOS 产物，再执行远端 Release 校验");
+  assert.ok(verifyIndex > collectIndex, "必须先汇总并确认 macOS 产物完整，再执行远端 Release 校验");
+});
+
+test("完整桌面 Release 的远端校验会阻止 macOS 平台整体缺失", async () => {
+  const verifier = await readRepoFile("scripts/verify-release-update-assets.mjs");
+
+  assert.match(verifier, /assertCompleteMacReleaseAssets/);
+  assert.match(verifier, /byName\.has\("latest\.yml"\) && byName\.has\("latest-linux\.yml"\)/);
+  assert.match(verifier, /remote Release \$\{tag\} macOS assets/);
+});
+
+test("macOS 发版资产必须同时包含 Intel、Apple Silicon 与更新元数据", () => {
+  const version = "1.4.16";
+  const required = requiredMacReleaseAssets(version);
+
+  assert.deepEqual(required, [
+    "Nowen-Note-1.4.16-x64.dmg",
+    "Nowen-Note-1.4.16-arm64.dmg",
+    "Nowen-Note-1.4.16-x64.zip",
+    "Nowen-Note-1.4.16-arm64.zip",
+    "latest-mac.yml",
+  ]);
+  assert.deepEqual(findMissingMacReleaseAssets(required, version), []);
+  assert.doesNotThrow(() => assertCompleteMacReleaseAssets(required, version));
+
+  const incomplete = required.filter((name) => name !== "Nowen-Note-1.4.16-arm64.dmg");
+  assert.deepEqual(findMissingMacReleaseAssets(incomplete, version), ["Nowen-Note-1.4.16-arm64.dmg"]);
+  assert.throws(
+    () => assertCompleteMacReleaseAssets(incomplete, version),
+    /missing: Nowen-Note-1\.4\.16-arm64\.dmg/,
+  );
 });
 
 test("Windows Node ZIP 使用 PowerShell Expand-Archive 解压", async () => {
