@@ -32,6 +32,30 @@ test("tag 构建工作流只产出 artifacts，不直接发布 GitHub Release", 
   assert.match(workflow, /actions\/upload-artifact@v4/);
 });
 
+test("SignPath test-signing 只允许手动工作流使用测试证书", async () => {
+  const workflow = await readRepoFile(".github/workflows/release.yml");
+
+  assert.match(workflow, /actions:\s*read/);
+  assert.match(workflow, /signpath_test:/);
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch' && inputs\.signpath_test/);
+  assert.match(workflow, /signpath\/github-action-submit-signing-request@v2/);
+  assert.match(workflow, /api-token:\s*\$\{\{ secrets\.SIGNPATH_API_TOKEN \}\}/);
+  assert.match(workflow, /organization-id:\s*["']3fd6029d-c909-43a1-8b30-4d2bcdde4c7a["']/);
+  assert.match(workflow, /project-slug:\s*["']nowen-note["']/);
+  assert.match(workflow, /signing-policy-slug:\s*["']test-signing["']/);
+  assert.match(workflow, /github-artifact-id:\s*\$\{\{ steps\.upload_signpath_test\.outputs\.artifact-id \}\}/);
+  assert.match(workflow, /output-artifact-directory:\s*signpath-signed/);
+  assert.match(workflow, /Get-AuthenticodeSignature/);
+  assert.match(workflow, /nowen-note-win-signpath-test/);
+
+  const signPathBlock = workflow.slice(
+    workflow.indexOf("- name: Submit SignPath test signing request"),
+    workflow.indexOf("- name: Build Electron (macOS x64 / Intel)"),
+  );
+  assert.match(signPathBlock, /workflow_dispatch/);
+  assert.doesNotMatch(signPathBlock, /refs\/tags/);
+});
+
 test("本地发布守卫在正式校验前汇总完整 CI macOS 产物", async () => {
   const releaseGuard = await readRepoFile("scripts/release.sh");
 
