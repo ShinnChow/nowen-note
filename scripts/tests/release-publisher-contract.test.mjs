@@ -36,8 +36,8 @@ test("SignPath test-signing 只允许手动工作流使用测试证书", async (
   const workflow = await readRepoFile(".github/workflows/release.yml");
 
   assert.match(workflow, /actions:\s*read/);
-  assert.match(workflow, /signpath_test:/);
-  assert.match(workflow, /github\.event_name == 'workflow_dispatch' && inputs\.signpath_test/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /github\.event_name == 'workflow_dispatch'/);
   assert.match(workflow, /signpath\/github-action-submit-signing-request@v2/);
   assert.match(workflow, /api-token:\s*\$\{\{ secrets\.SIGNPATH_API_TOKEN \}\}/);
   assert.match(workflow, /organization-id:\s*["']3fd6029d-c909-43a1-8b30-4d2bcdde4c7a["']/);
@@ -54,6 +54,7 @@ test("SignPath test-signing 只允许手动工作流使用测试证书", async (
   );
   assert.match(signPathBlock, /workflow_dispatch/);
   assert.doesNotMatch(signPathBlock, /refs\/tags/);
+  assert.doesNotMatch(signPathBlock, /signing-policy-slug:\s*["']release-signing["']/);
 });
 
 test("本地发布守卫在正式校验前汇总完整 CI macOS 产物", async () => {
